@@ -498,7 +498,8 @@ A minimal, single-user **test UI** now; it grows into the login-capable dashboar
 
 ## 13. Python client `assay`
 
-Package `assay` (uv project, ruff/ty/pytest). Built on the OTel SDK; OTLP/HTTP exporter to `/v1/traces` with the API key header.
+Distribution `assay-sdk` (import `assay`; uv project, ruff/ty/pytest). Built on the OTel SDK;
+OTLP/HTTP exporter to `/v1/traces` with the API key header.
 
 ```python
 import assay
@@ -658,6 +659,9 @@ assay/
 
 **M5 — Python client + CLI** → *verify: `@assay.trace` round-trips to a real assayd; CLI creates/imports/runs/watches; `run watch --gate` exits non-zero on failure.*
 - `assay.init`/decorator/spans/helpers, `assay.Client`, CLI, in-memory-exporter tests.
+- **Completed ahead of M5:** bootstrap the `assay-sdk` distribution at version 0.1.0 and add
+  Trusted Publishing so the PyPI project name can be reserved. This bootstrap exposes only the
+  `assay` import namespace and version; the functional SDK and CLI remain M5 work.
 
 **M5.5 — Minimal web UI (embedded React SPA)** → *verify: `vite build` output embeds into the binary; visiting `/` lists apps, opens a trace's span tree + scores, and triggers a run + watches aggregates; admin-token stored in-browser; UI toggles off via `ASSAY_UI_ENABLED`.*
 - React + Vite + TS + Tailwind + shadcn/ui in `web/`; OpenAPI-generated client; `embed.FS` serving + SPA fallback in `internal/ui`; Docker multi-stage (node build → go embed).

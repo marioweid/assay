@@ -28,12 +28,31 @@ The implementation follows these references:
 - **CI/CD plan (pinned versions):** [`docs/ci-cd.md`](docs/ci-cd.md)
 - **Agent skill:** [`.claude/skills/assay/SKILL.md`](.claude/skills/assay/SKILL.md)
 
+## Python SDK
+
+Install the Python distribution from PyPI with uv:
+
+```bash
+uv add assay-sdk
+```
+
+The distribution is named `assay-sdk` and imported as `assay`:
+
+```python
+import assay
+
+print(assay.__version__)
+```
+
+Version 0.1.0 is a bootstrap release that establishes the package name and import namespace.
+The tracing, API client, and CLI interfaces described below remain planned for milestone M5.
+
 ## Repo layout
 
 ```
 assayd/                 # Go 1.27 backend (single binary): API + OTLP receiver + embedded worker + UI
 web/                     # React + Vite + Tailwind + shadcn/ui SPA (embedded into the binary)
-clients/python/assay/   # Python client: @assay.trace, API client, CLI
+clients/python/assay/   # assay-sdk distribution; functional SDK lands in M5
 .claude/skills/assay/    # Claude Code skill wrapping the CLI
 assets/                  # reusable brand assets, including the transparent app icon
 docs/                    # design spec and supporting documentation

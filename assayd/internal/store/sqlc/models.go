@@ -3,3 +3,42 @@
 //   sqlc v1.31.1
 
 package db
+
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type ApiKey struct {
+	ID         uuid.UUID
+	ProjectID  uuid.UUID
+	Name       string
+	KeyHash    []byte
+	KeyPrefix  string
+	LastUsedAt pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type Application struct {
+	ID               uuid.UUID
+	ProjectID        uuid.UUID
+	Name             string
+	Slug             string
+	Config           json.RawMessage
+	AutoScoreScorers []string
+	TargetEndpoint   []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type Project struct {
+	ID          uuid.UUID
+	Name        string
+	JudgeConfig []byte
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}

@@ -17,8 +17,9 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-M0 skeleton implemented: typed configuration, embedded Postgres migrations, health/readiness
-endpoints, graceful shutdown, Docker Compose, and backend CI rails. Product endpoints begin in M1.
+M1 domain and authentication implemented: project, API-key, and application APIs; admin bearer
+authentication; encrypted write-only secrets; hashed project keys; and generated OpenAPI 3.1 docs.
+OTLP trace ingestion begins in M2.
 
 The implementation follows these references:
 
@@ -51,6 +52,26 @@ One binary, one Postgres — two ways to run it:
 cp .env.example .env       # PowerShell: Copy-Item .env.example .env
 docker compose up          # assayd + postgres; migrations auto-apply on start
 ```
+
+Create the first project, API key, and application from PowerShell:
+
+```powershell
+$adminToken = Read-Host "ASSAY_ADMIN_TOKEN from .env"
+$headers = @{ Authorization = "Bearer $adminToken" }
+$project = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/projects `
+  -Headers $headers -ContentType application/json -Body '{"name":"support"}'
+$key = Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/v1/projects/$($project.id)/keys" `
+  -Headers $headers -ContentType application/json -Body '{"name":"local"}'
+$appBody = @{ project_id = $project.id; name = "Support Bot"; slug = "support-bot" } |
+  ConvertTo-Json
+$application = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/applications `
+  -Headers $headers -ContentType application/json -Body $appBody
+$key.key # Save now: the plaintext key is returned only once.
+```
+
+OpenAPI is available at `http://localhost:8080/openapi.json`; interactive docs are at
+`http://localhost:8080/docs`.
 
 ```python
 import assay

@@ -14,7 +14,7 @@ func TestHealth(t *testing.T) {
 	t.Parallel()
 
 	readyCalls := 0
-	handler := NewHandler(readinessFunc(func(context.Context) error {
+	handler := NewMux(readinessFunc(func(context.Context) error {
 		readyCalls++
 		return nil
 	}), discardLogger())
@@ -58,7 +58,7 @@ func TestReady(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := NewHandler(readinessFunc(func(context.Context) error {
+			handler := NewMux(readinessFunc(func(context.Context) error {
 				return test.readyError
 			}), discardLogger())
 			response := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestReady(t *testing.T) {
 func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(readinessFunc(func(context.Context) error { return nil }), discardLogger())
+	handler := NewMux(readinessFunc(func(context.Context) error { return nil }), discardLogger())
 	for _, path := range []string{"/healthz", "/readyz"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))

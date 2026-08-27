@@ -3,10 +3,12 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,8 +25,10 @@ func TestAppMigratesBeforeServingAndStops(t *testing.T) {
 	addr := unusedAddress(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	application, err := app.New(t.Context(), config.Config{
-		HTTPAddr:    addr,
-		DatabaseURL: dsn,
+		HTTPAddr:      addr,
+		DatabaseURL:   dsn,
+		AdminToken:    "admin-secret",
+		EncryptionKey: config.EncryptionKey{},
 	}, logger)
 	if err != nil {
 		t.Fatalf("create app: %v", err)
@@ -35,8 +39,8 @@ func TestAppMigratesBeforeServingAndStops(t *testing.T) {
 		}
 	})
 
-	if version := migrationVersion(t, dsn); version != 1 {
-		t.Fatalf("migration version before serving = %d, want 1", version)
+	if version := migrationVersion(t, dsn); version != 2 {
+		t.Fatalf("migration version before serving = %d, want 2", version)
 	}
 
 	serveCtx, cancel := context.WithCancel(t.Context())
@@ -45,6 +49,7 @@ func TestAppMigratesBeforeServingAndStops(t *testing.T) {
 		result <- application.Serve(serveCtx)
 	}()
 	waitUntilReady(t, "http://"+addr+"/readyz")
+	verifyM1Flow(t, "http://"+addr)
 
 	cancel()
 	select {
@@ -52,9 +57,124 @@ func TestAppMigratesBeforeServingAndStops(t *testing.T) {
 		if err != nil {
 			t.Fatalf("serve after cancellation: %v", err)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("app did not stop within one second")
+	case <-time.After(5 * time.Second):
+		t.Fatal("app did not stop within five seconds")
 	}
+}
+
+type apiRequest struct {
+	method string
+	path   string
+	body   string
+	token  string
+}
+
+func verifyM1Flow(t *testing.T, baseURL string) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	response := sendAPIRequest(t, client, baseURL, apiRequest{
+		method: http.MethodPost,
+		path:   "/v1/projects",
+		body:   `{"name":"Support"}`,
+	})
+	status := response.StatusCode
+	if err := response.Body.Close(); err != nil {
+		t.Fatalf("close unauthenticated response: %v", err)
+	}
+	if status != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated project status = %d, want 401", status)
+	}
+
+	project := sendAndDecode[struct {
+		ID string `json:"id"`
+	}](t, client, baseURL, apiRequest{
+		method: http.MethodPost,
+		path:   "/v1/projects",
+		body:   `{"name":"Support"}`,
+		token:  "admin-secret",
+	}, http.StatusCreated)
+	createdKey := sendAndDecode[struct {
+		Key string `json:"key"`
+	}](t, client, baseURL, apiRequest{
+		method: http.MethodPost,
+		path:   "/v1/projects/" + project.ID + "/keys",
+		body:   `{"name":"CI"}`,
+		token:  "admin-secret",
+	}, http.StatusCreated)
+	if !strings.HasPrefix(createdKey.Key, "asy_") {
+		t.Fatalf("created key = %q, want asy_ prefix", createdKey.Key)
+	}
+	application := sendAndDecode[struct {
+		ID string `json:"id"`
+	}](t, client, baseURL, apiRequest{
+		method: http.MethodPost,
+		path:   "/v1/applications",
+		body: `{"project_id":"` + project.ID + `","name":"Support Bot",` +
+			`"slug":"support-bot"}`,
+		token: "admin-secret",
+	}, http.StatusCreated)
+	if application.ID == "" {
+		t.Fatal("created application ID is empty")
+	}
+}
+
+func sendAndDecode[T any](
+	t *testing.T,
+	client *http.Client,
+	baseURL string,
+	request apiRequest,
+	wantStatus int,
+) T {
+	t.Helper()
+	response := sendAPIRequest(t, client, baseURL, request)
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			t.Errorf("close %s %s response: %v", request.method, request.path, err)
+		}
+	}()
+	if response.StatusCode != wantStatus {
+		t.Fatalf(
+			"%s %s status = %d, want %d",
+			request.method,
+			request.path,
+			response.StatusCode,
+			wantStatus,
+		)
+	}
+	var output T
+	if err := json.NewDecoder(response.Body).Decode(&output); err != nil {
+		t.Fatalf("decode %s %s response: %v", request.method, request.path, err)
+	}
+	return output
+}
+
+func sendAPIRequest(
+	t *testing.T,
+	client *http.Client,
+	baseURL string,
+	spec apiRequest,
+) *http.Response {
+	t.Helper()
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		spec.method,
+		baseURL+spec.path,
+		strings.NewReader(spec.body),
+	)
+	if err != nil {
+		t.Fatalf("create %s %s request: %v", spec.method, spec.path, err)
+	}
+	if spec.body != "" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if spec.token != "" {
+		request.Header.Set("Authorization", "Bearer "+spec.token)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("send %s %s request: %v", spec.method, spec.path, err)
+	}
+	return response
 }
 
 func migrationVersion(t *testing.T, dsn string) int64 {

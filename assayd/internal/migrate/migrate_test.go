@@ -17,14 +17,14 @@ func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 1 {
-		t.Fatalf("migration version = %d, want 1", version)
+	if version := migrationVersion(t, database); version != 2 {
+		t.Fatalf("migration version = %d, want 2", version)
 	}
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 1 {
-		t.Fatalf("migration version after reapply = %d, want 1", version)
+	if version := migrationVersion(t, database); version != 2 {
+		t.Fatalf("migration version after reapply = %d, want 2", version)
 	}
 }
 
@@ -53,8 +53,8 @@ func TestUpSerializesConcurrentReplicas(t *testing.T) {
 			t.Errorf("concurrent migration: %v", err)
 		}
 	}
-	if version := migrationVersion(t, first); version != 1 {
-		t.Fatalf("migration version = %d, want 1", version)
+	if version := migrationVersion(t, first); version != 2 {
+		t.Fatalf("migration version = %d, want 2", version)
 	}
 }
 

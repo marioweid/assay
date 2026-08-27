@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/marioweid/assay/assayd/internal/api"
 	"github.com/marioweid/assay/assayd/internal/config"
+	secretcrypto "github.com/marioweid/assay/assayd/internal/crypto"
+	"github.com/marioweid/assay/assayd/internal/domain"
 	"github.com/marioweid/assay/assayd/internal/httpserver"
 	"github.com/marioweid/assay/assayd/internal/migrate"
 	"github.com/marioweid/assay/assayd/internal/store"
@@ -18,6 +21,8 @@ type App struct {
 	config   config.Config
 	logger   *slog.Logger
 	database *store.Database
+	cipher   *secretcrypto.Cipher
+	service  *domain.Service
 }
 
 // New opens Postgres and applies migrations before returning a runnable application.
@@ -32,12 +37,26 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			database.Close(),
 		)
 	}
-	return &App{config: cfg, logger: logger, database: database}, nil
+	cipher, err := secretcrypto.New(cfg.EncryptionKey[:])
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("create application secret cipher: %w", err),
+			database.Close(),
+		)
+	}
+	return &App{
+		config:   cfg,
+		logger:   logger,
+		database: database,
+		cipher:   cipher,
+		service:  domain.NewService(database, cipher),
+	}, nil
 }
 
 // Serve runs the HTTP server until its context is canceled or serving fails.
 func (a *App) Serve(ctx context.Context) error {
-	handler := httpserver.NewHandler(a.database, a.logger)
+	handler := httpserver.NewMux(a.database, a.logger)
+	api.Register(handler, a.service, a.config.AdminToken, a.logger)
 	if err := httpserver.Serve(ctx, a.config.HTTPAddr, handler, a.logger); err != nil {
 		return fmt.Errorf("run application HTTP server: %w", err)
 	}

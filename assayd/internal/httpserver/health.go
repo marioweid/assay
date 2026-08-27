@@ -13,8 +13,8 @@ type Readiness interface {
 	Ready(context.Context) error
 }
 
-// NewHandler returns Assay's M0 HTTP routes.
-func NewHandler(ready Readiness, logger *slog.Logger) http.Handler {
+// NewMux returns a standard-library router with Assay's health endpoints.
+func NewMux(ready Readiness, logger *slog.Logger) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {
 		writePlain(writer, http.StatusOK, "ok\n", logger)

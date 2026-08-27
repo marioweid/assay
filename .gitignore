@@ -1,0 +1,35 @@
+# Go
+/assayd/assayd
+/assayd/bin/
+*.test
+*.out
+coverage.*
+
+# Node / web (embedded SPA)
+node_modules/
+/web/dist/
+/assayd/internal/ui/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Custom stuff
+pipeline
+docs/superpowers

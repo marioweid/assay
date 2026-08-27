@@ -1,0 +1,49 @@
+# Assay — standalone / local deployment. One command: `docker compose up`.
+# Two services, one storage engine (Postgres). Migrations auto-apply on assayd startup.
+# Copy `.env.example` to `.env` first.
+
+services:
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: ${ASSAY_POSTGRES_USER:-assay}
+      POSTGRES_PASSWORD: ${ASSAY_POSTGRES_PASSWORD:-assay}
+      POSTGRES_DB: ${ASSAY_POSTGRES_DB:-assay}
+    volumes:
+      # NOTE: Postgres 18 moved the container VOLUME to /var/lib/postgresql
+      # (PGDATA is now version-specific under it). Do NOT use the old
+      # /var/lib/postgresql/data path — a v17 data volume is not reusable by tag bump.
+      - assay-pgdata:/var/lib/postgresql
+    ports:
+      - "5432:5432"            # exposed for local dev; remove for a sealed deploy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ASSAY_POSTGRES_USER:-assay} -d ${ASSAY_POSTGRES_DB:-assay}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  assayd:
+    # Multi-stage build (node → vite build web, then go build embedding the assets).
+    # Context is the repo root so the Dockerfile can see both web/ and assayd/.
+    build:
+      context: .
+      dockerfile: assayd/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # Override so assayd reaches the compose postgres service regardless of .env host.
+      ASSAY_DATABASE_URL: postgres://${ASSAY_POSTGRES_USER:-assay}:${ASSAY_POSTGRES_PASSWORD:-assay}@postgres:5432/${ASSAY_POSTGRES_DB:-assay}?sslmode=disable
+    ports:
+      - "${ASSAY_HTTP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "/assayd", "healthcheck"]   # or: wget -qO- http://localhost:8080/readyz
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  assay-pgdata:

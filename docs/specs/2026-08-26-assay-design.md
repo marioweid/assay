@@ -2,6 +2,9 @@
 
 *Status: design spec, 2026-08-26. This is the single source of truth for what Assay is and how it's built. It is intentionally detailed so implementation has as few knowledge gaps as possible.*
 
+For the implemented backend layers, dependency direction, and an API-key request walkthrough,
+see [`docs/architecture.md`](../architecture.md).
+
 ---
 
 ## 0. TL;DR

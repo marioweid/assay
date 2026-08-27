@@ -24,6 +24,7 @@ OTLP trace ingestion begins in M2.
 The implementation follows these references:
 
 - **Design & build plan:** [`docs/specs/2026-08-26-assay-design.md`](docs/specs/2026-08-26-assay-design.md)
+- **Backend architecture and layer guide:** [`docs/architecture.md`](docs/architecture.md)
 - **Semantic conventions (trace attribute contract):** [`docs/semantic-conventions.md`](docs/semantic-conventions.md)
 - **CI/CD plan (pinned versions):** [`docs/ci-cd.md`](docs/ci-cd.md)
 - **Agent skill:** [`.claude/skills/assay/SKILL.md`](.claude/skills/assay/SKILL.md)

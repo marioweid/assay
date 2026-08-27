@@ -1,20 +1,24 @@
 # Assay — CI/CD Plan
 
-*Design for `.github/workflows/`. Verified pins as of 2026-08-26. Companion to `docs/specs/2026-08-26-assay-design.md`. This is a plan, not yet implemented.*
+*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-08-27. The backend and Python package publishing workflows are implemented; later product surfaces remain planned. Companion to `docs/specs/2026-08-26-assay-design.md`.*
 
 ## Philosophy
 
 Verify at every level, as a gate, not an afterthought: compiler → linters → type checkers → tests → security scan. A red check blocks merge. Actions are **SHA-pinned** with version comments; workflows run with least privilege and `persist-credentials: false`.
 
+Tests protect behavior, boundaries, error paths, and regressions rather than internal call sequences. CI has **no line-coverage percentage gate**: coverage may be inspected to find suspicious gaps, but it is not a quality score or a reason to add low-value tests. Mock external boundaries such as HTTP and judge providers; use real Postgres for database and queue semantics.
+
 ## Pipelines
 
-Three build surfaces (Go backend, React web, Python client) + an image publish. Each is a separate workflow triggered on PRs touching its paths, plus `main`.
+Three build surfaces (Go backend, React web, Python client) plus package and image publishing.
+Validation workflows run for relevant pull requests and `main`; publishing uses dedicated tags.
 
 | Workflow | Triggers | Gate |
 |---|---|---|
 | `backend.yml` | `assayd/**`, `.github/workflows/backend.yml` | build · golangci-lint v2 · `go test` (unit + testcontainers) · sqlc-drift · goose validate |
 | `web.yml` | `web/**` | install · lint · `tsc --noEmit` · vitest · `vite build` · OpenAPI-client drift |
 | `python.yml` | `clients/python/assay/**` | `ruff check` · `ruff format --check` · `ty check` · `pytest` · `pip-audit` |
+| `python-publish.yml` | tags `python-v*` | version/tag match · test · build · isolated wheel smoke test · PyPI Trusted Publishing |
 | `image.yml` | push to `main`, tags `v*` | multi-stage build (web → embed → go) · push to GHCR |
 | `security.yml` | PRs, weekly cron | `actionlint` · `zizmor` (workflow audit) |
 
@@ -23,7 +27,7 @@ Notes:
 - **sqlc-drift**: run `sqlc generate` (or `sqlc diff`) and fail if the tree changes — generated code must be committed and current.
 - **OpenAPI-client drift**: regenerate the web API client from `assayd`'s emitted OpenAPI and fail on diff, so the frontend contract can't silently rot.
 
-## Verified pins (2026-08-26)
+## Verified pins (2026-08-27)
 
 | Item | Pin |
 |---|---|
@@ -44,6 +48,9 @@ actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        # v7.0.1
 actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e        # v7.0.0
 actions/setup-node@820762786026740c76f36085b0efc47a31fe5020      # v7.0.0
 astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d      # v10.0.1
+actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e   # v4.3.0
 docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a     # v7.3.0
 docker/login-action@dbcb813823bdd20940b903addbd779551569679f         # v4.6.0
@@ -140,6 +147,36 @@ jobs:
       - run: uv run pytest -q
       - run: uvx pip-audit
 ```
+
+## `python-publish.yml` (implemented)
+
+The Python distribution is `assay-sdk`; its import namespace remains `assay`. Publishing is
+triggered by a `python-v<version>` tag and fails before upload when the tag does not match
+`project.version` in `clients/python/assay/pyproject.toml`. The build job has read-only access.
+Only the separate publish job receives `id-token: write`, and it publishes through the protected
+`pypi` GitHub environment without a long-lived PyPI token.
+
+Before the first publish, create a pending Trusted Publisher at
+<https://pypi.org/manage/account/publishing/> with:
+
+| Field | Value |
+|---|---|
+| PyPI project name | `assay-sdk` |
+| GitHub owner | `marioweid` |
+| Repository | `assay` |
+| Workflow | `python-publish.yml` |
+| Environment | `pypi` |
+
+Create a GitHub environment named `pypi`, protect it as appropriate, merge the package and
+workflow, then publish 0.1.0:
+
+```bash
+git tag python-v0.1.0
+git push origin python-v0.1.0
+```
+
+The workflow builds the sdist and wheel, smoke-tests the wheel in an isolated uv environment,
+and publishes both files to PyPI. Confirm the release with `uv add assay-sdk`.
 
 ## `image.yml` (sketch — multi-stage: web build → embed → go build)
 

@@ -1,0 +1,33 @@
+[project]
+name = "assay-sdk"
+version = "0.1.0"
+description = "Python SDK for the Assay LLM tracing and evaluation platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+keywords = ["evals", "llm", "observability", "opentelemetry", "tracing"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/marioweid/assay#readme"
+Issues = "https://github.com/marioweid/assay/issues"
+Repository = "https://github.com/marioweid/assay"
+
+[build-system]
+requires = ["uv_build==0.12.6"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "assay"

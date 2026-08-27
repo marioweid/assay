@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+**/.venv
+**/node_modules
+**/dist
+**/bin
+**/*.test
+**/coverage.*
+docs/superpowers

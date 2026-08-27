@@ -1,0 +1,34 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - cyclop
+    - errorlint
+    - funlen
+    - gocritic
+    - lll
+    - misspell
+    - nolintlint
+    - revive
+  settings:
+    cyclop:
+      max-complexity: 8
+    funlen:
+      lines: 100
+      statements: 60
+    lll:
+      line-length: 100
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

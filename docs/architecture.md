@@ -1,0 +1,406 @@
+# Backend Architecture
+
+Assay's backend uses layered architecture with repository and adapter patterns. The goal is to
+keep application rules independent from HTTP, Postgres, and generated database code.
+
+The short version is:
+
+```text
+API        = speaks HTTP
+Domain     = makes application decisions
+Repository = describes the storage operations the domain needs
+Store      = translates domain operations into Postgres operations
+sqlc       = executes typed queries generated from SQL
+SQL        = describes reads and writes in Postgres
+```
+
+## Request Flow
+
+A normal request moves down through the layers and its result moves back up:
+
+```text
+HTTP request
+    |
+    v
+API -> Domain -> Repository interface
+                    |
+                    v
+              Store implementation -> sqlc -> SQL -> Postgres
+                                                       |
+HTTP response <- API <- Domain <- Store <- sqlc <------+
+```
+
+The repository is an interface, not another runtime service. At runtime it contains the concrete
+Postgres store, so calling a repository method calls the matching store method.
+
+## Layer Responsibilities
+
+| Layer | Simple responsibility | Main location |
+|---|---|---|
+| API | Receives HTTP requests and returns HTTP responses. | [`internal/api`](../assayd/internal/api/) |
+| Domain | Applies business and security rules. | [`internal/domain`](../assayd/internal/domain/) |
+| Repository | Defines the storage capabilities required by the domain. | [`domain/service.go`](../assayd/internal/domain/service.go) |
+| Store | Implements those capabilities using Postgres. | [`internal/store`](../assayd/internal/store/) |
+| SQL | Contains the database queries developers edit. | [`db/queries`](../assayd/db/queries/) |
+| Generated sqlc | Turns SQL into type-safe Go methods. | [`store/sqlc`](../assayd/internal/store/sqlc/) |
+| Database | Stores the actual rows. | Postgres |
+
+### API Layer
+
+The API layer understands HTTP concepts:
+
+- Paths and methods such as `POST /v1/projects/{id}/keys`.
+- Headers, path parameters, and JSON request bodies.
+- HTTP status codes and JSON response shapes.
+- Authentication middleware and OpenAPI metadata.
+
+It converts HTTP input into ordinary Go values, calls the domain service, and converts the result
+back into an HTTP response. It does not generate API keys or execute SQL.
+
+For API keys, see [`internal/api/api_keys.go`](../assayd/internal/api/api_keys.go).
+
+### Domain Layer
+
+The domain layer owns what Assay should do:
+
+- Validate an API-key name.
+- Confirm that the project exists.
+- Generate and hash a key.
+- Return the plaintext key exactly once.
+- Reject malformed, unknown, or revoked credentials.
+
+It works with domain types such as `domain.APIKey`. It does not know about Huma, JSON, pgx,
+sqlc, or Postgres rows.
+
+For API keys, see [`internal/domain/api_keys.go`](../assayd/internal/domain/api_keys.go).
+
+### Repository Interface
+
+The repository interface is a domain-owned contract. It lists the persistence operations the
+domain needs without specifying how those operations are implemented:
+
+```go
+type Repository interface {
+	// API-key operations; project and application operations are omitted here.
+	CreateAPIKey(context.Context, APIKey) (APIKey, error)
+	ListAPIKeys(context.Context, uuid.UUID) ([]APIKey, error)
+	GetActiveAPIKeyByHash(context.Context, [sha256.Size]byte) (APIKey, error)
+	RevokeAPIKey(context.Context, uuid.UUID, uuid.UUID) error
+}
+```
+
+The interface does not execute queries. It is the boundary between application rules and storage.
+
+See [`internal/domain/service.go`](../assayd/internal/domain/service.go).
+
+### Store Layer
+
+The store is the concrete Postgres adapter. `store.Database` implements the repository methods by:
+
+- Converting domain objects into sqlc parameters.
+- Calling generated sqlc methods.
+- Converting database rows back into domain objects.
+- Translating pgx and Postgres errors into domain errors.
+
+For example, Postgres represents an API-key hash as `[]byte`, while the domain uses the safer
+fixed-size type `[sha256.Size]byte`. The store owns that conversion.
+
+See [`internal/store/api_keys.go`](../assayd/internal/store/api_keys.go) and
+[`internal/store/conversion.go`](../assayd/internal/store/conversion.go).
+
+### SQL Layer
+
+Files under [`db/queries`](../assayd/db/queries/) contain the SQL developers edit. Named comments
+tell sqlc which Go methods to generate:
+
+```sql
+-- name: CreateAPIKey :one
+INSERT INTO api_keys (id, project_id, name, key_hash, key_prefix)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
+          created_at, updated_at;
+```
+
+When a query changes, edit the `.sql` source and regenerate sqlc. Do not edit the generated Go
+file.
+
+### Generated sqlc Layer
+
+sqlc validates the hand-written SQL against the schema and generates typed Go parameters,
+results, and query methods. Generated files begin with:
+
+```go
+// Code generated by sqlc. DO NOT EDIT.
+```
+
+This layer removes repetitive `QueryRow`, argument binding, and `Scan` code without hiding the SQL.
+
+## Example: Create an API Key
+
+This section follows only the handoff at each layer, not each complete function.
+
+### 1. HTTP Request
+
+```http
+POST /v1/projects/PROJECT_ID/keys
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "name": "production"
+}
+```
+
+### 2. API to Domain
+
+[`internal/api/api_keys.go`](../assayd/internal/api/api_keys.go) parses the request and passes
+ordinary Go values to the domain:
+
+```go
+created, err := h.service.CreateAPIKey(ctx, projectID, input.Body.Name)
+```
+
+The values crossing the boundary are the request context, parsed project UUID, and key name.
+
+### 3. Domain to Repository
+
+[`internal/domain/api_keys.go`](../assayd/internal/domain/api_keys.go) generates the secret and ID,
+hashes the secret, and passes safe persistence data through the repository contract:
+
+```go
+token, err := auth.GenerateAPIKey()
+
+key, err := s.repository.CreateAPIKey(ctx, APIKey{
+	ID:        keyID,
+	ProjectID: projectID,
+	Name:      name,
+	KeyHash:   auth.HashAPIKey(token),
+	KeyPrefix: token[:8],
+})
+```
+
+The plaintext `token` does not cross into the repository or store.
+
+### 4. Repository Contract
+
+The domain requires this method:
+
+```go
+CreateAPIKey(context.Context, APIKey) (APIKey, error)
+```
+
+Because `store.Database` has a method with that signature, Go accepts it as an implementation of
+the interface.
+
+### 5. Store to sqlc
+
+[`internal/store/api_keys.go`](../assayd/internal/store/api_keys.go) translates the domain value
+into generated database parameters:
+
+```go
+row, err := d.queries.CreateAPIKey(ctx, db.CreateAPIKeyParams{
+	ID:        key.ID,
+	ProjectID: key.ProjectID,
+	Name:      key.Name,
+	KeyHash:   key.KeyHash[:],
+	KeyPrefix: key.KeyPrefix,
+})
+```
+
+### 6. sqlc to Postgres
+
+[`internal/store/sqlc/api_keys.sql.go`](../assayd/internal/store/sqlc/api_keys.sql.go) binds the
+typed arguments to the generated query:
+
+```go
+row := q.db.QueryRow(
+	ctx,
+	createAPIKey,
+	arg.ID,
+	arg.ProjectID,
+	arg.Name,
+	arg.KeyHash,
+	arg.KeyPrefix,
+)
+```
+
+### 7. SQL to Database
+
+[`db/queries/api_keys.sql`](../assayd/db/queries/api_keys.sql) contains the actual insert:
+
+```sql
+INSERT INTO api_keys (id, project_id, name, key_hash, key_prefix)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
+          created_at, updated_at;
+```
+
+Postgres stores the hash, not the usable plaintext key.
+
+### 8. Return Path
+
+The inserted row travels upward in reverse:
+
+```text
+Postgres row
+    -> generated sqlc ApiKey
+    -> domain.APIKey
+    -> domain.CreatedAPIKey with the original plaintext token
+    -> HTTP 201 JSON response
+```
+
+The domain adds the original plaintext key to the creation result:
+
+```go
+return CreatedAPIKey{APIKey: key, Key: token}, nil
+```
+
+The API layer includes it only in the creation response. List responses expose metadata and the
+display prefix, but never the hash or plaintext key.
+
+## Repository Versus Store
+
+The simplest distinction is:
+
+```text
+Repository interface = job description
+Store implementation = employee doing the job
+```
+
+The repository says `CreateAPIKey` must exist. The store contains the code that performs the
+operation with Postgres.
+
+### Compile-Time Dependency Direction
+
+The important dependency direction is:
+
+```text
+API ----------> Domain <---------- Store
+                    ^
+                    |
+          owns Repository interface
+
+App imports all three and connects them.
+```
+
+The domain does not import the store. The store imports the domain because it accepts and returns
+domain models.
+
+If the domain directly imported `store.Database`, the dependency would become:
+
+```text
+Domain -> Store -> Domain
+```
+
+Go rejects that as an import cycle. More importantly, the domain would become coupled to a
+particular database implementation.
+
+### Runtime Wiring
+
+[`internal/app/app.go`](../assayd/internal/app/app.go) constructs the concrete dependencies:
+
+```go
+database, err := store.Open(ctx, cfg.DatabaseURL)
+
+service := domain.NewService(database, cipher)
+```
+
+`domain.NewService` accepts the interface rather than the concrete database:
+
+```go
+func NewService(repository Repository, cipher *secretcrypto.Cipher) *Service {
+	return &Service{repository: repository, cipher: cipher}
+}
+```
+
+Go interfaces are implemented implicitly. There is no `implements Repository` declaration.
+Passing `database` to `NewService` makes the compiler verify that `*store.Database` has every
+method required by `domain.Repository`.
+
+At runtime, the interface contains a pointer to the real store:
+
+```text
+domain.Service.repository
+    -> *store.Database
+    -> generated sqlc queries
+    -> Postgres
+```
+
+Therefore this domain call:
+
+```go
+s.repository.CreateAPIKey(...)
+```
+
+executes this concrete method:
+
+```go
+func (d *Database) CreateAPIKey(
+	ctx context.Context,
+	key domain.APIKey,
+) (domain.APIKey, error)
+```
+
+The repository does not add a network call, service, or database. It is a compile-time boundary
+around the existing store call.
+
+### Why Keep the Boundary?
+
+The boundary provides four practical benefits:
+
+1. The domain cannot accidentally depend on pgx, sqlc, or Postgres types.
+2. The store has one place to translate database values and errors into domain values and errors.
+3. A focused test can supply an in-memory fake that satisfies the same interface.
+4. The compiler verifies that the real store supplies every operation required by the domain.
+
+A fake repository method can be as simple as:
+
+```go
+type fakeRepository struct {
+	createdKey domain.APIKey
+}
+
+func (f *fakeRepository) CreateAPIKey(
+	_ context.Context,
+	key domain.APIKey,
+) (domain.APIKey, error) {
+	f.createdKey = key
+	return key, nil
+}
+```
+
+The current `Repository` interface groups project, API-key, and application operations. A complete
+fake must therefore implement all of its methods, not only the example above. If focused fake-based
+tests become common, the interface can be split into smaller contracts owned by each consumer.
+
+Assay's current domain tests mostly use real Postgres because database behavior is important. The
+interface still permits unit tests where database behavior is not under test, but that flexibility
+is not currently its main benefit.
+
+The interface is not mandatory for every small application. It is useful here because API keys
+contain security-sensitive domain rules, the store already depends on domain models, and Postgres
+types and errors should not leak into application logic.
+
+In ports-and-adapters terminology:
+
+```text
+domain.Repository = port
+store.Database     = adapter
+```
+
+## Where Changes Belong
+
+| Change | Primary layer |
+|---|---|
+| Rename JSON field `key_prefix` to `prefix` | API |
+| Limit each project to five active keys | Domain |
+| Change API-key generation or hashing | Domain and `internal/auth` |
+| Change the API-key `INSERT` statement | SQL, then regenerate sqlc |
+| Convert a Postgres value into a domain type | Store |
+| Map `pgx.ErrNoRows` to `domain.ErrNotFound` | Store |
+| Replace Postgres with another database | Store, queries, and generated database code |
+
+The rule of thumb is:
+
+> HTTP details stay in API, application decisions stay in domain, and database details stay in
+> store and SQL.

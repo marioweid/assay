@@ -1,10 +1,12 @@
 # Assay — CI/CD Plan
 
-*Design for `.github/workflows/`. Verified pins as of 2026-08-26. Companion to `docs/specs/2026-08-26-assay-design.md`. This is a plan, not yet implemented.*
+*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-08-26. The backend workflow is implemented; later product surfaces remain planned. Companion to `docs/specs/2026-08-26-assay-design.md`.*
 
 ## Philosophy
 
 Verify at every level, as a gate, not an afterthought: compiler → linters → type checkers → tests → security scan. A red check blocks merge. Actions are **SHA-pinned** with version comments; workflows run with least privilege and `persist-credentials: false`.
+
+Tests protect behavior, boundaries, error paths, and regressions rather than internal call sequences. CI has **no line-coverage percentage gate**: coverage may be inspected to find suspicious gaps, but it is not a quality score or a reason to add low-value tests. Mock external boundaries such as HTTP and judge providers; use real Postgres for database and queue semantics.
 
 ## Pipelines
 

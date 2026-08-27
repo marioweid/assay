@@ -1,10 +1,10 @@
-# Assay — standalone / local deployment. One command: `docker compose up`.
+# Assay standalone/local deployment. One command: `docker compose up`.
 # Two services, one storage engine (Postgres). Migrations auto-apply on assayd startup.
 # Copy `.env.example` to `.env` first.
 
 services:
   postgres:
-    image: postgres:18.6-trixie
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     environment:
       POSTGRES_USER: ${ASSAY_POSTGRES_USER:-assay}
       POSTGRES_PASSWORD: ${ASSAY_POSTGRES_PASSWORD:-assay}
@@ -24,8 +24,7 @@ services:
     restart: unless-stopped
 
   assayd:
-    # Multi-stage build (node → vite build web, then go build embedding the assets).
-    # Context is the repo root so the Dockerfile can see both web/ and assayd/.
+    # Context is the repository root; the M0 image currently builds the Go service only.
     build:
       context: .
       dockerfile: assayd/Dockerfile
@@ -39,7 +38,7 @@ services:
     ports:
       - "${ASSAY_HTTP_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "/assayd", "healthcheck"]   # or: wget -qO- http://localhost:8080/readyz
+      test: ["CMD", "/assayd", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5

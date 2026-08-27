@@ -595,12 +595,16 @@ assay scores export APP --format jsonl
 
 ## 16. Testing strategy
 
+- **Test behavior, not implementation.** Each test must protect an observable contract, a meaningful error or boundary case, or a known regression. Do not test private call sequences, trivial accessors, or wrapper plumbing merely to increase the test count.
+- **No line-coverage target or gate.** Coverage is optional diagnostic evidence for finding suspiciously untested areas, never a quality score, badge target, or merge threshold. Add a test only when it expresses behavior worth preserving.
+- **Prioritize risk.** Exercise malformed and empty inputs, boundaries, cancellation, retries, concurrency, partial failures, and secret handling. A smaller suite that catches realistic failures is better than broad shallow assertions.
+- **Mock boundaries, not logic.** Use real Postgres for storage and queue semantics, and deterministic fakes only for external HTTP/LLM boundaries or nondeterministic systems. Internal orchestration should be tested through its public outcome.
 - **Go unit:** table-driven tests for scorer aggregation, OTLP mapping, attribute extraction, job retry/backoff math, config parsing, crypto round-trip.
 - **Go integration:** **testcontainers-go Postgres** for store/queue (real `SKIP LOCKED` concurrency, migrations apply cleanly, reaper returns leases). `httptest` for huma handlers. **Fake OpenAI-compatible server** (httptest) returning canned judge JSON — asserts scorer math without real tokens; also test malformed-JSON retry path.
 - **OTLP conformance:** feed real `ExportTraceServiceRequest` payloads (protobuf + JSON + gzip) and assert row mapping + partial_success behavior.
 - **Python:** pytest with an **in-memory span exporter** to assert `@assay.trace`/`assay.span` emit the correct `gen_ai.*`/`assay.*` attributes; client tests against a fake backend.
 - **Scorer quality (dogfood):** a small gold-set fixture with known groundedness/correctness labels; report judge↔label agreement to guard prompt regressions. Not a unit gate (judge is nondeterministic across models) but a tracked metric.
-- **Verify tests catch failures:** break aggregation / mapping, confirm red, then fix.
+- **Verify tests catch failures:** for important logic, break the behavior or use targeted mutation testing, confirm the relevant test fails for the expected reason, then restore the implementation.
 
 ---
 

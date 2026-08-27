@@ -17,7 +17,10 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-Pre-implementation. The design is complete and detailed:
+M0 skeleton implemented: typed configuration, embedded Postgres migrations, health/readiness
+endpoints, graceful shutdown, Docker Compose, and backend CI rails. Product endpoints begin in M1.
+
+The implementation follows these references:
 
 - **Design & build plan:** [`docs/specs/2026-08-26-assay-design.md`](docs/specs/2026-08-26-assay-design.md)
 - **Semantic conventions (trace attribute contract):** [`docs/semantic-conventions.md`](docs/semantic-conventions.md)
@@ -35,16 +38,17 @@ assets/                  # reusable brand assets, including the transparent app 
 docs/                    # design spec and supporting documentation
 ```
 
-## Deployment (planned)
+## Deployment
 
 One binary, one Postgres — two ways to run it:
 
 - **Standalone / local:** `docker compose up` (assayd + postgres). One command; migrations auto-apply on start.
 - **Scale:** assayd container(s) against a managed/separate Postgres; add replicas for worker capacity (the queue lives in Postgres). No SQLite, no object store — Postgres only.
 
-## Quickstart (planned)
+## Development quickstart
 
 ```bash
+cp .env.example .env       # PowerShell: Copy-Item .env.example .env
 docker compose up          # assayd + postgres; migrations auto-apply on start
 ```
 

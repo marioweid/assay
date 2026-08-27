@@ -1,5 +1,6 @@
 # Go
 /assayd/assayd
+/assayd/assayd.exe
 /assayd/bin/
 *.test
 *.out

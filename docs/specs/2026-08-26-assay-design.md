@@ -5,6 +5,12 @@
 For the implemented backend layers, dependency direction, and an API-key request walkthrough,
 see [`docs/architecture.md`](../architecture.md).
 
+**Implementation status (2026-08-29):** M0-M3 are implemented. M3 provides admin REST APIs for
+datasets, built-in scorer overrides, durable `score_existing` runs, item outcomes, cancellation,
+scores, and aggregates. The embedded leased worker executes groundedness and correctness against an
+OpenAI-compatible `/chat/completions` judge. Online scoring, `generate_then_score`, trace-selection
+runs, the functional Python client/CLI, and UI remain scheduled for M4-M6.
+
 ---
 
 ## 0. TL;DR
@@ -28,7 +34,7 @@ Assay is a **self-hostable GenAI evaluation + tracing platform**: one Go binary 
 5. **Honest.** Publish the Postgres span ceiling; frame judges as CI gates + triage, not oracle truth.
 6. **Config-agnostic core.** Business logic never reads env directly; runtime config is injected once at startup.
 
-**Non-goals for v1:** no ClickHouse/Redis/S3/Kafka/Qdrant; no managed SaaS; no prompt-management empire, fine-tuning, RBAC/SSO/audit, or red-teaming; not a general APM; no gRPC OTLP (HTTP only in v1).
+**Non-goals for v1:** no ClickHouse/Redis/S3/Kafka/Qdrant; no managed SaaS; no prompt-management empire, fine-tuning, RBAC/SSO/audit, or red-teaming; not a general APM; no binary protobuf or gRPC OTLP (JSON over HTTP only in v1).
 
 **Storage decision (why one engine, not two):** Assay uses **Postgres only** — no SQLite backend, no object store (MinIO/S3). This is deliberate. A SQLite mode would fight every core design decision: the job queue is `SELECT … FOR UPDATE SKIP LOCKED` (SQLite has no `SKIP LOCKED` — it's single-writer with a global lock), and we rely on `JSONB`, `text[]` arrays, and monthly range **partitioning** (none exist in SQLite). Supporting both would force a storage-abstraction layer, dual query code, and a permanent 2× test matrix. Object storage (the role MinIO plays in Langfuse/Helicone — holding large blob payloads) is unnecessary because large text stays in Postgres behind **opt-in capture + size caps**. Our differentiator is "2 components, not 6," not "1 component." "Standalone vs multi-container" is achieved by **deployment shape, not a second database engine** (see §14).
 
@@ -44,13 +50,13 @@ Assay is a **self-hostable GenAI evaluation + tracing platform**: one Go binary 
 | Postgres driver | pgx + pgxpool | **v5.10.0** | `github.com/jackc/pgx/v5`, `.../pgxpool`, `.../stdlib` |
 | Type-safe SQL | sqlc (`sql_package: pgx/v5`) | **v1.31.1** | `github.com/sqlc-dev/sqlc` (codegen) |
 | Migrations | goose Provider API + `embed.FS` | **v3.27.3** | `github.com/pressly/goose/v3` |
-| OTLP proto types | opentelemetry-proto-go | **v1.11.0** | `go.opentelemetry.io/proto/otlp` |
+| OTLP JSON schema | Local wire DTOs pinned to opentelemetry-proto | **v1.11.0** | no runtime dependency; binary protobuf deferred |
 | Config | caarlos0/env | **v11.4.1** | `github.com/caarlos0/env/v11` |
 | Logging | stdlib `log/slog` | Go 1.27 | `log/slog` |
 | Python client | OTel SDK + OTLP/HTTP exporter | **1.44.0** | `opentelemetry-{api,sdk}`, `opentelemetry-exporter-otlp-proto-http` |
 | Python tooling | uv, ruff, ty, pytest | latest | — |
 
-Notes: goose runs on `database/sql`, so open a `pgx/v5/stdlib` handle for migrations alongside the `pgxpool` the app uses. `proto/otlp` v1.11 requires Go ≥1.25 (we use 1.27). Do **not** embed `go.opentelemetry.io/collector` — implement the OTLP endpoint directly.
+Notes: goose runs on `database/sql`, so open a `pgx/v5/stdlib` handle for migrations alongside the `pgxpool` the app uses. M2 models the v1.11 OTLP JSON wire fields locally so the binary has no protobuf or gRPC transport dependency. Do **not** embed `go.opentelemetry.io/collector` — implement the OTLP endpoint directly.
 
 ---
 
@@ -78,7 +84,7 @@ Notes: goose runs on `database/sql`, so open a `pgx/v5/stdlib` handle for migrat
 
 **Component responsibilities (each independently testable):**
 
-- **`otlp`** — parse OTLP/HTTP requests (protobuf + JSON + gzip), authenticate via API key, resolve owning application from resource attributes, map `ResourceSpans → traces/spans` rows, enqueue online scoring jobs. No business logic beyond ingest.
+- **`otlp`** — parse OTLP/HTTP JSON requests (plain or gzip), authenticate via API key, resolve owning application from resource attributes, map `ResourceSpans → traces/spans` rows, enqueue online scoring jobs. No business logic beyond ingest. Binary protobuf and gRPC transports are deferred.
 - **`api`** — huma handlers; thin adapters that authenticate and delegate to domain services. Emits OpenAPI 3.1.
 - **`domain`** — services owning projects, applications, api keys, datasets, runs, scorer configs. All orchestration lives here.
 - **`scoring`** — the scorer registry + judge client + groundedness/correctness implementations + prompt templates. Pure logic; judge HTTP is injected.
@@ -148,15 +154,16 @@ traces(id uuid pk, application_id uuid fk, otel_trace_id bytea,   -- 16 bytes
        reference_answer text null,               -- attached ground truth (enables online correctness)
        attributes jsonb, unique(application_id, otel_trace_id))
 
-spans(id bigint identity pk, trace_id uuid fk, application_id uuid fk,
-      otel_span_id bytea, parent_span_id bytea null,
-      name text, kind text, operation_name text,          -- gen_ai.operation.name
-      start_time timestamptz, end_time timestamptz, duration_ms int,
-      status_code text, status_message text null,
-      is_scorable bool not null default false,             -- assay.scorable
-      scorable_kind text null,
-      attributes jsonb not null,                           -- full attribute bag incl gen_ai.* / assay.*
-      events jsonb not null default '[]')
+spans(id bigint identity, trace_id uuid fk, application_id uuid fk,
+       otel_span_id bytea, parent_span_id bytea null,
+       name text, kind text, operation_name text,          -- gen_ai.operation.name
+       start_time timestamptz, end_time timestamptz, duration_ms int,
+       status_code text, status_message text null,
+       is_scorable bool not null default false,             -- assay.scorable
+       scorable_kind text null,
+       attributes jsonb not null,                           -- full attribute bag incl gen_ai.* / assay.*
+       events jsonb not null default '[]', created_at,
+       primary key(id, start_time))                          -- partition-compatible identity
 
 datasets(id uuid pk, application_id uuid fk, name text, description text null,
          unique(application_id, name))
@@ -187,16 +194,17 @@ scores(id bigint identity pk, scorer text, scorer_config_id uuid null,
        judge_model text, judge_provider text, judge_tokens int,
        -- exactly one target context:
        eval_run_id uuid null, dataset_item_id uuid null,   -- offline
-       trace_id uuid null, span_id bigint null,            -- online
+       trace_id uuid null, span_id bigint null,
+       span_start_time timestamptz null,                    -- online; composite span reference
        created_at timestamptz)
 
-jobs(id uuid pk, kind text, payload jsonb, status text,    -- see §8
+jobs(id uuid pk, kind text, eval_run_id uuid unique fk, status text, -- see §8
      run_after timestamptz, attempts int, max_attempts int,
      locked_by text null, locked_at timestamptz null, lease_expires_at timestamptz null,
      last_error text null, created_at, updated_at)
 ```
 
-**Indexes:** `spans(trace_id)`, `spans(application_id, start_time desc)`, `traces(application_id, start_time desc)`, `scores(trace_id)`, `scores(eval_run_id)`, `jobs(status, run_after)` partial on `status='pending'`. **Partitioning:** `spans` and `scores` are `PARTITION BY RANGE (created_at)` monthly from day one (cheap now, essential at the published ceiling). A retention job drops old partitions per the configured TTL; scores survive span pruning (score rows carry denormalized judged text where needed).
+**Indexes:** `spans(trace_id)`, `spans(application_id, start_time desc)`, `traces(application_id, start_time desc)`, `scores(trace_id)`, `scores(eval_run_id)`, `jobs(status, run_after)` partial on `status='pending'`. **Partitioning:** `spans` is `PARTITION BY RANGE (start_time)` so retry-stable span identity can include the partition key; `scores` is `PARTITION BY RANGE (created_at)`. M2 creates the partitioned span parent with a default partition, and M6 adds monthly partition management plus retention. A retention job drops old partitions per the configured TTL; scores survive span pruning (score rows carry denormalized judged text where needed).
 
 ---
 
@@ -204,10 +212,10 @@ jobs(id uuid pk, kind text, payload jsonb, status text,    -- see §8
 
 **Endpoint:** `POST /v1/traces` (OTLP/HTTP).
 
-- **Encodings:** `application/x-protobuf` (request + response) and `application/json` (proto3 JSON with OTLP deviations — trace/span IDs **hex**, enums as ints). Support `Content-Encoding: gzip` request bodies (SDKs gzip by default).
-- **Types:** decode into `go.opentelemetry.io/proto/otlp/collector/trace/v1.ExportTraceServiceRequest` → `[]ResourceSpans`; respond with `ExportTraceServiceResponse`.
+- **Encoding:** `application/json` only (proto3 JSON with OTLP deviations — trace/span IDs **hex**, enums as ints). Support `Content-Encoding: gzip` request bodies. Binary `application/x-protobuf` and gRPC are deferred.
+- **Types:** decode the protobuf-defined JSON export envelope into local wire DTOs pinned to the v1.11 schema; respond with schema-compatible JSON `ExportTraceServiceResponse` bodies. Binary protobuf types are added only when that transport is implemented.
 - **Success:** `200` + serialized response. **Partial success:** `200` with `partial_success.rejected_spans` + `error_message` (clients must not retry). **Errors:** non-2xx with a `google.rpc.Status`; `429/503` are retryable.
-- **Auth:** API key from `Authorization: Bearer asy_…` or `x-api-key` header → look up by SHA-256 hash → resolves project. Reject with `401` if missing/invalid/revoked. Update `last_used_at` async.
+- **Auth:** API key from `Authorization: Bearer asy_…` or `x-api-key` header → atomically resolve the active key by SHA-256 hash and update `last_used_at`. Reject with `401` if missing, invalid, or revoked.
 - **Application resolution:** read resource attribute `assay.application.slug` (preferred) or `service.name`; resolve `(project_id, slug) → application`. If unknown and `ASSAY_AUTO_CREATE_APPS=true`, auto-create; else reject those spans via `partial_success`.
 
 **Mapping `ResourceSpans → rows`:**
@@ -280,7 +288,7 @@ RETURNING *;
 
 **Job kinds:**
 - `scoring_task` — payload `{trace_id, scorer}`. Loads the scorable span + context (+ reference for correctness), runs the scorer, writes a `scores` row keyed to the trace/span, and emits an evaluator child-span's-worth of `gen_ai.evaluation.*` back onto the span attributes.
-- `eval_run` — payload `{eval_run_id}`. Drives an offline run (§10). May itself fan out per-item scoring inline (bounded concurrency) rather than enqueue thousands of sub-jobs, updating `eval_runs.aggregates` on completion.
+- `eval_run` — references `eval_run_id` directly. Drives an offline run (§10). May itself fan out per-item scoring inline (bounded concurrency) rather than enqueue thousands of sub-jobs, updating `eval_runs.aggregates` on completion.
 
 **Reliability:** lease + heartbeat; a **reaper** goroutine returns jobs whose `lease_expires_at < now()` to `pending`. Retries up to `max_attempts` (default 3) with exponential backoff (`run_after = now() + base * 2^attempts`). Terminal failure → `status='failed'`, `last_error` set. Idempotency: `scoring_task` upserts on `(trace_id, scorer)` so re-runs replace, not duplicate.
 
@@ -444,7 +452,7 @@ GET    /healthz            liveness
 GET    /readyz             readiness (DB reachable, migrations applied)
 
 # OTLP ingest
-POST   /v1/traces          OTLP/HTTP (protobuf|json, gzip)
+POST   /v1/traces          OTLP/HTTP (JSON, optional gzip)
 
 # projects / keys (admin)
 POST   /v1/projects        · GET /v1/projects · GET/PATCH/DELETE /v1/projects/{id}
@@ -502,7 +510,7 @@ A minimal, single-user **test UI** now; it grows into the login-capable dashboar
 ## 13. Python client `assay`
 
 Distribution `assay-sdk` (import `assay`; uv project, ruff/ty/pytest). Built on the OTel SDK;
-OTLP/HTTP exporter to `/v1/traces` with the API key header.
+OTLP/HTTP exporter configured for `http/json` to `/v1/traces` with the API key header.
 
 ```python
 import assay
@@ -525,7 +533,7 @@ def answer(question: str) -> str:
     return out
 ```
 
-- **`assay.init(...)`** — configures a `TracerProvider` + `BatchSpanProcessor(OTLPSpanExporter(endpoint, headers={"x-api-key": key}))` and sets resource attributes (`assay.application.slug`, `service.name`). Env fallbacks (`ASSAY_ENDPOINT`, `ASSAY_API_KEY`, …).
+- **`assay.init(...)`** — configures a `TracerProvider` + `BatchSpanProcessor(OTLPSpanExporter(endpoint, headers={"x-api-key": key}))` using OTLP `http/json`, and sets resource attributes (`assay.application.slug`, `service.name`). Env fallbacks (`ASSAY_ENDPOINT`, `ASSAY_API_KEY`, …).
 - **`@assay.trace`** — wraps a function in a span; **auto-captures** args → input and return → output (JSON-serialized, size-capped, default cap configurable), with `capture=False` to disable and `redact=fn` to scrub sensitive fields. Async-aware.
 - **`assay.span(name, kind=..., scorable=..., reference=...)`** — context manager; helpers `set_input/set_output/set_context(chunks)/set_reference(text)` write the correct `gen_ai.*` + `assay.*` attributes so users never hand-type conventions.
 - **`assay.Client(endpoint, api_key|admin_token)`** — full API client: `projects`, `applications`, `datasets` (create, `import_csv`, `import_jsonl`), `runs` (`create`, `wait`, `scores`), `traces` (list, get, `score`), `scores`, `metrics`. Thin, typed, generated-friendly.
@@ -605,7 +613,7 @@ assay scores export APP --format jsonl
 - **Mock boundaries, not logic.** Use real Postgres for storage and queue semantics, and deterministic fakes only for external HTTP/LLM boundaries or nondeterministic systems. Internal orchestration should be tested through its public outcome.
 - **Go unit:** table-driven tests for scorer aggregation, OTLP mapping, attribute extraction, job retry/backoff math, config parsing, crypto round-trip.
 - **Go integration:** **testcontainers-go Postgres** for store/queue (real `SKIP LOCKED` concurrency, migrations apply cleanly, reaper returns leases). `httptest` for huma handlers. **Fake OpenAI-compatible server** (httptest) returning canned judge JSON — asserts scorer math without real tokens; also test malformed-JSON retry path.
-- **OTLP conformance:** feed real `ExportTraceServiceRequest` payloads (protobuf + JSON + gzip) and assert row mapping + partial_success behavior.
+- **OTLP conformance:** feed real JSON `ExportTraceServiceRequest` payloads (plain + gzip) and assert row mapping + partial_success behavior.
 - **Python:** pytest with an **in-memory span exporter** to assert `@assay.trace`/`assay.span` emit the correct `gen_ai.*`/`assay.*` attributes; client tests against a fake backend.
 - **Scorer quality (dogfood):** a small gold-set fixture with known groundedness/correctness labels; report judge↔label agreement to guard prompt regressions. Not a unit gate (judge is nondeterministic across models) but a tracked metric.
 - **Verify tests catch failures:** for important logic, break the behavior or use targeted mutation testing, confirm the relevant test fails for the expected reason, then restore the implementation.
@@ -652,7 +660,7 @@ assay/
 - projects/apps/api_keys tables + services + huma routes; AES-GCM crypto; OpenAPI served.
 
 **M2 — OTLP ingestion** → *verify: OTel Python SDK exports a trace; it appears via `GET /v1/traces/{id}` with correct span tree + attributes; partial_success works.*
-- `/v1/traces` (protobuf+json+gzip), auth, app resolution, ResourceSpans→rows mapping, span partitioning.
+- `/v1/traces` (JSON + optional gzip), auth, app resolution, ResourceSpans→rows mapping, span partitioning.
 
 **M3 — Scoring engine (offline first)** → *verify: `assay run create ... score_existing` on a seeded dataset yields groundedness + correctness scores with rationales against a fake judge; aggregates computed.*
 - scorer interface, judge client, groundedness (2-call) + correctness (1-call), prompt templates, scorer_configs, eval_runs, worker pool + job queue + reaper.
@@ -672,7 +680,7 @@ assay/
 **M6 — Agent-native + polish** → *verify: Claude skill drives a full loop (find failing trace → make regression item → run → gate); metrics endpoint returns trends; retention job prunes old partitions.*
 - `.claude/skills/assay/SKILL.md`, `/metrics` trends, retention/TTL job, docs (`semantic-conventions.md`, README quickstart), dogfooding traces.
 
-**Post-v1 (deliberately deferred):** OTLP/gRPC; HHEM local verifier for groundedness; prompt playground/versioning UI; **login-capable multi-user web UI (OIDC/password, roles)** — the v1 UI is a single-user test tool (§12.1); more scorers (answer-relevancy, context precision/recall); local-model cost tracking; SSO/RBAC.
+**Post-v1 (deliberately deferred):** binary protobuf OTLP/HTTP; OTLP/gRPC; HHEM local verifier for groundedness; prompt playground/versioning UI; **login-capable multi-user web UI (OIDC/password, roles)** — the v1 UI is a single-user test tool (§12.1); more scorers (answer-relevancy, context precision/recall); local-model cost tracking; SSO/RBAC.
 
 ---
 
@@ -685,4 +693,4 @@ assay/
 
 ---
 
-*This spec reflects decisions confirmed during design: single binary + **Postgres-only** (no SQLite, no object store) with two deployment shapes (standalone compose vs Postgres-backed scale); OTLP/HTTP (gRPC later); OTel GenAI semconv + minimal `assay.*` extensions; continuous 0–1 scores + per-scorer threshold; global→project→scorer judge config; built-in-overridable versioned prompts; claim-decomposition groundedness; auto reference-free online scoring + on-demand for all; keep-all + TTL retention; auto-capturing decorator with redaction; CLI + Claude skill; **minimal embedded React (Vite + Tailwind + shadcn/ui) test UI**, login deferred; Apache-2.0.*
+*This spec reflects decisions confirmed during design: single binary + **Postgres-only** (no SQLite, no object store) with two deployment shapes (standalone compose vs Postgres-backed scale); JSON OTLP/HTTP (binary protobuf and gRPC later); OTel GenAI semconv + minimal `assay.*` extensions; continuous 0–1 scores + per-scorer threshold; global→project→scorer judge config; built-in-overridable versioned prompts; claim-decomposition groundedness; auto reference-free online scoring + on-demand for all; keep-all + TTL retention; auto-capturing decorator with redaction; CLI + Claude skill; **minimal embedded React (Vite + Tailwind + shadcn/ui) test UI**, login deferred; Apache-2.0.*

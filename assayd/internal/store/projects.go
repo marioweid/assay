@@ -98,8 +98,8 @@ func (d *Database) UpdateProject(
 
 // DeleteProject removes a project by ID.
 func (d *Database) DeleteProject(ctx context.Context, projectID uuid.UUID) error {
-	if _, err := d.queries.DeleteProject(ctx, projectID); err != nil {
-		return mapStoreError("delete project", err)
-	}
-	return nil
+	return d.deleteWithJobLock(ctx, "delete project", func(queries *db.Queries) error {
+		_, err := queries.DeleteProject(ctx, projectID)
+		return err
+	})
 }

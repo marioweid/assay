@@ -11,11 +11,12 @@ FROM api_keys
 WHERE project_id = $1
 ORDER BY created_at, id;
 
--- name: GetActiveAPIKeyByHash :one
-SELECT id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
-       created_at, updated_at
-FROM api_keys
-WHERE key_hash = $1 AND revoked_at IS NULL;
+-- name: UseActiveAPIKeyByHash :one
+UPDATE api_keys
+SET last_used_at = now(), updated_at = now()
+WHERE key_hash = $1 AND revoked_at IS NULL
+RETURNING id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
+          created_at, updated_at;
 
 -- name: RevokeAPIKey :one
 UPDATE api_keys

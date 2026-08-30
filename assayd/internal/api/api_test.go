@@ -45,6 +45,24 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 			path:   "/v1/applications/" + id + "/endpoint",
 			body:   `{"clear":true}`,
 		},
+		{method: http.MethodPost, path: "/v1/datasets", body: `{}`},
+		{method: http.MethodGet, path: "/v1/datasets"},
+		{method: http.MethodGet, path: "/v1/datasets/" + id},
+		{method: http.MethodDelete, path: "/v1/datasets/" + id},
+		{method: http.MethodPost, path: "/v1/datasets/" + id + "/items", body: `{}`},
+		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items"},
+		{method: http.MethodGet, path: "/v1/applications/" + id + "/scorers"},
+		{
+			method: http.MethodPut,
+			path:   "/v1/applications/" + id + "/scorers/groundedness",
+			body:   `{}`,
+		},
+		{method: http.MethodPost, path: "/v1/runs", body: `{}`},
+		{method: http.MethodGet, path: "/v1/runs"},
+		{method: http.MethodGet, path: "/v1/runs/" + id},
+		{method: http.MethodGet, path: "/v1/runs/" + id + "/items"},
+		{method: http.MethodGet, path: "/v1/runs/" + id + "/scores"},
+		{method: http.MethodPost, path: "/v1/runs/" + id + "/cancel"},
 	}
 	for _, route := range routes {
 		assertUnauthorized(t, fixture.handler, route)
@@ -62,16 +80,35 @@ func TestHealthAndDocumentationRoutesArePublic(t *testing.T) {
 }
 
 func TestOpenAPIDocumentsManagementSecurity(t *testing.T) {
-	fixture := newAPIFixture(t)
-	response := fixture.perform(requestSpec{method: http.MethodGet, path: "/openapi.json"})
+	handler := newDocumentationHandler(t)
+	request := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
 	var document openAPIDocument
 	decodeResponse(t, response, &document)
+	assertOpenAPISchemes(t, document)
+	assertManagementOpenAPISecurity(t, document)
+	assertTraceOpenAPISecurity(t, document)
+}
+
+func assertOpenAPISchemes(t *testing.T, document openAPIDocument) {
+	t.Helper()
 	if document.OpenAPI != "3.1.0" {
 		t.Fatalf("OpenAPI version = %q, want 3.1.0", document.OpenAPI)
 	}
 	if document.Components.SecuritySchemes["adminBearer"].Scheme != "bearer" {
 		t.Fatal("OpenAPI is missing adminBearer security scheme")
 	}
+	if document.Components.SecuritySchemes["projectBearer"].Scheme != "bearer" {
+		t.Fatal("OpenAPI is missing projectBearer security scheme")
+	}
+	if document.Components.SecuritySchemes["projectAPIKey"].Type != "apiKey" {
+		t.Fatal("OpenAPI is missing projectAPIKey security scheme")
+	}
+}
+
+func assertManagementOpenAPISecurity(t *testing.T, document openAPIDocument) {
+	t.Helper()
 	for _, path := range managementPaths {
 		operations, found := document.Paths[path]
 		if !found {
@@ -82,6 +119,21 @@ func TestOpenAPIDocumentsManagementSecurity(t *testing.T) {
 			if !hasAdminSecurity(operation.Security) {
 				t.Errorf("OpenAPI %s %s is missing adminBearer security", method, path)
 			}
+		}
+	}
+}
+
+func assertTraceOpenAPISecurity(t *testing.T, document openAPIDocument) {
+	t.Helper()
+	for _, path := range []string{"/v1/traces", "/v1/traces/{id}"} {
+		operations, found := document.Paths[path]
+		if !found {
+			t.Errorf("OpenAPI is missing path %s", path)
+			continue
+		}
+		operation, found := operations["get"]
+		if !found || !hasProjectSecurity(operation.Security) {
+			t.Errorf("OpenAPI GET %s is missing project security", path)
 		}
 	}
 }
@@ -143,9 +195,36 @@ type openAPIDocument struct {
 	Paths      map[string]map[string]openOperation `json:"paths"`
 	Components struct {
 		SecuritySchemes map[string]struct {
+			Type   string `json:"type"`
 			Scheme string `json:"scheme"`
 		} `json:"securitySchemes"`
 	} `json:"components"`
+}
+
+func TestTraceReadRoutesRequireProjectKey(t *testing.T) {
+	handler := newDocumentationHandler(t)
+	for _, path := range []string{"/v1/traces", "/v1/traces/" + uuid.Must(uuid.NewV7()).String()} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("GET %s status = %d, want 401", path, response.Code)
+		}
+	}
+}
+
+func hasProjectSecurity(security []map[string][]string) bool {
+	hasBearer := false
+	hasAPIKey := false
+	for _, requirement := range security {
+		if _, found := requirement["projectBearer"]; found {
+			hasBearer = true
+		}
+		if _, found := requirement["projectAPIKey"]; found {
+			hasAPIKey = true
+		}
+	}
+	return hasBearer && hasAPIKey
 }
 
 type openOperation struct {
@@ -160,6 +239,16 @@ var managementPaths = []string{
 	"/v1/applications",
 	"/v1/applications/{id}",
 	"/v1/applications/{id}/endpoint",
+	"/v1/applications/{application_id}/scorers",
+	"/v1/applications/{application_id}/scorers/{scorer}",
+	"/v1/datasets",
+	"/v1/datasets/{id}",
+	"/v1/datasets/{id}/items",
+	"/v1/runs",
+	"/v1/runs/{id}",
+	"/v1/runs/{id}/items",
+	"/v1/runs/{id}/scores",
+	"/v1/runs/{id}/cancel",
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -182,9 +271,28 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatalf("create secret cipher: %v", err)
 	}
 	service := domain.NewService(database, cipher)
+	traceService := domain.NewTraceService(database, service)
+	evaluations := domain.NewEvaluationService(database, cipher, 3)
 	mux := httpserver.NewMux(database, logger)
-	api.Register(mux, service, adminToken, logger)
+	api.Register(mux, api.Dependencies{
+		Service: service, Traces: traceService, Evaluations: evaluations,
+		AdminToken: adminToken, Logger: logger,
+	})
 	return &apiFixture{t: t, handler: mux, service: service}
+}
+
+func newDocumentationHandler(t *testing.T) http.Handler {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	service := domain.NewService(nil, nil)
+	traceService := domain.NewTraceService(nil, service)
+	evaluations := domain.NewEvaluationService(nil, nil, 3)
+	mux := http.NewServeMux()
+	api.Register(mux, api.Dependencies{
+		Service: service, Traces: traceService, Evaluations: evaluations,
+		AdminToken: adminToken, Logger: logger,
+	})
+	return mux
 }
 
 func (f *apiFixture) perform(spec requestSpec) *httptest.ResponseRecorder {

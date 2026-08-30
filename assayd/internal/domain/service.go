@@ -18,7 +18,7 @@ type Repository interface {
 	DeleteProject(context.Context, uuid.UUID) error
 	CreateAPIKey(context.Context, APIKey) (APIKey, error)
 	ListAPIKeys(context.Context, uuid.UUID) ([]APIKey, error)
-	GetActiveAPIKeyByHash(context.Context, [sha256.Size]byte) (APIKey, error)
+	UseActiveAPIKeyByHash(context.Context, [sha256.Size]byte) (APIKey, error)
 	RevokeAPIKey(context.Context, uuid.UUID, uuid.UUID) error
 	CreateApplication(context.Context, Application) (Application, error)
 	ListApplications(context.Context, *uuid.UUID) ([]Application, error)

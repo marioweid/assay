@@ -70,7 +70,7 @@ func (s *Service) AuthenticateAPIKey(ctx context.Context, token string) (uuid.UU
 	if !auth.ValidAPIKeyFormat(token) {
 		return uuid.Nil, ErrUnauthorized
 	}
-	key, err := s.repository.GetActiveAPIKeyByHash(ctx, auth.HashAPIKey(token))
+	key, err := s.repository.UseActiveAPIKeyByHash(ctx, auth.HashAPIKey(token))
 	if errors.Is(err, ErrNotFound) {
 		return uuid.Nil, ErrUnauthorized
 	}

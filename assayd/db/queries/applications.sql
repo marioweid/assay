@@ -25,6 +25,12 @@ SELECT id, project_id, name, slug, config, auto_score_scorers, target_endpoint,
 FROM applications
 WHERE id = $1;
 
+-- name: GetApplicationByProjectSlug :one
+SELECT id, project_id, name, slug, config, auto_score_scorers, target_endpoint,
+       created_at, updated_at
+FROM applications
+WHERE project_id = $1 AND slug = $2;
+
 -- name: UpdateApplication :one
 UPDATE applications
 SET name = $2,

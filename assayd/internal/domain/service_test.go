@@ -59,12 +59,24 @@ func TestServiceAuthenticatesAndRevokesAPIKeys(t *testing.T) {
 	if projectID != project.ID {
 		t.Fatalf("authenticated project = %s, want %s", projectID, project.ID)
 	}
+	assertAPIKeyUsageRecorded(t, service, project.ID)
 	if err := service.RevokeAPIKey(t.Context(), project.ID, createdKey.ID); err != nil {
 		t.Fatalf("revoke API key: %v", err)
 	}
 	_, err = service.AuthenticateAPIKey(t.Context(), createdKey.Key)
 	if !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("authentication after revocation error = %v, want unauthorized", err)
+	}
+}
+
+func assertAPIKeyUsageRecorded(t *testing.T, service *domain.Service, projectID uuid.UUID) {
+	t.Helper()
+	keys, err := service.ListAPIKeys(t.Context(), projectID)
+	if err != nil {
+		t.Fatalf("list used API key: %v", err)
+	}
+	if len(keys) != 1 || keys[0].LastUsedAt == nil {
+		t.Fatalf("authenticated API key usage = %#v, want last-used timestamp", keys)
 	}
 }
 

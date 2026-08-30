@@ -95,3 +95,37 @@ func TestValidAPIKeyFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIKeyFromHeadersRequiresOneConsistentCredential(t *testing.T) {
+	t.Parallel()
+	const key = "asy_0123456789ABCDEFGHIJKLMNOPQRSTUV"
+	tests := []struct {
+		name          string
+		authorization string
+		xAPIKey       string
+		wantKey       string
+		wantOK        bool
+	}{
+		{name: "bearer", authorization: "Bearer " + key, wantKey: key, wantOK: true},
+		{name: "x api key", xAPIKey: key, wantKey: key, wantOK: true},
+		{
+			name:          "matching headers",
+			authorization: "Bearer " + key,
+			xAPIKey:       key,
+			wantKey:       key,
+			wantOK:        true,
+		},
+		{name: "missing"},
+		{name: "malformed bearer", authorization: key},
+		{name: "conflicting", authorization: "Bearer " + key, xAPIKey: key[:35] + "W"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			key, ok := APIKeyFromHeaders(test.authorization, test.xAPIKey)
+			if key != test.wantKey || ok != test.wantOK {
+				t.Fatalf("APIKeyFromHeaders() = %q, %t, want %q, %t", key, ok, test.wantKey, test.wantOK)
+			}
+		})
+	}
+}

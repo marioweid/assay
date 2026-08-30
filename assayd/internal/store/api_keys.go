@@ -47,12 +47,12 @@ func (d *Database) ListAPIKeys(ctx context.Context, projectID uuid.UUID) ([]doma
 	return keys, nil
 }
 
-// GetActiveAPIKeyByHash returns active key metadata for a digest.
-func (d *Database) GetActiveAPIKeyByHash(
+// UseActiveAPIKeyByHash authenticates an active digest and records its use.
+func (d *Database) UseActiveAPIKeyByHash(
 	ctx context.Context,
 	hash [sha256.Size]byte,
 ) (domain.APIKey, error) {
-	row, err := d.queries.GetActiveAPIKeyByHash(ctx, hash[:])
+	row, err := d.queries.UseActiveAPIKeyByHash(ctx, hash[:])
 	if err != nil {
 		return domain.APIKey{}, mapStoreError("select active API key", err)
 	}

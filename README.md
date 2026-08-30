@@ -17,9 +17,11 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-M1 domain and authentication implemented: project, API-key, and application APIs; admin bearer
-authentication; encrypted write-only secrets; hashed project keys; and generated OpenAPI 3.1 docs.
-OTLP trace ingestion begins in M2.
+M3 offline scoring implemented. Assay accepts JSON OTLP/HTTP traces and provides admin REST APIs for
+datasets, scorer configuration, durable `score_existing` runs, item outcomes, scores, cancellation,
+and aggregates. The embedded leased worker runs groundedness and correctness against an
+OpenAI-compatible judge. Binary protobuf, OTLP/gRPC, online scoring, generation, CLI orchestration,
+and the UI remain deferred.
 
 The implementation follows these references:
 
@@ -89,6 +91,73 @@ $application = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/appl
   -Headers $headers -ContentType application/json -Body $appBody
 $key.key # Save now: the plaintext key is returned only once.
 ```
+
+Export a JSON OTLP trace and read it back:
+
+```powershell
+$otlpHeaders = @{ "x-api-key" = $key.key }
+$trace = @{
+  resourceSpans = @(@{
+    resource = @{ attributes = @(@{
+      key = "assay.application.slug"; value = @{ stringValue = "support-bot" }
+    }) }
+    scopeSpans = @(@{ spans = @(@{
+      traceId = "00112233445566778899aabbccddeeff"
+      spanId = "0102030405060708"
+      name = "answer"
+      startTimeUnixNano = "1787911200000000000"
+      endTimeUnixNano = "1787911201000000000"
+    }) })
+  })
+} | ConvertTo-Json -Depth 10
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/traces `
+  -Headers $otlpHeaders -ContentType application/json -Body $trace
+Invoke-RestMethod -Method Get -Uri http://localhost:8080/v1/traces -Headers $otlpHeaders
+```
+
+M2 accepts OTLP's protobuf-defined JSON representation, not binary protobuf payloads. Configure
+emitters for `http/json`; binary `application/x-protobuf` and gRPC are planned after v1.
+
+Create and score an offline dataset after setting `ASSAY_JUDGE_BASE_URL` and
+`ASSAY_JUDGE_MODEL` to an OpenAI-compatible endpoint:
+
+```powershell
+$datasetBody = @{
+  application_id = $application.id
+  name = "support-regression"
+} | ConvertTo-Json
+$dataset = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/datasets `
+  -Headers $headers -ContentType application/json -Body $datasetBody
+
+$itemsBody = @{ items = @(@{
+  external_id = "case-1"
+  input = @{ question = "What is Assay?" }
+  output = "Assay evaluates AI systems."
+  expected_output = "Assay evaluates AI systems."
+  context = @(@{ id = "k0"; text = "Assay evaluates AI systems." })
+}) } | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/v1/datasets/$($dataset.id)/items" `
+  -Headers $headers -ContentType application/json -Body $itemsBody
+
+$runBody = @{
+  application_id = $application.id
+  dataset_id = $dataset.id
+  name = "baseline"
+  mode = "score_existing"
+  scorers = @("groundedness", "correctness")
+} | ConvertTo-Json
+$run = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/runs `
+  -Headers $headers -ContentType application/json -Body $runBody
+Invoke-RestMethod -Method Get -Uri "http://localhost:8080/v1/runs/$($run.id)" `
+  -Headers $headers
+Invoke-RestMethod -Method Get -Uri "http://localhost:8080/v1/runs/$($run.id)/scores" `
+  -Headers $headers
+```
+
+The judge adapter calls `/chat/completions` with temperature `0` and JSON-object response mode.
+Judge settings resolve from process defaults, then project settings, then per-application scorer
+overrides. Stored API keys are AES-GCM encrypted; REST responses expose only `has_api_key`.
 
 OpenAPI is available at `http://localhost:8080/openapi.json`; interactive docs are at
 `http://localhost:8080/docs`.

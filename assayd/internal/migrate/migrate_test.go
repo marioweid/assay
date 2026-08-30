@@ -6,9 +6,22 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/marioweid/assay/assayd/db/migrations"
 	"github.com/marioweid/assay/assayd/internal/store"
 	"github.com/marioweid/assay/assayd/internal/testutil"
 )
+
+func TestTraceMigrationIsEmbedded(t *testing.T) {
+	if _, err := migrations.Files.ReadFile("00003_otlp_ingestion.sql"); err != nil {
+		t.Fatalf("read embedded trace migration: %v", err)
+	}
+}
+
+func TestOfflineScoringMigrationIsEmbedded(t *testing.T) {
+	if _, err := migrations.Files.ReadFile("00004_offline_scoring.sql"); err != nil {
+		t.Fatalf("read embedded offline scoring migration: %v", err)
+	}
+}
 
 func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	database := openDatabase(t, testutil.Postgres(t))
@@ -17,14 +30,15 @@ func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 2 {
-		t.Fatalf("migration version = %d, want 2", version)
+	if version := migrationVersion(t, database); version != 4 {
+		t.Fatalf("migration version = %d, want 4", version)
 	}
+	assertScoringTables(t, database)
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 2 {
-		t.Fatalf("migration version after reapply = %d, want 2", version)
+	if version := migrationVersion(t, database); version != 4 {
+		t.Fatalf("migration version after reapply = %d, want 4", version)
 	}
 }
 
@@ -53,8 +67,27 @@ func TestUpSerializesConcurrentReplicas(t *testing.T) {
 			t.Errorf("concurrent migration: %v", err)
 		}
 	}
-	if version := migrationVersion(t, first); version != 2 {
-		t.Fatalf("migration version = %d, want 2", version)
+	if version := migrationVersion(t, first); version != 4 {
+		t.Fatalf("migration version = %d, want 4", version)
+	}
+}
+
+func assertScoringTables(t *testing.T, database *store.Database) {
+	t.Helper()
+	for _, table := range []string{
+		"datasets", "dataset_items", "scorer_configs", "eval_runs",
+		"eval_run_items", "scores", "scores_default", "jobs",
+	} {
+		var exists bool
+		const query = `SELECT to_regclass($1) IS NOT NULL`
+		if err := database.MigrationDB().QueryRowContext(
+			t.Context(), query, table,
+		).Scan(&exists); err != nil {
+			t.Fatalf("inspect table %s: %v", table, err)
+		}
+		if !exists {
+			t.Fatalf("table %s does not exist", table)
+		}
 	}
 }
 

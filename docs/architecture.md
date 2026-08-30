@@ -12,6 +12,9 @@ Repository = describes the storage operations the domain needs
 Store      = translates domain operations into Postgres operations
 sqlc       = executes typed queries generated from SQL
 SQL        = describes reads and writes in Postgres
+OTLP       = decodes JSON trace exports and maps protocol values into domain traces
+Scoring    = evaluates normalized dataset items through built-in scorer contracts
+Worker     = leases durable jobs and owns retry, heartbeat, and recovery behavior
 ```
 
 ## Request Flow
@@ -30,6 +33,48 @@ API -> Domain -> Repository interface
 HTTP response <- API <- Domain <- Store <- sqlc <------+
 ```
 
+JSON OTLP ingestion follows the same dependency direction through a raw HTTP adapter:
+
+```text
+POST /v1/traces
+    -> OTLP JSON/gzip decoder
+    -> project API-key authentication
+    -> application resolution + trace mapping
+    -> TraceService
+    -> Store transaction -> sqlc -> Postgres traces/spans
+    -> JSON ExportTraceServiceResponse
+```
+
+The raw handler and Huma share one `net/http.ServeMux`: Huma owns trace `GET` routes while the OTLP
+adapter owns `POST /v1/traces`. M2 accepts JSON only. Binary protobuf and gRPC are deferred.
+
+Offline scoring follows a durable asynchronous path:
+
+```text
+POST /v1/runs
+    -> EvaluationService validates application, dataset, and enabled scorers
+    -> one transaction snapshots eval_run_items and inserts an eval_run job
+    -> worker claims the job with FOR UPDATE SKIP LOCKED and a renewable lease
+    -> runner resolves global -> project -> scorer judge settings
+    -> groundedness/correctness call the OpenAI-compatible judge
+    -> one transaction replaces all scores for an item and marks it succeeded
+    -> one SQL statement computes scorer mean/pass-rate/n, finalizes the run, and completes the job
+```
+
+One worker handles a run inline and items are scored sequentially, so process-wide judge calls are
+bounded by `ASSAY_WORKER_CONCURRENCY`. Heartbeats extend active leases. The periodic reaper and
+graceful worker release return retryable interrupted work to `pending`, allowing a replacement
+worker to resume without duplicating completed item scores. If the last attempt was consumed, they
+atomically fail the job, run, and unfinished items instead.
+
+Every job has a foreign-keyed `eval_run_id`. PostgreSQL time determines lease validity and retry
+eligibility. Worker state changes lock and verify the unexpired job lease before mutating a run or
+item, fencing paused workers from writing after ownership is lost. Cancellation, exhaustion, and
+completion acquire the same job-first lock and apply their run/item transition atomically.
+Run creation acquires a job-table write lock before reading dataset membership. Cascading project,
+application, and dataset deletion acquires an exclusive job-table lock first, preventing a run from
+being inserted or worked while its parent is being removed.
+
 The repository is an interface, not another runtime service. At runtime it contains the concrete
 Postgres store, so calling a repository method calls the matching store method.
 
@@ -44,6 +89,24 @@ Postgres store, so calling a repository method calls the matching store method.
 | SQL | Contains the database queries developers edit. | [`db/queries`](../assayd/db/queries/) |
 | Generated sqlc | Turns SQL into type-safe Go methods. | [`store/sqlc`](../assayd/internal/store/sqlc/) |
 | Database | Stores the actual rows. | Postgres |
+| OTLP | Decodes JSON/gzip, applies OTLP partial-success rules, and maps spans. | [`internal/otlp`](../assayd/internal/otlp/) |
+| Scoring | Implements judge transport and built-in groundedness/correctness algorithms. | [`internal/scoring`](../assayd/internal/scoring/) |
+| Worker | Claims leased jobs and coordinates retries, heartbeats, and shutdown. | [`internal/worker`](../assayd/internal/worker/) |
+
+## Offline Scoring State
+
+`datasets` belong to one application. Each `dataset_items` row stores an object input, explicit
+generated `output`, optional `expected_output`, ordered context chunks, and metadata. A
+`score_existing` run snapshots membership into `eval_run_items`; later dataset edits do not add work
+to that run. Item outcomes remain queryable independently from score rows.
+
+The `scores` parent is range-partitioned by `created_at` and currently has a default partition.
+Every score stores value, threshold, pass decision, concise rationale/details, prompt ID, judge
+model/provider, and token usage. Run aggregates are calculated from persisted successful scores.
+
+Scorer and project judge API keys cross into Postgres only as versioned AES-256-GCM envelopes. They
+are decrypted in memory when the runner resolves a judge and are never included in REST output or
+judge transport errors.
 
 ### API Layer
 
@@ -84,7 +147,7 @@ type Repository interface {
 	// API-key operations; project and application operations are omitted here.
 	CreateAPIKey(context.Context, APIKey) (APIKey, error)
 	ListAPIKeys(context.Context, uuid.UUID) ([]APIKey, error)
-	GetActiveAPIKeyByHash(context.Context, [sha256.Size]byte) (APIKey, error)
+	UseActiveAPIKeyByHash(context.Context, [sha256.Size]byte) (APIKey, error)
 	RevokeAPIKey(context.Context, uuid.UUID, uuid.UUID) error
 }
 ```
@@ -376,6 +439,10 @@ tests become common, the interface can be split into smaller contracts owned by 
 Assay's current domain tests mostly use real Postgres because database behavior is important. The
 interface still permits unit tests where database behavior is not under test, but that flexibility
 is not currently its main benefit.
+
+M2 adds a separate, consumer-owned `TraceRepository` used by `TraceService`. This keeps trace
+ingestion and read tests focused without forcing project/application test doubles to implement
+high-volume trace operations. The concrete `store.Database` implements both contracts.
 
 The interface is not mandatory for every small application. It is useful here because API keys
 contain security-sensitive domain rules, the store already depends on domain models, and Postgres

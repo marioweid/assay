@@ -126,3 +126,77 @@ type UpdateApplicationInput struct {
 	Config           *map[string]any
 	AutoScoreScorers *[]string
 }
+
+// Trace is one application-owned OpenTelemetry trace and its optional spans.
+type Trace struct {
+	ID              uuid.UUID
+	ApplicationID   uuid.UUID
+	OTelTraceID     [16]byte
+	RootName        string
+	StartTime       time.Time
+	EndTime         time.Time
+	Status          string
+	SpanCount       int
+	TotalTokens     int64
+	TotalCost       *string
+	ReferenceAnswer *string
+	Attributes      map[string]any
+	Spans           []Span
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// Span is one stored OpenTelemetry span.
+type Span struct {
+	ID              int64
+	TraceID         uuid.UUID
+	ApplicationID   uuid.UUID
+	OTelSpanID      [8]byte
+	ParentSpanID    *[8]byte
+	Name            string
+	Kind            string
+	OperationName   string
+	StartTime       time.Time
+	EndTime         time.Time
+	DurationMS      int64
+	StatusCode      string
+	StatusMessage   string
+	IsScorable      bool
+	ScorableKind    string
+	Attributes      map[string]any
+	Events          []SpanEvent
+	InputTokens     int64
+	OutputTokens    int64
+	ReferenceAnswer *string
+	CreatedAt       time.Time
+}
+
+// SpanEvent is an event attached to an OpenTelemetry span.
+type SpanEvent struct {
+	Time                   time.Time      `json:"time"`
+	Name                   string         `json:"name"`
+	Attributes             map[string]any `json:"attributes"`
+	DroppedAttributesCount uint32         `json:"dropped_attributes_count"`
+}
+
+// TraceCursor identifies the last item returned by a trace page.
+type TraceCursor struct {
+	StartTime time.Time
+	ID        uuid.UUID
+}
+
+// TraceQuery contains project-scoped trace list filters.
+type TraceQuery struct {
+	ApplicationID *uuid.UUID
+	Start         *time.Time
+	End           *time.Time
+	Status        string
+	Limit         int
+	Cursor        *TraceCursor
+}
+
+// TracePage is one cursor-paginated trace list result.
+type TracePage struct {
+	Items      []Trace
+	NextCursor *TraceCursor
+}

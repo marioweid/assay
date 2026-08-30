@@ -65,3 +65,18 @@ func ValidAPIKeyFormat(token string) bool {
 	}
 	return true
 }
+
+// APIKeyFromHeaders resolves one consistent project key from supported HTTP headers.
+func APIKeyFromHeaders(authorization string, xAPIKey string) (string, bool) {
+	if authorization == "" {
+		return xAPIKey, xAPIKey != ""
+	}
+	bearer, found := strings.CutPrefix(authorization, "Bearer ")
+	if !found || bearer == "" {
+		return "", false
+	}
+	if xAPIKey != "" && bearer != xAPIKey {
+		return "", false
+	}
+	return bearer, true
+}

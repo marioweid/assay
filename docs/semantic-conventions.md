@@ -2,6 +2,10 @@
 
 *The attribute contract for traces Assay ingests. Both the `assay` Python client and any third-party OpenTelemetry emitter (incl. Claude Code) target this. Companion to `docs/specs/2026-08-26-assay-design.md` §7.*
 
+M2 accepts this contract through JSON OTLP/HTTP (`application/json`, optionally gzip-compressed).
+The payload still follows the protobuf-defined OTLP JSON schema. Binary protobuf and OTLP/gRPC are
+deferred.
+
 ## Principles
 
 1. **OTel `gen_ai.*` is the baseline.** Never invent a key OTel already defines. Everything downstream (Datadog, Grafana, Phoenix) reads these — always co-populate them.

@@ -49,30 +49,6 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 	return i, err
 }
 
-const getActiveAPIKeyByHash = `-- name: GetActiveAPIKeyByHash :one
-SELECT id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
-       created_at, updated_at
-FROM api_keys
-WHERE key_hash = $1 AND revoked_at IS NULL
-`
-
-func (q *Queries) GetActiveAPIKeyByHash(ctx context.Context, keyHash []byte) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, getActiveAPIKeyByHash, keyHash)
-	var i ApiKey
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.Name,
-		&i.KeyHash,
-		&i.KeyPrefix,
-		&i.LastUsedAt,
-		&i.RevokedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const listAPIKeys = `-- name: ListAPIKeys :many
 SELECT id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
        created_at, updated_at
@@ -128,4 +104,29 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (uui
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const useActiveAPIKeyByHash = `-- name: UseActiveAPIKeyByHash :one
+UPDATE api_keys
+SET last_used_at = now(), updated_at = now()
+WHERE key_hash = $1 AND revoked_at IS NULL
+RETURNING id, project_id, name, key_hash, key_prefix, last_used_at, revoked_at,
+          created_at, updated_at
+`
+
+func (q *Queries) UseActiveAPIKeyByHash(ctx context.Context, keyHash []byte) (ApiKey, error) {
+	row := q.db.QueryRow(ctx, useActiveAPIKeyByHash, keyHash)
+	var i ApiKey
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.KeyHash,
+		&i.KeyPrefix,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

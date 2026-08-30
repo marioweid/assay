@@ -80,6 +80,26 @@ func (d *Database) GetApplication(
 	return application, nil
 }
 
+// GetApplicationByProjectSlug returns one application through its ingest identity.
+func (d *Database) GetApplicationByProjectSlug(
+	ctx context.Context,
+	projectID uuid.UUID,
+	slug string,
+) (domain.Application, error) {
+	row, err := d.queries.GetApplicationByProjectSlug(
+		ctx,
+		db.GetApplicationByProjectSlugParams{ProjectID: projectID, Slug: slug},
+	)
+	if err != nil {
+		return domain.Application{}, mapStoreError("select application by project and slug", err)
+	}
+	application, err := applicationFromRow(row)
+	if err != nil {
+		return domain.Application{}, fmt.Errorf("read application by project and slug: %w", err)
+	}
+	return application, nil
+}
+
 // UpdateApplication persists a complete merged application.
 func (d *Database) UpdateApplication(
 	ctx context.Context,
@@ -109,10 +129,10 @@ func (d *Database) UpdateApplication(
 
 // DeleteApplication removes an application by ID.
 func (d *Database) DeleteApplication(ctx context.Context, applicationID uuid.UUID) error {
-	if _, err := d.queries.DeleteApplication(ctx, applicationID); err != nil {
-		return mapStoreError("delete application", err)
-	}
-	return nil
+	return d.deleteWithJobLock(ctx, "delete application", func(queries *db.Queries) error {
+		_, err := queries.DeleteApplication(ctx, applicationID)
+		return err
+	})
 }
 
 type applicationParams struct {

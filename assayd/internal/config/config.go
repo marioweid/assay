@@ -11,7 +11,10 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-const encryptionKeyBytes = 32
+const (
+	encryptionKeyBytes = 32
+	maxPostgresInteger = int64(1<<31 - 1)
+)
 
 // EncryptionKey is a decoded AES-256 key.
 type EncryptionKey [encryptionKeyBytes]byte
@@ -119,6 +122,9 @@ func validateValues(raw environmentConfig) error {
 	}
 	if raw.JobMaxAttempts <= 0 {
 		return validationError("ASSAY_JOB_MAX_ATTEMPTS must be greater than zero")
+	}
+	if int64(raw.JobMaxAttempts) > maxPostgresInteger {
+		return validationError("ASSAY_JOB_MAX_ATTEMPTS exceeds the database integer limit")
 	}
 	if raw.TraceRetentionDays < 0 {
 		return validationError("ASSAY_TRACE_RETENTION_DAYS must not be negative")

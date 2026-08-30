@@ -20,6 +20,29 @@ type Database struct {
 	queries     *db.Queries
 }
 
+func (d *Database) deleteWithJobLock(
+	ctx context.Context,
+	operation string,
+	remove func(*db.Queries) error,
+) error {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin %s transaction: %w", operation, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := db.New(tx)
+	if err := queries.LockJobTableForDelete(ctx); err != nil {
+		return mapStoreError("lock jobs for deletion", err)
+	}
+	if err := remove(queries); err != nil {
+		return mapStoreError(operation, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit %s transaction: %w", operation, err)
+	}
+	return nil
+}
+
 // Open connects both Postgres handles and verifies that the database is reachable.
 func Open(ctx context.Context, dsn string) (*Database, error) {
 	poolConfig, err := pgxpool.ParseConfig(dsn)

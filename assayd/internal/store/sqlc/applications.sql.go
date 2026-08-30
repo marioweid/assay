@@ -93,6 +93,35 @@ func (q *Queries) GetApplication(ctx context.Context, id uuid.UUID) (Application
 	return i, err
 }
 
+const getApplicationByProjectSlug = `-- name: GetApplicationByProjectSlug :one
+SELECT id, project_id, name, slug, config, auto_score_scorers, target_endpoint,
+       created_at, updated_at
+FROM applications
+WHERE project_id = $1 AND slug = $2
+`
+
+type GetApplicationByProjectSlugParams struct {
+	ProjectID uuid.UUID
+	Slug      string
+}
+
+func (q *Queries) GetApplicationByProjectSlug(ctx context.Context, arg GetApplicationByProjectSlugParams) (Application, error) {
+	row := q.db.QueryRow(ctx, getApplicationByProjectSlug, arg.ProjectID, arg.Slug)
+	var i Application
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Config,
+		&i.AutoScoreScorers,
+		&i.TargetEndpoint,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listApplications = `-- name: ListApplications :many
 SELECT id, project_id, name, slug, config, auto_score_scorers, target_endpoint,
        created_at, updated_at

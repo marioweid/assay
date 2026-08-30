@@ -35,10 +35,193 @@ type Application struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type Dataset struct {
+	ID            uuid.UUID
+	ApplicationID uuid.UUID
+	Name          string
+	Description   pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type DatasetItem struct {
+	ID             uuid.UUID
+	DatasetID      uuid.UUID
+	ExternalID     pgtype.Text
+	Input          json.RawMessage
+	Output         pgtype.Text
+	ExpectedOutput pgtype.Text
+	Context        []byte
+	Metadata       json.RawMessage
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type EvalRun struct {
+	ID             uuid.UUID
+	ApplicationID  uuid.UUID
+	DatasetID      uuid.UUID
+	Name           string
+	Status         string
+	Mode           string
+	Params         json.RawMessage
+	Scorers        []string
+	Aggregates     []byte
+	TotalItems     int32
+	SucceededItems int32
+	FailedItems    int32
+	CanceledItems  int32
+	StartedAt      pgtype.Timestamptz
+	FinishedAt     pgtype.Timestamptz
+	Error          pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type EvalRunItem struct {
+	EvalRunID     uuid.UUID
+	DatasetItemID uuid.UUID
+	Status        string
+	Error         pgtype.Text
+	StartedAt     pgtype.Timestamptz
+	FinishedAt    pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type Job struct {
+	ID             uuid.UUID
+	Kind           string
+	EvalRunID      uuid.UUID
+	Status         string
+	RunAfter       pgtype.Timestamptz
+	Attempts       int32
+	MaxAttempts    int32
+	LockedBy       pgtype.Text
+	LockedAt       pgtype.Timestamptz
+	LeaseExpiresAt pgtype.Timestamptz
+	LastError      pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Project struct {
 	ID          uuid.UUID
 	Name        string
 	JudgeConfig []byte
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type Score struct {
+	ID               int64
+	Scorer           string
+	ScorerConfigID   pgtype.UUID
+	Value            pgtype.Numeric
+	Threshold        pgtype.Numeric
+	Passed           bool
+	Rationale        string
+	Details          json.RawMessage
+	PromptTemplateID string
+	JudgeModel       string
+	JudgeProvider    string
+	JudgeTokens      int32
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
+type ScorerConfig struct {
+	ID               uuid.UUID
+	ApplicationID    uuid.UUID
+	Scorer           string
+	Enabled          bool
+	Threshold        pgtype.Numeric
+	JudgeConfig      []byte
+	PromptTemplateID pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type ScoresDefault struct {
+	ID               int64
+	Scorer           string
+	ScorerConfigID   pgtype.UUID
+	Value            pgtype.Numeric
+	Threshold        pgtype.Numeric
+	Passed           bool
+	Rationale        string
+	Details          json.RawMessage
+	PromptTemplateID string
+	JudgeModel       string
+	JudgeProvider    string
+	JudgeTokens      int32
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
+type Span struct {
+	ID              int64
+	TraceID         uuid.UUID
+	ApplicationID   uuid.UUID
+	OtelSpanID      []byte
+	ParentSpanID    []byte
+	Name            string
+	Kind            string
+	OperationName   string
+	StartTime       pgtype.Timestamptz
+	EndTime         pgtype.Timestamptz
+	DurationMs      int64
+	StatusCode      string
+	StatusMessage   string
+	IsScorable      bool
+	ScorableKind    string
+	Attributes      json.RawMessage
+	Events          json.RawMessage
+	InputTokens     int64
+	OutputTokens    int64
+	ReferenceAnswer pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+}
+
+type SpansDefault struct {
+	ID              int64
+	TraceID         uuid.UUID
+	ApplicationID   uuid.UUID
+	OtelSpanID      []byte
+	ParentSpanID    []byte
+	Name            string
+	Kind            string
+	OperationName   string
+	StartTime       pgtype.Timestamptz
+	EndTime         pgtype.Timestamptz
+	DurationMs      int64
+	StatusCode      string
+	StatusMessage   string
+	IsScorable      bool
+	ScorableKind    string
+	Attributes      json.RawMessage
+	Events          json.RawMessage
+	InputTokens     int64
+	OutputTokens    int64
+	ReferenceAnswer pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+}
+
+type Trace struct {
+	ID              uuid.UUID
+	ApplicationID   uuid.UUID
+	OtelTraceID     []byte
+	RootName        string
+	StartTime       pgtype.Timestamptz
+	EndTime         pgtype.Timestamptz
+	Status          string
+	SpanCount       int32
+	TotalTokens     int64
+	TotalCost       pgtype.Numeric
+	ReferenceAnswer pgtype.Text
+	Attributes      json.RawMessage
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }

@@ -208,6 +208,7 @@ failed_items AS (
         finished_at = now(), updated_at = now()
     FROM failed_runs
     WHERE eri.eval_run_id = failed_runs.id AND eri.status IN ('pending', 'running')
+    RETURNING eri.eval_run_id
 ),
 reset_items AS (
     UPDATE eval_run_items eri
@@ -215,6 +216,7 @@ reset_items AS (
     FROM expired
     WHERE eri.eval_run_id = expired.eval_run_id
       AND expired.attempts < expired.max_attempts AND eri.status = 'running'
+    RETURNING eri.eval_run_id
 )
 SELECT
     (SELECT count(*) FROM expired)::integer AS reaped_jobs,
@@ -269,6 +271,7 @@ failed_items AS (
         finished_at = now(), updated_at = now()
     FROM failed_runs
     WHERE eri.eval_run_id = failed_runs.id AND eri.status IN ('pending', 'running')
+    RETURNING eri.eval_run_id
 ),
 reset_items AS (
     UPDATE eval_run_items eri
@@ -276,6 +279,7 @@ reset_items AS (
     FROM released
     WHERE eri.eval_run_id = released.eval_run_id
       AND released.attempts < released.max_attempts AND eri.status = 'running'
+    RETURNING eri.eval_run_id
 )
 SELECT
     (SELECT count(*) FROM released)::integer AS released_jobs,

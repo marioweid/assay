@@ -28,7 +28,7 @@ SET status = 'running', attempts = attempts + 1, locked_by = $1,
     updated_at = now()
 FROM candidate
 WHERE j.id = candidate.id
-RETURNING j.id, j.kind, j.eval_run_id, j.status, j.run_after, j.attempts, j.max_attempts, j.locked_by, j.locked_at, j.lease_expires_at, j.last_error, j.created_at, j.updated_at
+RETURNING j.id, j.kind, j.eval_run_id, j.status, j.run_after, j.attempts, j.max_attempts, j.locked_by, j.locked_at, j.lease_expires_at, j.last_error, j.created_at, j.updated_at, j.trace_id, j.scorer
 `
 
 type ClaimJobParams struct {
@@ -53,13 +53,15 @@ func (q *Queries) ClaimJob(ctx context.Context, arg ClaimJobParams) (Job, error)
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TraceID,
+		&i.Scorer,
 	)
 	return i, err
 }
 
 const completeJob = `-- name: CompleteJob :one
 WITH owned_job AS MATERIALIZED (
-    SELECT j.id, j.eval_run_id
+	    SELECT j.id, j.kind, j.eval_run_id
     FROM jobs j
     WHERE j.id = $1 AND j.status = 'running'
       AND j.locked_by = $2 AND j.lease_expires_at > now()
@@ -114,9 +116,10 @@ finalized_run AS (
 )
 UPDATE jobs j
 SET status = 'succeeded', locked_by = NULL, locked_at = NULL, lease_expires_at = NULL,
-    updated_at = now()
-FROM owned_job, finalized_run
+	    updated_at = now()
+FROM owned_job
 WHERE j.id = owned_job.id
+	  AND (owned_job.kind = 'scoring_task' OR EXISTS (SELECT 1 FROM finalized_run))
 RETURNING j.id
 `
 
@@ -135,12 +138,12 @@ func (q *Queries) CompleteJob(ctx context.Context, arg CompleteJobParams) (uuid.
 const createEvalRunJob = `-- name: CreateEvalRunJob :one
 INSERT INTO jobs (id, kind, eval_run_id, status, max_attempts)
 VALUES ($1, 'eval_run', $2, 'pending', $3)
-RETURNING id, kind, eval_run_id, status, run_after, attempts, max_attempts, locked_by, locked_at, lease_expires_at, last_error, created_at, updated_at
+RETURNING id, kind, eval_run_id, status, run_after, attempts, max_attempts, locked_by, locked_at, lease_expires_at, last_error, created_at, updated_at, trace_id, scorer
 `
 
 type CreateEvalRunJobParams struct {
 	ID          uuid.UUID
-	EvalRunID   uuid.UUID
+	EvalRunID   pgtype.UUID
 	MaxAttempts int32
 }
 
@@ -161,6 +164,50 @@ func (q *Queries) CreateEvalRunJob(ctx context.Context, arg CreateEvalRunJobPara
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TraceID,
+		&i.Scorer,
+	)
+	return i, err
+}
+
+const createScoringTask = `-- name: CreateScoringTask :one
+INSERT INTO jobs (id, kind, trace_id, scorer, status, max_attempts)
+VALUES ($1, 'scoring_task', $2, $3, 'pending', $4)
+ON CONFLICT (trace_id, scorer) WHERE kind = 'scoring_task' DO NOTHING
+RETURNING id, kind, eval_run_id, status, run_after, attempts, max_attempts, locked_by, locked_at, lease_expires_at, last_error, created_at, updated_at, trace_id, scorer
+`
+
+type CreateScoringTaskParams struct {
+	ID          uuid.UUID
+	TraceID     pgtype.UUID
+	Scorer      pgtype.Text
+	MaxAttempts int32
+}
+
+func (q *Queries) CreateScoringTask(ctx context.Context, arg CreateScoringTaskParams) (Job, error) {
+	row := q.db.QueryRow(ctx, createScoringTask,
+		arg.ID,
+		arg.TraceID,
+		arg.Scorer,
+		arg.MaxAttempts,
+	)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.EvalRunID,
+		&i.Status,
+		&i.RunAfter,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.LockedBy,
+		&i.LockedAt,
+		&i.LeaseExpiresAt,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TraceID,
+		&i.Scorer,
 	)
 	return i, err
 }
@@ -236,6 +283,48 @@ func (q *Queries) HeartbeatJob(ctx context.Context, arg HeartbeatJobParams) (uui
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listTraceScoringTasks = `-- name: ListTraceScoringTasks :many
+SELECT id, kind, eval_run_id, status, run_after, attempts, max_attempts, locked_by, locked_at, lease_expires_at, last_error, created_at, updated_at, trace_id, scorer FROM jobs
+WHERE kind = 'scoring_task' AND trace_id = $1
+ORDER BY scorer
+`
+
+func (q *Queries) ListTraceScoringTasks(ctx context.Context, traceID pgtype.UUID) ([]Job, error) {
+	rows, err := q.db.Query(ctx, listTraceScoringTasks, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Job
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.EvalRunID,
+			&i.Status,
+			&i.RunAfter,
+			&i.Attempts,
+			&i.MaxAttempts,
+			&i.LockedBy,
+			&i.LockedAt,
+			&i.LeaseExpiresAt,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TraceID,
+			&i.Scorer,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockJobTableForDelete = `-- name: LockJobTableForDelete :exec
@@ -349,6 +438,58 @@ func (q *Queries) ReapExpiredJobs(ctx context.Context) (ReapExpiredJobsRow, erro
 	row := q.db.QueryRow(ctx, reapExpiredJobs)
 	var i ReapExpiredJobsRow
 	err := row.Scan(&i.ReapedJobs, &i.FailedItems, &i.ResetItems)
+	return i, err
+}
+
+const refreshScoringTask = `-- name: RefreshScoringTask :one
+INSERT INTO jobs (id, kind, trace_id, scorer, status, max_attempts)
+VALUES ($1, 'scoring_task', $2, $3, 'pending', $4)
+ON CONFLICT (trace_id, scorer) WHERE kind = 'scoring_task' DO UPDATE
+SET status = CASE WHEN jobs.status = 'running' THEN 'running' ELSE 'pending' END,
+    attempts = CASE WHEN jobs.status = 'running' THEN jobs.attempts ELSE 0 END,
+    run_after = CASE WHEN jobs.status = 'running' THEN jobs.run_after ELSE now() END,
+    locked_by = CASE WHEN jobs.status = 'running' THEN jobs.locked_by ELSE NULL END,
+    locked_at = CASE WHEN jobs.status = 'running' THEN jobs.locked_at ELSE NULL END,
+    lease_expires_at = CASE
+        WHEN jobs.status = 'running' THEN jobs.lease_expires_at ELSE NULL
+    END,
+    last_error = CASE WHEN jobs.status = 'running' THEN jobs.last_error ELSE NULL END,
+    updated_at = now()
+RETURNING jobs.id, jobs.kind, jobs.eval_run_id, jobs.status, jobs.run_after, jobs.attempts, jobs.max_attempts, jobs.locked_by, jobs.locked_at, jobs.lease_expires_at, jobs.last_error, jobs.created_at, jobs.updated_at, jobs.trace_id, jobs.scorer
+`
+
+type RefreshScoringTaskParams struct {
+	ID          uuid.UUID
+	TraceID     pgtype.UUID
+	Scorer      pgtype.Text
+	MaxAttempts int32
+}
+
+func (q *Queries) RefreshScoringTask(ctx context.Context, arg RefreshScoringTaskParams) (Job, error) {
+	row := q.db.QueryRow(ctx, refreshScoringTask,
+		arg.ID,
+		arg.TraceID,
+		arg.Scorer,
+		arg.MaxAttempts,
+	)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.EvalRunID,
+		&i.Status,
+		&i.RunAfter,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.LockedBy,
+		&i.LockedAt,
+		&i.LeaseExpiresAt,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TraceID,
+		&i.Scorer,
+	)
 	return i, err
 }
 

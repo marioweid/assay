@@ -18,7 +18,7 @@ type createEvalRunInput struct {
 		ApplicationID string         `json:"application_id" format:"uuid"`
 		DatasetID     string         `json:"dataset_id" format:"uuid"`
 		Name          string         `json:"name" minLength:"1"`
-		Mode          string         `json:"mode" enum:"score_existing"`
+		Mode          string         `json:"mode" enum:"score_existing,generate_then_score"`
 		Scorers       []string       `json:"scorers" minItems:"1"`
 		Params        map[string]any `json:"params,omitempty"`
 	}
@@ -89,14 +89,17 @@ type evalRunResponse struct {
 }
 
 type evalRunItemResponse struct {
-	EvalRunID     string     `json:"eval_run_id" format:"uuid"`
-	DatasetItemID string     `json:"dataset_item_id" format:"uuid"`
-	Status        string     `json:"status"`
-	Error         *string    `json:"error,omitempty"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	EvalRunID        string         `json:"eval_run_id" format:"uuid"`
+	DatasetItemID    string         `json:"dataset_item_id" format:"uuid"`
+	Status           string         `json:"status"`
+	Error            *string        `json:"error,omitempty"`
+	StartedAt        *time.Time     `json:"started_at,omitempty"`
+	FinishedAt       *time.Time     `json:"finished_at,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	GeneratedOutput  *string        `json:"generated_output,omitempty"`
+	GeneratedContext []domain.Chunk `json:"generated_context,omitempty"`
+	GeneratedAt      *time.Time     `json:"generated_at,omitempty"`
 }
 
 type scoreResponse struct {
@@ -112,8 +115,15 @@ type scoreResponse struct {
 	JudgeModel       string         `json:"judge_model"`
 	JudgeProvider    string         `json:"judge_provider"`
 	JudgeTokens      int            `json:"judge_tokens"`
-	EvalRunID        string         `json:"eval_run_id" format:"uuid"`
-	DatasetItemID    string         `json:"dataset_item_id" format:"uuid"`
+	EvalRunID        *string        `json:"eval_run_id,omitempty" format:"uuid"`
+	DatasetItemID    *string        `json:"dataset_item_id,omitempty" format:"uuid"`
+	TraceID          *string        `json:"trace_id,omitempty" format:"uuid"`
+	SpanID           *int64         `json:"span_id,omitempty"`
+	SpanStartTime    *time.Time     `json:"span_start_time,omitempty"`
+	JudgedInput      *string        `json:"judged_input,omitempty"`
+	JudgedOutput     *string        `json:"judged_output,omitempty"`
+	JudgedContext    []domain.Chunk `json:"judged_context,omitempty"`
+	JudgedReference  *string        `json:"judged_reference,omitempty"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
 
@@ -297,6 +307,8 @@ func evalRunItemOutput(item domain.EvalRunItem) evalRunItemResponse {
 		EvalRunID: item.EvalRunID.String(), DatasetItemID: item.DatasetItemID.String(),
 		Status: item.Status, Error: item.Error, StartedAt: item.StartedAt,
 		FinishedAt: item.FinishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+		GeneratedOutput: item.GeneratedOutput, GeneratedContext: item.GeneratedContext,
+		GeneratedAt: item.GeneratedAt,
 	}
 }
 
@@ -306,12 +318,28 @@ func scoreOutput(score domain.Score) scoreResponse {
 		Threshold: score.Threshold, Passed: score.Passed, Rationale: score.Rationale,
 		Details: score.Details, PromptTemplateID: score.PromptTemplateID,
 		JudgeModel: score.JudgeModel, JudgeProvider: score.JudgeProvider,
-		JudgeTokens: score.JudgeTokens, EvalRunID: score.EvalRunID.String(),
-		DatasetItemID: score.DatasetItemID.String(), CreatedAt: score.CreatedAt,
+		JudgeTokens: score.JudgeTokens, SpanID: score.SpanID, CreatedAt: score.CreatedAt,
 	}
 	if score.ScorerConfigID != nil {
 		id := score.ScorerConfigID.String()
 		response.ScorerConfigID = &id
+	}
+	if score.EvalRunID != nil {
+		id := score.EvalRunID.String()
+		response.EvalRunID = &id
+	}
+	if score.DatasetItemID != nil {
+		id := score.DatasetItemID.String()
+		response.DatasetItemID = &id
+	}
+	if score.TraceID != nil {
+		id := score.TraceID.String()
+		response.TraceID = &id
+		response.SpanStartTime = score.SpanStartTime
+		response.JudgedInput = &score.JudgedInput
+		response.JudgedOutput = &score.JudgedOutput
+		response.JudgedContext = score.JudgedContext
+		response.JudgedReference = score.JudgedReference
 	}
 	return response
 }

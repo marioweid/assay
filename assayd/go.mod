@@ -7,6 +7,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/ohler55/ojg v1.28.5
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0

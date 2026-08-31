@@ -3,6 +3,33 @@ INSERT INTO jobs (id, kind, eval_run_id, status, max_attempts)
 VALUES ($1, 'eval_run', $2, 'pending', $3)
 RETURNING *;
 
+-- name: CreateScoringTask :one
+INSERT INTO jobs (id, kind, trace_id, scorer, status, max_attempts)
+VALUES ($1, 'scoring_task', $2, $3, 'pending', $4)
+ON CONFLICT (trace_id, scorer) WHERE kind = 'scoring_task' DO NOTHING
+RETURNING *;
+
+-- name: RefreshScoringTask :one
+INSERT INTO jobs (id, kind, trace_id, scorer, status, max_attempts)
+VALUES ($1, 'scoring_task', $2, $3, 'pending', $4)
+ON CONFLICT (trace_id, scorer) WHERE kind = 'scoring_task' DO UPDATE
+SET status = CASE WHEN jobs.status = 'running' THEN 'running' ELSE 'pending' END,
+    attempts = CASE WHEN jobs.status = 'running' THEN jobs.attempts ELSE 0 END,
+    run_after = CASE WHEN jobs.status = 'running' THEN jobs.run_after ELSE now() END,
+    locked_by = CASE WHEN jobs.status = 'running' THEN jobs.locked_by ELSE NULL END,
+    locked_at = CASE WHEN jobs.status = 'running' THEN jobs.locked_at ELSE NULL END,
+    lease_expires_at = CASE
+        WHEN jobs.status = 'running' THEN jobs.lease_expires_at ELSE NULL
+    END,
+    last_error = CASE WHEN jobs.status = 'running' THEN jobs.last_error ELSE NULL END,
+    updated_at = now()
+RETURNING jobs.*;
+
+-- name: ListTraceScoringTasks :many
+SELECT * FROM jobs
+WHERE kind = 'scoring_task' AND trace_id = $1
+ORDER BY scorer;
+
 -- name: LockJobTableForWrite :exec
 LOCK TABLE jobs IN ROW EXCLUSIVE MODE;
 
@@ -44,7 +71,7 @@ FOR UPDATE;
 
 -- name: CompleteJob :one
 WITH owned_job AS MATERIALIZED (
-    SELECT j.id, j.eval_run_id
+	    SELECT j.id, j.kind, j.eval_run_id
     FROM jobs j
     WHERE j.id = sqlc.arg(id) AND j.status = 'running'
       AND j.locked_by = sqlc.arg(worker_id) AND j.lease_expires_at > now()
@@ -99,9 +126,10 @@ finalized_run AS (
 )
 UPDATE jobs j
 SET status = 'succeeded', locked_by = NULL, locked_at = NULL, lease_expires_at = NULL,
-    updated_at = now()
-FROM owned_job, finalized_run
+	    updated_at = now()
+FROM owned_job
 WHERE j.id = owned_job.id
+	  AND (owned_job.kind = 'scoring_task' OR EXISTS (SELECT 1 FROM finalized_run))
 RETURNING j.id;
 
 -- name: RetryJob :one

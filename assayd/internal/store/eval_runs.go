@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // CreateEvalRun atomically persists a run, its item outcomes, and its durable job.
@@ -46,7 +47,7 @@ func (d *Database) createEvalRunTransaction(
 		return domain.EvalRun{}, mapStoreError("lock jobs for run creation", err)
 	}
 	row, err := queries.CreateEvalRun(ctx, db.CreateEvalRunParams{
-		ID: run.ID, Name: run.Name, Params: params, Scorers: run.Scorers,
+		ID: run.ID, Name: run.Name, Mode: run.Mode, Params: params, Scorers: run.Scorers,
 		DatasetID: run.DatasetID, ApplicationID: run.ApplicationID,
 	})
 	if err != nil {
@@ -57,8 +58,11 @@ func (d *Database) createEvalRunTransaction(
 	}); err != nil {
 		return domain.EvalRun{}, mapStoreError("insert eval run items", err)
 	}
+	if job.EvalRunID == nil {
+		return domain.EvalRun{}, fmt.Errorf("insert eval run job: %w: missing run ID", domain.ErrInvalid)
+	}
 	if _, err := queries.CreateEvalRunJob(ctx, db.CreateEvalRunJobParams{
-		ID: job.ID, EvalRunID: run.ID, MaxAttempts: int32(job.MaxAttempts),
+		ID: job.ID, EvalRunID: nullableUUID(job.EvalRunID), MaxAttempts: int32(job.MaxAttempts),
 	}); err != nil {
 		return domain.EvalRun{}, mapStoreError("insert eval run job", err)
 	}
@@ -133,7 +137,7 @@ func (d *Database) GetEvalRun(ctx context.Context, runID uuid.UUID) (domain.Eval
 
 // CancelEvalRun cancels an active run, its pending items, and its job.
 func (d *Database) CancelEvalRun(ctx context.Context, runID uuid.UUID) (domain.EvalRun, error) {
-	row, err := d.queries.CancelEvalRun(ctx, runID)
+	row, err := d.queries.CancelEvalRun(ctx, nullableUUID(&runID))
 	if err != nil {
 		mappedErr := mapStoreError("cancel eval run", err)
 		if !errors.Is(mappedErr, domain.ErrNotFound) {
@@ -184,7 +188,9 @@ func (d *Database) ListEvalRunScores(
 	runID uuid.UUID,
 	query domain.ScoreQuery,
 ) ([]domain.Score, error) {
-	params := db.ListEvalRunScoresParams{EvalRunID: runID, PageSize: int32(query.Limit)}
+	params := db.ListEvalRunScoresParams{
+		EvalRunID: nullableUUID(&runID), PageSize: int32(query.Limit),
+	}
 	if query.Cursor != nil {
 		params.HasCursor = true
 		params.CursorTime = timestamp(query.Cursor.CreatedAt)
@@ -215,12 +221,56 @@ func evalRunItemFromRow(row db.ListEvalRunItemsRow) (domain.EvalRunItem, error) 
 	if err != nil {
 		return domain.EvalRunItem{}, err
 	}
+	generatedContext, err := generatedContextFromJSON(row.GeneratedContext)
+	if err != nil {
+		return domain.EvalRunItem{}, err
+	}
 	return domain.EvalRunItem{
 		EvalRunID: row.EvalRunID, DatasetItemID: row.DatasetItemID, Status: row.Status,
 		Error: optionalText(row.Error), StartedAt: optionalTimestamp(row.StartedAt),
 		FinishedAt: optionalTimestamp(row.FinishedAt), CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time, Item: datasetItem,
+		GeneratedOutput:  optionalText(row.GeneratedOutput),
+		GeneratedContext: generatedContext,
+		GeneratedAt:      optionalTimestamp(row.GeneratedAt),
 	}, nil
+}
+
+func generatedContextFromJSON(payload []byte) ([]domain.Chunk, error) {
+	if len(payload) == 0 {
+		return nil, nil
+	}
+	var chunks []domain.Chunk
+	if err := decodeStoredJSON(payload, &chunks); err != nil {
+		return nil, fmt.Errorf("decode generated context: %w", err)
+	}
+	return chunks, nil
+}
+
+// SaveEvalRunItemGeneration persists a target result while the caller owns the run lease.
+func (d *Database) SaveEvalRunItemGeneration(
+	ctx context.Context,
+	runID uuid.UUID,
+	itemID uuid.UUID,
+	generation domain.Generation,
+	lease domain.JobLease,
+) error {
+	contextJSON, err := encodeJSON("generated context", generation.Context)
+	if err != nil {
+		return err
+	}
+	_, err = d.queries.SaveEvalRunItemGeneration(ctx, db.SaveEvalRunItemGenerationParams{
+		GeneratedOutput:  nullableText(&generation.Output),
+		GeneratedContext: contextJSON,
+		SelectedItemID:   itemID,
+		JobID:            lease.JobID,
+		WorkerID:         nullableText(&lease.WorkerID),
+		SelectedRunID:    nullableUUID(&runID),
+	})
+	if err != nil {
+		return mapStoreError("save eval run item generation", err)
+	}
+	return nil
 }
 
 func scoreFromRow(row db.Score) (domain.Score, error) {
@@ -236,8 +286,11 @@ func scoreFromRow(row db.Score) (domain.Score, error) {
 		ID: row.ID, Scorer: row.Scorer, Value: value, Threshold: threshold,
 		Passed: row.Passed, Rationale: row.Rationale, PromptTemplateID: row.PromptTemplateID,
 		JudgeModel: row.JudgeModel, JudgeProvider: row.JudgeProvider,
-		JudgeTokens: int(row.JudgeTokens), EvalRunID: row.EvalRunID,
-		DatasetItemID: row.DatasetItemID, CreatedAt: row.CreatedAt.Time,
+		JudgeTokens: int(row.JudgeTokens), EvalRunID: optionalUUID(row.EvalRunID),
+		DatasetItemID: optionalUUID(row.DatasetItemID), TraceID: optionalUUID(row.TraceID),
+		SpanID: optionalInt64(row.SpanID), SpanStartTime: optionalTimestamp(row.SpanStartTime),
+		JudgedInput: row.JudgedInput.String, JudgedOutput: row.JudgedOutput.String,
+		JudgedReference: optionalText(row.JudgedReference), CreatedAt: row.CreatedAt.Time,
 	}
 	if row.ScorerConfigID.Valid {
 		configID := uuid.UUID(row.ScorerConfigID.Bytes)
@@ -246,5 +299,17 @@ func scoreFromRow(row db.Score) (domain.Score, error) {
 	if err := decodeStoredJSON(row.Details, &score.Details); err != nil {
 		return domain.Score{}, fmt.Errorf("decode score details: %w", err)
 	}
+	if len(row.JudgedContext) > 0 {
+		if err := decodeStoredJSON(row.JudgedContext, &score.JudgedContext); err != nil {
+			return domain.Score{}, fmt.Errorf("decode judged context: %w", err)
+		}
+	}
 	return score, nil
+}
+
+func optionalInt64(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
 }

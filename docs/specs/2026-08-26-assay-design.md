@@ -5,11 +5,10 @@
 For the implemented backend layers, dependency direction, and an API-key request walkthrough,
 see [`docs/architecture.md`](../architecture.md).
 
-**Implementation status (2026-08-29):** M0-M3 are implemented. M3 provides admin REST APIs for
-datasets, built-in scorer overrides, durable `score_existing` runs, item outcomes, cancellation,
-scores, and aggregates. The embedded leased worker executes groundedness and correctness against an
-OpenAI-compatible `/chat/completions` judge. Online scoring, `generate_then_score`, trace-selection
-runs, the functional Python client/CLI, and UI remain scheduled for M4-M6.
+**Implementation status (2026-08-31):** M0-M4 are implemented. M4 adds automatic and on-demand
+online trace scoring, reference attachment, typed scoring tasks, target endpoint execution, and
+durable `generate_then_score` snapshots alongside existing offline scoring. `trace_selection` runs,
+the functional Python client/CLI, UI, binary OTLP/protobuf, and OTLP/gRPC remain deferred.
 
 ---
 

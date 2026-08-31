@@ -24,6 +24,28 @@ func (q *Queries) CountDatasetItems(ctx context.Context, datasetID uuid.UUID) (i
 	return column_1, err
 }
 
+const countDatasetItemsMissingOutput = `-- name: CountDatasetItemsMissingOutput :one
+SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1 AND output IS NULL
+`
+
+func (q *Queries) CountDatasetItemsMissingOutput(ctx context.Context, datasetID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countDatasetItemsMissingOutput, datasetID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countDatasetItemsMissingReference = `-- name: CountDatasetItemsMissingReference :one
+SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1 AND expected_output IS NULL
+`
+
+func (q *Queries) CountDatasetItemsMissingReference(ctx context.Context, datasetID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countDatasetItemsMissingReference, datasetID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createDataset = `-- name: CreateDataset :one
 INSERT INTO datasets (id, application_id, name, description)
 VALUES ($1, $2, $3, $4)

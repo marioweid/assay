@@ -17,11 +17,12 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-M3 offline scoring implemented. Assay accepts JSON OTLP/HTTP traces and provides admin REST APIs for
-datasets, scorer configuration, durable `score_existing` runs, item outcomes, scores, cancellation,
-and aggregates. The embedded leased worker runs groundedness and correctness against an
-OpenAI-compatible judge. Binary protobuf, OTLP/gRPC, online scoring, generation, CLI orchestration,
-and the UI remain deferred.
+M4 online scoring and generate-then-score runs are implemented. Assay accepts JSON OTLP/HTTP traces,
+automatically or explicitly queues groundedness/correctness scoring, supports reference attachment,
+and returns online scores and task state with trace detail. Offline runs support persisted dataset
+output or per-run generation through an encrypted application target configuration. Binary
+protobuf, OTLP/gRPC, `trace_selection` runs, CLI orchestration, the functional Python client, and the
+UI remain deferred.
 
 The implementation follows these references:
 
@@ -115,7 +116,7 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/traces `
 Invoke-RestMethod -Method Get -Uri http://localhost:8080/v1/traces -Headers $otlpHeaders
 ```
 
-M2 accepts OTLP's protobuf-defined JSON representation, not binary protobuf payloads. Configure
+Assay accepts OTLP's protobuf-defined JSON representation, not binary protobuf payloads. Configure
 emitters for `http/json`; binary `application/x-protobuf` and gRPC are planned after v1.
 
 Create and score an offline dataset after setting `ASSAY_JUDGE_BASE_URL` and

@@ -91,6 +91,17 @@ type TargetEndpointInput struct {
 	Secret          *string
 }
 
+// ResolvedTargetEndpoint contains executable target settings and an in-memory secret.
+type ResolvedTargetEndpoint struct {
+	URL             string
+	Method          string
+	Headers         map[string]string
+	RequestTemplate map[string]any
+	ResponseMapping ResponseMapping
+	Timeout         time.Duration
+	Secret          string
+}
+
 // EndpointPatch either replaces or clears an application's target endpoint.
 type EndpointPatch struct {
 	Endpoint *TargetEndpointInput
@@ -142,6 +153,8 @@ type Trace struct {
 	ReferenceAnswer *string
 	Attributes      map[string]any
 	Spans           []Span
+	Scores          []Score
+	ScoringTasks    []Job
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

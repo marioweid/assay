@@ -136,8 +136,9 @@ func newDatasetItem(datasetID uuid.UUID, input CreateDatasetItemInput) (DatasetI
 		return DatasetItem{}, fmt.Errorf("question: %w: must be a non-blank string", ErrInvalid)
 	}
 	output := strings.TrimSpace(input.Output)
-	if output == "" {
-		return DatasetItem{}, fmt.Errorf("output: %w: must not be blank", ErrInvalid)
+	var storedOutput *string
+	if output != "" {
+		storedOutput = &output
 	}
 	context, err := normalizedChunks(input.Context)
 	if err != nil {
@@ -154,7 +155,7 @@ func newDatasetItem(datasetID uuid.UUID, input CreateDatasetItemInput) (DatasetI
 	}
 	return DatasetItem{
 		ID: itemID, DatasetID: datasetID, ExternalID: trimmedOptional(input.ExternalID),
-		Input: input.Input, Output: &output, ExpectedOutput: input.ExpectedOutput,
+		Input: input.Input, Output: storedOutput, ExpectedOutput: input.ExpectedOutput,
 		Context: context, Metadata: metadata,
 	}, nil
 }
@@ -481,20 +482,70 @@ func (s *EvaluationService) CreateEvalRun(
 	if input.Mode == "" {
 		input.Mode = EvalModeScoreExisting
 	}
-	if input.Mode != EvalModeScoreExisting {
-		return EvalRun{}, fmt.Errorf("create eval run: %w: unsupported mode %q", ErrInvalid, input.Mode)
-	}
 	if err := validateScorerNames(input.Scorers); err != nil {
 		return EvalRun{}, err
 	}
 	if err := s.validateEnabledScorers(ctx, input.ApplicationID, input.Scorers); err != nil {
 		return EvalRun{}, err
 	}
-	count, err := s.validateRunResources(ctx, input.ApplicationID, input.DatasetID)
+	application, count, err := s.validateRunResources(ctx, input.ApplicationID, input.DatasetID)
 	if err != nil {
 		return EvalRun{}, err
 	}
+	if err := s.validateRunMode(ctx, input, application); err != nil {
+		return EvalRun{}, err
+	}
 	return s.persistRun(ctx, input, name, count)
+}
+
+func (s *EvaluationService) validateRunMode(
+	ctx context.Context,
+	input CreateEvalRunInput,
+	application Application,
+) error {
+	switch input.Mode {
+	case EvalModeScoreExisting:
+		missing, err := s.repository.CountDatasetItemsMissingOutput(ctx, input.DatasetID)
+		if err != nil {
+			return fmt.Errorf("count dataset outputs: %w", err)
+		}
+		if missing > 0 {
+			return fmt.Errorf("create eval run: %w: %d items have no output", ErrInvalid, missing)
+		}
+	case EvalModeGenerateThenScore:
+		if application.TargetEndpoint == nil {
+			return fmt.Errorf("create eval run: %w: target endpoint required", ErrInvalid)
+		}
+	default:
+		return fmt.Errorf("create eval run: %w: unsupported mode %q", ErrInvalid, input.Mode)
+	}
+	return s.validateRunReferences(ctx, input)
+}
+
+func (s *EvaluationService) validateRunReferences(
+	ctx context.Context,
+	input CreateEvalRunInput,
+) error {
+	if !containsString(input.Scorers, ScorerCorrectness) {
+		return nil
+	}
+	missing, err := s.repository.CountDatasetItemsMissingReference(ctx, input.DatasetID)
+	if err != nil {
+		return fmt.Errorf("count dataset references: %w", err)
+	}
+	if missing > 0 {
+		return fmt.Errorf("create eval run: %w: %d items have no expected output", ErrInvalid, missing)
+	}
+	return nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *EvaluationService) validateEnabledScorers(
@@ -519,28 +570,28 @@ func (s *EvaluationService) validateRunResources(
 	ctx context.Context,
 	applicationID uuid.UUID,
 	datasetID uuid.UUID,
-) (int, error) {
+) (Application, int, error) {
 	application, err := s.repository.GetApplication(ctx, applicationID)
 	if err != nil {
-		return 0, fmt.Errorf("create eval run: %w", err)
+		return Application{}, 0, fmt.Errorf("create eval run: %w", err)
 	}
 	dataset, err := s.repository.GetDataset(ctx, datasetID)
 	if err != nil {
-		return 0, fmt.Errorf("create eval run: %w", err)
+		return Application{}, 0, fmt.Errorf("create eval run: %w", err)
 	}
 	if dataset.ApplicationID != application.ID {
-		return 0, fmt.Errorf(
+		return Application{}, 0, fmt.Errorf(
 			"create eval run: %w: dataset belongs to another application", ErrInvalid,
 		)
 	}
 	count, err := s.repository.CountDatasetItems(ctx, dataset.ID)
 	if err != nil {
-		return 0, fmt.Errorf("count eval run items: %w", err)
+		return Application{}, 0, fmt.Errorf("count eval run items: %w", err)
 	}
 	if count == 0 {
-		return 0, fmt.Errorf("create eval run: %w: dataset is empty", ErrInvalid)
+		return Application{}, 0, fmt.Errorf("create eval run: %w: dataset is empty", ErrInvalid)
 	}
-	return count, nil
+	return application, count, nil
 }
 
 func (s *EvaluationService) persistRun(
@@ -563,12 +614,12 @@ func (s *EvaluationService) persistRun(
 	}
 	run := EvalRun{
 		ID: runID, ApplicationID: input.ApplicationID, DatasetID: input.DatasetID,
-		Name: name, Status: EvalStatusPending, Mode: EvalModeScoreExisting,
+		Name: name, Status: EvalStatusPending, Mode: input.Mode,
 		Params: params, Scorers: input.Scorers, TotalItems: count,
 	}
 	job := Job{
-		ID: jobID, Kind: "eval_run", Status: EvalStatusPending,
-		EvalRunID: runID, MaxAttempts: s.jobMaxAttempts,
+		ID: jobID, Kind: JobKindEvalRun, Status: EvalStatusPending,
+		EvalRunID: &runID, MaxAttempts: s.jobMaxAttempts,
 	}
 	run, err = s.repository.CreateEvalRun(ctx, run, job)
 	if err != nil {

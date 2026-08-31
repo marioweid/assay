@@ -33,9 +33,9 @@ type JobRepository interface {
 	ReleaseWorkerJobs(context.Context, string) error
 }
 
-// JobRunner executes one evaluation job.
+// JobRunner executes one typed durable job.
 type JobRunner interface {
-	Run(context.Context, uuid.UUID, domain.JobLease) error
+	Run(context.Context, domain.Job, domain.JobLease) error
 }
 
 // Pool owns concurrent durable-job consumers.
@@ -165,7 +165,7 @@ func (p *Pool) executeJob(ctx context.Context, workerID string, job domain.Job) 
 		})
 	}()
 	lease := domain.JobLease{JobID: job.ID, WorkerID: workerID}
-	err := p.runner.Run(jobCtx, job.EvalRunID, lease)
+	err := p.runner.Run(jobCtx, job, lease)
 	if !leaseLost.Load() && ctx.Err() == nil {
 		p.persistJobResult(jobCtx, workerID, job, err)
 	}

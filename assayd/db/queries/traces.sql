@@ -45,7 +45,19 @@ SET application_id = EXCLUDED.application_id,
     is_scorable = EXCLUDED.is_scorable,
     scorable_kind = EXCLUDED.scorable_kind,
     attributes = EXCLUDED.attributes,
-    events = EXCLUDED.events,
+    events = coalesce((
+        SELECT jsonb_agg(preserved.event ORDER BY preserved.source, preserved.position)
+        FROM (
+            SELECT event AS event, 0 AS source, position
+            FROM jsonb_array_elements(EXCLUDED.events) WITH ORDINALITY incoming(event, position)
+            WHERE event->>'name' NOT LIKE 'assay.%'
+            UNION ALL
+            SELECT event AS event, 1 AS source, position
+            FROM jsonb_array_elements(spans.events) WITH ORDINALITY stored(event, position)
+            WHERE event->>'name' = 'gen_ai.evaluation.result'
+              AND event->'attributes' ? 'assay.evaluation.judge.model'
+        ) preserved
+    ), '[]'::jsonb),
     input_tokens = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     reference_answer = EXCLUDED.reference_answer;
@@ -127,3 +139,97 @@ FROM spans
 JOIN applications ON applications.id = spans.application_id
 WHERE spans.trace_id = $1 AND applications.project_id = $2
 ORDER BY spans.start_time, spans.id;
+
+-- name: GetTraceForScoring :one
+SELECT * FROM traces WHERE id = $1;
+
+-- name: ListTraceSpansForScoring :many
+SELECT * FROM spans WHERE trace_id = $1 ORDER BY start_time, id;
+
+-- name: ListOnlineScores :many
+SELECT * FROM scores WHERE trace_id = $1 ORDER BY created_at, id;
+
+-- name: TraceEligibleForAutoScore :one
+SELECT
+    (SELECT count(*) FROM spans s WHERE s.trace_id = sqlc.arg(selected_trace_id) AND s.is_scorable) = 1
+    AND EXISTS (
+        SELECT 1 FROM spans s
+        WHERE s.trace_id = sqlc.arg(selected_trace_id) AND s.is_scorable
+          AND s.attributes ? 'gen_ai.input.messages'
+          AND s.attributes ? 'gen_ai.output.messages'
+    )
+    AND CASE sqlc.arg(scorer)::text
+        WHEN 'correctness' THEN traces.reference_answer IS NOT NULL
+        WHEN 'groundedness' THEN EXISTS (
+            SELECT 1 FROM spans s
+            WHERE s.trace_id = sqlc.arg(selected_trace_id)
+              AND (
+                  s.attributes ? 'assay.context.chunk.count'
+                  OR s.attributes ? 'gen_ai.retrieval.documents'
+                  OR EXISTS (
+                      SELECT 1 FROM jsonb_object_keys(s.attributes) key
+                      WHERE key LIKE 'assay.context.chunks.%'
+                  )
+              )
+        )
+        ELSE false
+    END
+FROM traces WHERE id = sqlc.arg(selected_trace_id);
+
+-- name: AttachTraceReference :one
+WITH target AS MATERIALIZED (
+    SELECT traces.id
+    FROM traces
+    JOIN applications ON applications.id = traces.application_id
+    WHERE traces.id = sqlc.arg(trace_id) AND applications.project_id = sqlc.arg(project_id)
+      AND (SELECT count(*) FROM spans WHERE spans.trace_id = traces.id AND is_scorable) = 1
+    FOR UPDATE
+), updated_span AS (
+    UPDATE spans
+    SET reference_answer = sqlc.arg(reference_answer)
+    WHERE trace_id = (SELECT id FROM target) AND is_scorable
+    RETURNING trace_id
+)
+UPDATE traces
+SET reference_answer = sqlc.arg(reference_answer), updated_at = now()
+WHERE id = (SELECT trace_id FROM updated_span)
+RETURNING *;
+
+-- name: LockOwnedScoringTask :one
+SELECT id
+FROM jobs
+WHERE id = sqlc.arg(job_id) AND kind = 'scoring_task' AND status = 'running'
+  AND locked_by = sqlc.arg(worker_id) AND lease_expires_at > now()
+  AND trace_id = sqlc.arg(trace_id) AND scorer = sqlc.arg(scorer)
+FOR UPDATE;
+
+-- name: DeleteOnlineScore :exec
+DELETE FROM scores WHERE trace_id = $1 AND scorer = $2;
+
+-- name: InsertOnlineScore :one
+INSERT INTO scores (
+    scorer, scorer_config_id, value, threshold, passed, rationale, details,
+    prompt_template_id, judge_model, judge_provider, judge_tokens,
+    trace_id, span_id, span_start_time, judged_input, judged_output,
+    judged_context, judged_reference
+)
+VALUES (
+    sqlc.arg(scorer), sqlc.narg(scorer_config_id), sqlc.arg(value), sqlc.arg(threshold),
+    sqlc.arg(passed), sqlc.arg(rationale), sqlc.arg(details), sqlc.arg(prompt_template_id),
+    sqlc.arg(judge_model), sqlc.arg(judge_provider), sqlc.arg(judge_tokens),
+    sqlc.arg(trace_id), sqlc.arg(span_id), sqlc.arg(span_start_time), sqlc.arg(judged_input),
+    sqlc.arg(judged_output), sqlc.arg(judged_context), sqlc.narg(judged_reference)
+)
+RETURNING *;
+
+-- name: GetScoredSpanEvents :one
+SELECT events FROM spans
+WHERE id = sqlc.arg(span_id) AND trace_id = sqlc.arg(trace_id)
+  AND start_time = sqlc.arg(span_start_time)
+FOR UPDATE;
+
+-- name: UpdateScoredSpanEvents :one
+UPDATE spans SET events = sqlc.arg(events)
+WHERE id = sqlc.arg(span_id) AND trace_id = sqlc.arg(trace_id)
+  AND start_time = sqlc.arg(span_start_time)
+RETURNING id;

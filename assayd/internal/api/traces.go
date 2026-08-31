@@ -32,6 +32,22 @@ type traceIDInput struct {
 	ID            string `path:"id" format:"uuid"`
 }
 
+type scoreTracesInput struct {
+	Authorization string `header:"Authorization" required:"false"`
+	XAPIKey       string `header:"x-api-key" required:"false"`
+	Body          struct {
+		TraceIDs []string `json:"trace_ids" minItems:"1"`
+		Scorers  []string `json:"scorers" minItems:"1"`
+	}
+}
+
+type attachTraceReferenceInput struct {
+	traceIDInput
+	Body struct {
+		ReferenceAnswer string `json:"reference_answer" minLength:"1"`
+	}
+}
+
 type traceCollectionResult struct {
 	Body struct {
 		Items      []traceResponse `json:"items"`
@@ -43,22 +59,38 @@ type traceResult struct {
 	Body traceResponse
 }
 
+type scoringTaskCollectionResult struct {
+	Body struct {
+		Items []scoringTaskResponse `json:"items"`
+	}
+}
+
+type scoringTaskResponse struct {
+	ID      string  `json:"id" format:"uuid"`
+	TraceID string  `json:"trace_id" format:"uuid"`
+	Scorer  string  `json:"scorer"`
+	Status  string  `json:"status"`
+	Error   *string `json:"error,omitempty"`
+}
+
 type traceResponse struct {
-	ID              string          `json:"id" format:"uuid"`
-	ApplicationID   string          `json:"application_id" format:"uuid"`
-	OTelTraceID     string          `json:"otel_trace_id"`
-	RootName        string          `json:"root_name"`
-	StartTime       time.Time       `json:"start_time"`
-	EndTime         time.Time       `json:"end_time"`
-	Status          string          `json:"status"`
-	SpanCount       int             `json:"span_count"`
-	TotalTokens     int64           `json:"total_tokens"`
-	TotalCost       *string         `json:"total_cost,omitempty"`
-	ReferenceAnswer *string         `json:"reference_answer,omitempty"`
-	Attributes      map[string]any  `json:"attributes"`
-	Spans           []*spanResponse `json:"spans,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	ID              string                `json:"id" format:"uuid"`
+	ApplicationID   string                `json:"application_id" format:"uuid"`
+	OTelTraceID     string                `json:"otel_trace_id"`
+	RootName        string                `json:"root_name"`
+	StartTime       time.Time             `json:"start_time"`
+	EndTime         time.Time             `json:"end_time"`
+	Status          string                `json:"status"`
+	SpanCount       int                   `json:"span_count"`
+	TotalTokens     int64                 `json:"total_tokens"`
+	TotalCost       *string               `json:"total_cost,omitempty"`
+	ReferenceAnswer *string               `json:"reference_answer,omitempty"`
+	Attributes      map[string]any        `json:"attributes"`
+	Spans           []*spanResponse       `json:"spans,omitempty"`
+	Scores          []scoreResponse       `json:"scores,omitempty"`
+	ScoringTasks    []scoringTaskResponse `json:"scoring_tasks,omitempty"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
 type spanResponse struct {
@@ -89,6 +121,16 @@ type traceCursorJSON struct {
 }
 
 func (h *handler) registerTraceRoutes() {
+	score := h.projectOperation(
+		http.MethodPost, "/v1/traces/score", "score-traces", "Queue trace scoring",
+		http.StatusNotFound,
+	)
+	score.DefaultStatus = http.StatusAccepted
+	huma.Register(h.api, score, h.scoreTraces)
+	huma.Register(h.api, h.projectOperation(
+		http.MethodPatch, "/v1/traces/{id}/reference", "attach-trace-reference",
+		"Attach a trace reference", http.StatusNotFound,
+	), h.attachTraceReference)
 	huma.Register(h.api, h.projectOperation(
 		http.MethodGet,
 		"/v1/traces",
@@ -102,6 +144,55 @@ func (h *handler) registerTraceRoutes() {
 		"Get a trace and its span tree",
 		http.StatusNotFound,
 	), h.getTrace)
+}
+
+func (h *handler) scoreTraces(
+	ctx context.Context,
+	input *scoreTracesInput,
+) (*scoringTaskCollectionResult, error) {
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return nil, h.responseError("score traces", err)
+	}
+	traceIDs := make([]uuid.UUID, 0, len(input.Body.TraceIDs))
+	for _, value := range input.Body.TraceIDs {
+		traceID, parseErr := parseID(value, "trace ID")
+		if parseErr != nil {
+			return nil, h.responseError("score traces", parseErr)
+		}
+		traceIDs = append(traceIDs, traceID)
+	}
+	jobs, err := h.traces.QueueScores(ctx, projectID, traceIDs, input.Body.Scorers, true)
+	if err != nil {
+		return nil, h.responseError("score traces", err)
+	}
+	result := &scoringTaskCollectionResult{}
+	result.Body.Items = make([]scoringTaskResponse, 0, len(jobs))
+	for _, job := range jobs {
+		result.Body.Items = append(result.Body.Items, scoringTaskOutput(job))
+	}
+	return result, nil
+}
+
+func (h *handler) attachTraceReference(
+	ctx context.Context,
+	input *attachTraceReferenceInput,
+) (*traceResult, error) {
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return nil, h.responseError("attach trace reference", err)
+	}
+	traceID, err := parseID(input.ID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("attach trace reference", err)
+	}
+	trace, err := h.traces.AttachReference(
+		ctx, projectID, traceID, input.Body.ReferenceAnswer,
+	)
+	if err != nil {
+		return nil, h.responseError("attach trace reference", err)
+	}
+	return &traceResult{Body: traceOutput(trace, true)}, nil
 }
 
 func (h *handler) listTraces(
@@ -229,6 +320,24 @@ func traceOutput(trace domain.Trace, includeSpans bool) traceResponse {
 	}
 	if includeSpans {
 		response.Spans = spanTree(trace.Spans)
+		response.Scores = make([]scoreResponse, 0, len(trace.Scores))
+		for _, score := range trace.Scores {
+			response.Scores = append(response.Scores, scoreOutput(score))
+		}
+		response.ScoringTasks = make([]scoringTaskResponse, 0, len(trace.ScoringTasks))
+		for _, job := range trace.ScoringTasks {
+			response.ScoringTasks = append(response.ScoringTasks, scoringTaskOutput(job))
+		}
+	}
+	return response
+}
+
+func scoringTaskOutput(job domain.Job) scoringTaskResponse {
+	response := scoringTaskResponse{
+		ID: job.ID.String(), Scorer: job.Scorer, Status: job.Status, Error: job.LastError,
+	}
+	if job.TraceID != nil {
+		response.TraceID = job.TraceID.String()
 	}
 	return response
 }

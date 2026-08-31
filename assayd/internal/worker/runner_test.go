@@ -12,6 +12,7 @@ import (
 
 	"github.com/marioweid/assay/assayd/internal/domain"
 	"github.com/marioweid/assay/assayd/internal/scoring"
+	"github.com/marioweid/assay/assayd/internal/target"
 
 	"github.com/google/uuid"
 )
@@ -43,7 +44,7 @@ func TestRunnerScoresItem(t *testing.T) {
 			BaseURL: judge.URL, Model: "fake", Provider: "fake",
 		},
 	}}
-	runner := NewRunner(repository, resolver, judge.Client(), domain.JudgeDefaults{})
+	runner := testRunner(repository, resolver, judge.Client())
 
 	if err := runner.Run(t.Context(), runID, testLease()); err != nil {
 		t.Fatalf("run evaluation: %v", err)
@@ -100,7 +101,7 @@ func TestRunnerContinuesSiblingsAfterRetryableJudgeFailure(t *testing.T) {
 		PromptTemplateID: domain.GroundednessPromptV1,
 		Judge:            domain.ResolvedJudgeConfig{BaseURL: judge.URL, Model: "fake"},
 	}}
-	runner := NewRunner(repository, resolver, judge.Client(), domain.JudgeDefaults{})
+	runner := testRunner(repository, resolver, judge.Client())
 	err := runner.Run(t.Context(), runID, testLease())
 	if !scoring.IsRetryable(err) {
 		t.Fatalf("run error = %v, want retryable", err)
@@ -138,13 +139,83 @@ func TestRunnerRetriesJobAfterScorePersistenceFailure(t *testing.T) {
 		PromptTemplateID: domain.GroundednessPromptV1,
 		Judge:            domain.ResolvedJudgeConfig{BaseURL: judge.URL, Model: "fake"},
 	}}
-	runner := NewRunner(repository, resolver, judge.Client(), domain.JudgeDefaults{})
+	runner := testRunner(repository, resolver, judge.Client())
 
 	err := runner.Run(t.Context(), runID, testLease())
 	var retryErr *jobRetryError
 	if !errors.As(err, &retryErr) || repository.failed {
 		t.Fatalf("run error/failed = %v/%v, want job retry without item failure", err, repository.failed)
 	}
+}
+
+//nolint:cyclop // The two snapshot states share one behavioral assertion sequence.
+func TestRunnerPersistsAndReusesGenerationSnapshot(t *testing.T) {
+	judge := httptest.NewServer(http.HandlerFunc(runnerJudgeHandler(t)))
+	t.Cleanup(judge.Close)
+	for _, existing := range []bool{false, true} {
+		t.Run("existing="+strconv.FormatBool(existing), func(t *testing.T) {
+			runID := uuid.Must(uuid.NewV7())
+			itemID := uuid.Must(uuid.NewV7())
+			item := domain.EvalRunItem{
+				EvalRunID: runID, DatasetItemID: itemID,
+				Item: domain.DatasetItem{
+					ID: itemID, Input: map[string]any{"question": "What is Assay?"},
+					Context: []domain.Chunk{{ID: "fallback", Text: "fallback context"}},
+				},
+			}
+			if existing {
+				output := "Assay evaluates AI."
+				item.GeneratedOutput = &output
+				item.GeneratedContext = []domain.Chunk{{ID: "saved", Text: "saved context"}}
+			}
+			repository := &runnerRepositoryFake{
+				run: domain.EvalRun{
+					ID: runID, ApplicationID: uuid.Must(uuid.NewV7()),
+					Mode:    domain.EvalModeGenerateThenScore,
+					Scorers: []string{domain.ScorerGroundedness},
+				},
+				items: []domain.EvalRunItem{item},
+			}
+			generator := &generatorFake{generation: domain.Generation{
+				Output:  "Assay evaluates AI.",
+				Context: []domain.Chunk{{ID: "k0", Text: "Assay evaluates AI."}},
+			}}
+			runner := NewRunner(RunnerDependencies{
+				Repository: repository,
+				Resolver: scorerResolverFake{config: domain.ResolvedScorerConfig{
+					Scorer: domain.ScorerGroundedness, Threshold: 0.5,
+					PromptTemplateID: domain.GroundednessPromptV1,
+					Judge:            domain.ResolvedJudgeConfig{BaseURL: judge.URL, Model: "fake"},
+				}},
+				Targets: targetResolverFake{}, Generator: generator, JudgeClient: judge.Client(),
+			})
+
+			if err := runner.Run(t.Context(), runID, testLease()); err != nil {
+				t.Fatalf("run generated evaluation: %v", err)
+			}
+			wantCalls := 1
+			if existing {
+				wantCalls = 0
+			}
+			if generator.calls != wantCalls {
+				t.Fatalf("target calls = %d, want %d", generator.calls, wantCalls)
+			}
+			if !existing && (repository.saved.Output != "Assay evaluates AI." ||
+				len(repository.events) < 2 || repository.events[0] != "generation") {
+				t.Fatalf("saved generation/events = %#v/%#v", repository.saved, repository.events)
+			}
+		})
+	}
+}
+
+func testRunner(
+	repository RunRepository,
+	resolver ScorerConfigResolver,
+	client *http.Client,
+) *Runner {
+	return NewRunner(RunnerDependencies{
+		Repository: repository, Resolver: resolver, JudgeClient: client,
+	})
 }
 
 func runnerJudgeHandler(t *testing.T) http.HandlerFunc {
@@ -180,6 +251,36 @@ func (f scorerResolverFake) ResolveScorerConfigs(
 	return []domain.ResolvedScorerConfig{f.config}, nil
 }
 
+type targetResolverFake struct{}
+
+func (targetResolverFake) ResolveTargetEndpoint(
+	context.Context,
+	uuid.UUID,
+) (domain.ResolvedTargetEndpoint, error) {
+	return domain.ResolvedTargetEndpoint{
+		ResponseMapping: domain.ResponseMapping{Output: "$.answer"},
+	}, nil
+}
+
+type generatorFake struct {
+	generation domain.Generation
+	calls      int
+}
+
+func (f *generatorFake) Compile(domain.ResponseMapping) (target.Mapping, error) {
+	return target.Mapping{}, nil
+}
+
+func (f *generatorFake) Generate(
+	context.Context,
+	domain.ResolvedTargetEndpoint,
+	target.Mapping,
+	domain.DatasetItem,
+) (domain.Generation, error) {
+	f.calls++
+	return f.generation, nil
+}
+
 type runnerRepositoryFake struct {
 	run         domain.EvalRun
 	items       []domain.EvalRunItem
@@ -187,6 +288,8 @@ type runnerRepositoryFake struct {
 	completeErr error
 	failed      bool
 	reset       bool
+	saved       domain.Generation
+	events      []string
 }
 
 func (f *runnerRepositoryFake) StartEvalRun(
@@ -243,8 +346,21 @@ func (f *runnerRepositoryFake) CompleteEvalRunItem(
 	scores []domain.Score,
 	_ domain.JobLease,
 ) error {
+	f.events = append(f.events, "complete")
 	f.scores = scores
 	return f.completeErr
+}
+
+func (f *runnerRepositoryFake) SaveEvalRunItemGeneration(
+	_ context.Context,
+	_ uuid.UUID,
+	_ uuid.UUID,
+	generation domain.Generation,
+	_ domain.JobLease,
+) error {
+	f.saved = generation
+	f.events = append(f.events, "generation")
+	return nil
 }
 
 func testLease() domain.JobLease {

@@ -41,8 +41,22 @@ POST /v1/traces
     -> project API-key authentication
     -> application resolution + trace mapping
     -> TraceService
-    -> Store transaction -> sqlc -> Postgres traces/spans
+    -> Store transaction -> sqlc -> Postgres traces/spans + eligible scoring tasks
     -> JSON ExportTraceServiceResponse
+```
+
+For `generate_then_score`, the runner resolves the encrypted application endpoint, recursively
+renders its request template, maps the JSON response with compiled JSONPath, and saves output/context
+on the run item before calling a judge. Retries reuse that snapshot and never mutate the dataset.
+
+Online scoring uses the same queue and worker pool:
+
+```text
+OTLP ingest or POST /v1/traces/score
+    -> one reusable scoring_task per trace/scorer
+    -> dispatcher selects the trace runner
+    -> OTel messages/context/reference become one scorer input
+    -> leased transaction replaces the online score and Assay evaluation span event
 ```
 
 The raw handler and Huma share one `net/http.ServeMux`: Huma owns trace `GET` routes while the OTLP
@@ -67,10 +81,11 @@ graceful worker release return retryable interrupted work to `pending`, allowing
 worker to resume without duplicating completed item scores. If the last attempt was consumed, they
 atomically fail the job, run, and unfinished items instead.
 
-Every job has a foreign-keyed `eval_run_id`. PostgreSQL time determines lease validity and retry
-eligibility. Worker state changes lock and verify the unexpired job lease before mutating a run or
-item, fencing paused workers from writing after ownership is lost. Cancellation, exhaustion, and
-completion acquire the same job-first lock and apply their run/item transition atomically.
+Every job has exactly one typed target: an `eval_run_id`, or a `trace_id` plus scorer. PostgreSQL time
+determines lease validity and retry eligibility. Worker state changes lock and verify the unexpired
+job lease before mutating a run, item, trace score, or evaluation event, fencing paused workers from
+writing after ownership is lost. Cancellation, exhaustion, and completion acquire the same
+job-first lock and apply their transitions atomically.
 Run creation acquires a job-table write lock before reading dataset membership. Cascading project,
 application, and dataset deletion acquires an exclusive job-table lock first, preventing a run from
 being inserted or worked while its parent is being removed.
@@ -95,10 +110,11 @@ Postgres store, so calling a repository method calls the matching store method.
 
 ## Offline Scoring State
 
-`datasets` belong to one application. Each `dataset_items` row stores an object input, explicit
-generated `output`, optional `expected_output`, ordered context chunks, and metadata. A
-`score_existing` run snapshots membership into `eval_run_items`; later dataset edits do not add work
-to that run. Item outcomes remain queryable independently from score rows.
+`datasets` belong to one application. Each `dataset_items` row stores an object input, optional
+output/reference, ordered context chunks, and metadata. A run snapshots membership into
+`eval_run_items`; later dataset edits do not add work. `score_existing` requires source output, while
+`generate_then_score` stores generated output/context on each run item. Item outcomes remain
+queryable independently from score rows.
 
 The `scores` parent is range-partitioned by `created_at` and currently has a default partition.
 Every score stores value, threshold, pass decision, concise rationale/details, prompt ID, judge

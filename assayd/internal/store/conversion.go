@@ -10,6 +10,7 @@ import (
 	"github.com/marioweid/assay/assayd/internal/domain"
 	db "github.com/marioweid/assay/assayd/internal/store/sqlc"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -92,6 +93,21 @@ func optionalTime(value pgtype.Timestamptz) *time.Time {
 		return nil
 	}
 	return &value.Time
+}
+
+func nullableUUID(value *uuid.UUID) pgtype.UUID {
+	if value == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *value, Valid: true}
+}
+
+func optionalUUID(value pgtype.UUID) *uuid.UUID {
+	if !value.Valid {
+		return nil
+	}
+	result := uuid.UUID(value.Bytes)
+	return &result
 }
 
 func mapStoreError(operation string, err error) error {

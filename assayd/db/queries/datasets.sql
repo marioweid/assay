@@ -44,3 +44,9 @@ LIMIT sqlc.arg(page_size);
 
 -- name: CountDatasetItems :one
 SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1;
+
+-- name: CountDatasetItemsMissingOutput :one
+SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1 AND output IS NULL;
+
+-- name: CountDatasetItemsMissingReference :one
+SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1 AND expected_output IS NULL;

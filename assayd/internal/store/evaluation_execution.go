@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,8 +10,55 @@ import (
 	db "github.com/marioweid/assay/assayd/internal/store/sqlc"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// QueueScoringTask creates or explicitly refreshes one trace/scorer task.
+func (d *Database) QueueScoringTask(
+	ctx context.Context,
+	job domain.Job,
+	refresh bool,
+) (domain.Job, error) {
+	if job.TraceID == nil || job.Scorer == "" || job.MaxAttempts <= 0 {
+		return domain.Job{}, fmt.Errorf("queue scoring task: %w: invalid target", domain.ErrInvalid)
+	}
+	params := db.CreateScoringTaskParams{
+		ID: job.ID, TraceID: nullableUUID(job.TraceID), Scorer: nullableText(&job.Scorer),
+		MaxAttempts: int32(job.MaxAttempts),
+	}
+	var row db.Job
+	var err error
+	if refresh {
+		row, err = d.queries.RefreshScoringTask(ctx, db.RefreshScoringTaskParams(params))
+	} else {
+		row, err = d.queries.CreateScoringTask(ctx, params)
+	}
+	if errors.Is(err, pgx.ErrNoRows) && !refresh {
+		return d.getScoringTask(ctx, *job.TraceID, job.Scorer)
+	}
+	if err != nil {
+		return domain.Job{}, mapStoreError("queue scoring task", err)
+	}
+	return jobFromRow(row)
+}
+
+func (d *Database) getScoringTask(
+	ctx context.Context,
+	traceID uuid.UUID,
+	scorer string,
+) (domain.Job, error) {
+	rows, err := d.queries.ListTraceScoringTasks(ctx, nullableUUID(&traceID))
+	if err != nil {
+		return domain.Job{}, mapStoreError("select scoring task", err)
+	}
+	for _, row := range rows {
+		if row.Scorer.String == scorer {
+			return jobFromRow(row)
+		}
+	}
+	return domain.Job{}, fmt.Errorf("select scoring task: %w", domain.ErrNotFound)
+}
 
 // ClaimJob leases the next runnable job to a worker.
 func (d *Database) ClaimJob(
@@ -111,7 +159,8 @@ func (d *Database) StartEvalRun(
 	lease domain.JobLease,
 ) (domain.EvalRun, error) {
 	row, err := d.queries.StartEvalRun(ctx, db.StartEvalRunParams{
-		SelectedRunID: runID, JobID: lease.JobID, WorkerID: nullableText(&lease.WorkerID),
+		SelectedRunID: nullableUUID(&runID), JobID: lease.JobID,
+		WorkerID: nullableText(&lease.WorkerID),
 	})
 	if err != nil {
 		return domain.EvalRun{}, mapStoreError("start eval run", err)
@@ -147,7 +196,7 @@ func (d *Database) MarkEvalRunItemRunning(
 	lease domain.JobLease,
 ) error {
 	_, err := d.queries.MarkEvalRunItemRunning(ctx, db.MarkEvalRunItemRunningParams{
-		SelectedRunID: runID, SelectedItemID: itemID,
+		SelectedRunID: nullableUUID(&runID), SelectedItemID: itemID,
 		JobID: lease.JobID, WorkerID: nullableText(&lease.WorkerID),
 	})
 	if err != nil {
@@ -165,7 +214,8 @@ func (d *Database) ResetEvalRunItemPending(
 	lease domain.JobLease,
 ) error {
 	_, err := d.queries.ResetEvalRunItemPending(ctx, db.ResetEvalRunItemPendingParams{
-		SelectedRunID: runID, SelectedItemID: itemID, Error: nullableText(&message),
+		SelectedRunID: nullableUUID(&runID), SelectedItemID: itemID,
+		Error: nullableText(&message),
 		JobID: lease.JobID, WorkerID: nullableText(&lease.WorkerID),
 	})
 	if err != nil {
@@ -183,7 +233,8 @@ func (d *Database) FailEvalRunItem(
 	lease domain.JobLease,
 ) error {
 	_, err := d.queries.FailEvalRunItem(ctx, db.FailEvalRunItemParams{
-		SelectedRunID: runID, SelectedItemID: itemID, Error: nullableText(&message),
+		SelectedRunID: nullableUUID(&runID), SelectedItemID: itemID,
+		Error: nullableText(&message),
 		JobID: lease.JobID, WorkerID: nullableText(&lease.WorkerID),
 	})
 	if err != nil {
@@ -212,7 +263,7 @@ func (d *Database) CompleteEvalRunItem(
 		return mapStoreError("lock score job", err)
 	}
 	if err := queries.DeleteEvalRunItemScores(ctx, db.DeleteEvalRunItemScoresParams{
-		EvalRunID: runID, DatasetItemID: itemID,
+		EvalRunID: nullableUUID(&runID), DatasetItemID: nullableUUID(&itemID),
 	}); err != nil {
 		return mapStoreError("delete stale item scores", err)
 	}
@@ -222,7 +273,7 @@ func (d *Database) CompleteEvalRunItem(
 		}
 	}
 	if _, err := queries.CompleteEvalRunItem(ctx, db.CompleteEvalRunItemParams{
-		SelectedRunID: runID, SelectedItemID: itemID,
+		SelectedRunID: nullableUUID(&runID), SelectedItemID: itemID,
 		JobID: lease.JobID, WorkerID: nullableText(&lease.WorkerID),
 	}); err != nil {
 		return mapStoreError("complete eval run item", err)
@@ -235,7 +286,8 @@ func (d *Database) CompleteEvalRunItem(
 
 func jobFromRow(row db.Job) (domain.Job, error) {
 	job := domain.Job{
-		ID: row.ID, Kind: row.Kind, EvalRunID: row.EvalRunID,
+		ID: row.ID, Kind: row.Kind, EvalRunID: optionalUUID(row.EvalRunID),
+		TraceID: optionalUUID(row.TraceID), Scorer: row.Scorer.String,
 		Status: row.Status, RunAfter: row.RunAfter.Time,
 		Attempts: int(row.Attempts), MaxAttempts: int(row.MaxAttempts),
 		LockedBy: optionalText(row.LockedBy), LockedAt: optionalTimestamp(row.LockedAt),
@@ -255,11 +307,18 @@ func pendingEvalRunItemFromRow(row db.ListPendingEvalRunItemsRow) (domain.EvalRu
 	if err != nil {
 		return domain.EvalRunItem{}, err
 	}
+	generatedContext, err := generatedContextFromJSON(row.GeneratedContext)
+	if err != nil {
+		return domain.EvalRunItem{}, err
+	}
 	return domain.EvalRunItem{
 		EvalRunID: row.EvalRunID, DatasetItemID: row.DatasetItemID, Status: row.Status,
 		Error: optionalText(row.Error), StartedAt: optionalTimestamp(row.StartedAt),
 		FinishedAt: optionalTimestamp(row.FinishedAt), CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time, Item: item,
+		GeneratedOutput:  optionalText(row.GeneratedOutput),
+		GeneratedContext: generatedContext,
+		GeneratedAt:      optionalTimestamp(row.GeneratedAt),
 	}, nil
 }
 
@@ -285,7 +344,7 @@ func insertScore(ctx context.Context, queries *db.Queries, score domain.Score) e
 		Passed: score.Passed, Rationale: score.Rationale, Details: details,
 		PromptTemplateID: score.PromptTemplateID, JudgeModel: score.JudgeModel,
 		JudgeProvider: score.JudgeProvider, JudgeTokens: int32(score.JudgeTokens),
-		EvalRunID: score.EvalRunID, DatasetItemID: score.DatasetItemID,
+		EvalRunID: nullableUUID(score.EvalRunID), DatasetItemID: nullableUUID(score.DatasetItemID),
 	})
 	if err != nil {
 		return mapStoreError("insert score", err)

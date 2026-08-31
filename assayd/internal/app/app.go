@@ -18,6 +18,7 @@ import (
 	"github.com/marioweid/assay/assayd/internal/migrate"
 	"github.com/marioweid/assay/assayd/internal/otlp"
 	"github.com/marioweid/assay/assayd/internal/store"
+	"github.com/marioweid/assay/assayd/internal/target"
 	"github.com/marioweid/assay/assayd/internal/worker"
 
 	"github.com/google/uuid"
@@ -56,24 +57,35 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	}
 	service := domain.NewService(database, cipher)
 	evaluations := domain.NewEvaluationService(database, cipher, cfg.JobMaxAttempts)
-	runner := worker.NewRunner(
-		database,
-		evaluations,
-		&http.Client{Timeout: 60 * time.Second},
+	judgeClient := &http.Client{Timeout: 60 * time.Second}
+	targetClient := target.NewClient(http.DefaultTransport)
+	runner := worker.NewRunner(worker.RunnerDependencies{
+		Repository:  database,
+		Resolver:    evaluations,
+		Targets:     service,
+		Generator:   targetClient,
+		JudgeClient: judgeClient,
+		Defaults: domain.JudgeDefaults{
+			BaseURL: cfg.JudgeBaseURL, APIKey: cfg.JudgeAPIKey, Model: cfg.JudgeModel,
+		},
+	})
+	traceRunner := worker.NewTraceRunner(
+		database, evaluations, judgeClient,
 		domain.JudgeDefaults{
 			BaseURL: cfg.JudgeBaseURL, APIKey: cfg.JudgeAPIKey, Model: cfg.JudgeModel,
 		},
 	)
+	dispatcher := worker.NewDispatcher(runner, traceRunner)
 	return &App{
 		config:      cfg,
 		logger:      logger,
 		database:    database,
 		cipher:      cipher,
 		service:     service,
-		traces:      domain.NewTraceService(database, service),
+		traces:      domain.NewTraceService(database, service, cfg.JobMaxAttempts),
 		evaluations: evaluations,
 		workers: worker.NewPool(
-			database, runner, logger, uuid.NewString(), cfg.WorkerConcurrency,
+			database, dispatcher, logger, uuid.NewString(), cfg.WorkerConcurrency,
 		),
 	}, nil
 }

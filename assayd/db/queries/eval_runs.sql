@@ -3,8 +3,8 @@ INSERT INTO eval_runs (
     id, application_id, dataset_id, name, status, mode, params, scorers, total_items
 )
 SELECT
-    sqlc.arg(id), datasets.application_id, datasets.id, sqlc.arg(name), 'pending',
-    'score_existing', sqlc.arg(params), sqlc.arg(scorers),
+	    sqlc.arg(id), datasets.application_id, datasets.id, sqlc.arg(name), 'pending',
+	    sqlc.arg(mode), sqlc.arg(params), sqlc.arg(scorers),
     (SELECT count(*)::integer FROM dataset_items WHERE dataset_id = datasets.id)
 FROM datasets
 WHERE datasets.id = sqlc.arg(dataset_id)
@@ -41,7 +41,7 @@ WHERE id = $1;
 
 -- name: ListEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-       ri.created_at, ri.updated_at,
+	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
        di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
        di.created_at AS item_created_at, di.updated_at AS item_updated_at
 FROM eval_run_items ri
@@ -56,7 +56,7 @@ LIMIT sqlc.arg(page_size);
 
 -- name: ListPendingEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-       ri.created_at, ri.updated_at,
+	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
        di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
        di.created_at AS item_created_at, di.updated_at AS item_updated_at
 FROM eval_run_items ri
@@ -138,6 +138,24 @@ RETURNING eri.eval_run_id;
 -- name: DeleteEvalRunItemScores :exec
 DELETE FROM scores WHERE eval_run_id = $1 AND dataset_item_id = $2;
 
+-- name: SaveEvalRunItemGeneration :one
+WITH owned_job AS MATERIALIZED (
+    SELECT j.id, j.eval_run_id
+    FROM jobs j
+    WHERE j.id = sqlc.arg(job_id) AND j.status = 'running'
+      AND j.kind = 'eval_run' AND j.locked_by = sqlc.arg(worker_id)
+      AND j.lease_expires_at > now() AND j.eval_run_id = sqlc.arg(selected_run_id)
+    FOR UPDATE
+)
+UPDATE eval_run_items eri
+SET generated_output = sqlc.arg(generated_output),
+    generated_context = sqlc.arg(generated_context), generated_at = now(), updated_at = now()
+FROM owned_job
+WHERE eri.eval_run_id = owned_job.eval_run_id
+  AND eri.dataset_item_id = sqlc.arg(selected_item_id) AND eri.status = 'running'
+  AND EXISTS (SELECT 1 FROM eval_runs er WHERE er.id = eri.eval_run_id AND er.status = 'running')
+RETURNING eri.eval_run_id;
+
 -- name: InsertOfflineScore :one
 INSERT INTO scores (
     scorer, scorer_config_id, value, threshold, passed, rationale, details,
@@ -215,8 +233,9 @@ SELECT * FROM canceled_run;
 
 -- name: ListEvalRunScores :many
 SELECT id, scorer, scorer_config_id, value, threshold, passed, rationale, details,
-       prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
-       dataset_item_id, created_at
+	   prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
+	   dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input,
+	   judged_output, judged_context, judged_reference
 FROM scores
 WHERE eval_run_id = sqlc.arg(eval_run_id)
   AND (NOT sqlc.arg(has_cursor)::boolean

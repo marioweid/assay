@@ -23,6 +23,12 @@ func TestOfflineScoringMigrationIsEmbedded(t *testing.T) {
 	}
 }
 
+func TestOnlineScoringMigrationIsEmbedded(t *testing.T) {
+	if _, err := migrations.Files.ReadFile("00005_online_scoring_generation.sql"); err != nil {
+		t.Fatalf("read embedded online scoring migration: %v", err)
+	}
+}
+
 func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	database := openDatabase(t, testutil.Postgres(t))
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -30,15 +36,15 @@ func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 4 {
-		t.Fatalf("migration version = %d, want 4", version)
+	if version := migrationVersion(t, database); version != 5 {
+		t.Fatalf("migration version = %d, want 5", version)
 	}
 	assertScoringTables(t, database)
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 4 {
-		t.Fatalf("migration version after reapply = %d, want 4", version)
+	if version := migrationVersion(t, database); version != 5 {
+		t.Fatalf("migration version after reapply = %d, want 5", version)
 	}
 }
 
@@ -67,8 +73,8 @@ func TestUpSerializesConcurrentReplicas(t *testing.T) {
 			t.Errorf("concurrent migration: %v", err)
 		}
 	}
-	if version := migrationVersion(t, first); version != 4 {
-		t.Fatalf("migration version = %d, want 4", version)
+	if version := migrationVersion(t, first); version != 5 {
+		t.Fatalf("migration version = %d, want 5", version)
 	}
 }
 

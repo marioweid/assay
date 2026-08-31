@@ -55,7 +55,7 @@ func newTraceServices(
 		t.Fatalf("create cipher: %v", err)
 	}
 	service := domain.NewService(database, cipher)
-	return service, domain.NewTraceService(database, service)
+	return service, domain.NewTraceService(database, service, 3)
 }
 
 func traceFixture(applicationID uuid.UUID) domain.Trace {

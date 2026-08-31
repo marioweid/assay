@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/marioweid/assay/assayd/internal/id"
 
@@ -19,6 +21,10 @@ func (s *Service) CreateApplication(
 	ctx context.Context,
 	input CreateApplicationInput,
 ) (Application, error) {
+	scorers, err := normalizedAutoScoreScorers(input.AutoScoreScorers)
+	if err != nil {
+		return Application{}, err
+	}
 	name, err := requiredValue("application name", input.Name)
 	if err != nil {
 		return Application{}, err
@@ -38,10 +44,6 @@ func (s *Service) CreateApplication(
 	if config == nil {
 		config = map[string]any{}
 	}
-	scorers := input.AutoScoreScorers
-	if scorers == nil {
-		scorers = []string{}
-	}
 	application, err := s.repository.CreateApplication(ctx, Application{
 		ID:               applicationID,
 		ProjectID:        input.ProjectID,
@@ -54,6 +56,16 @@ func (s *Service) CreateApplication(
 		return Application{}, fmt.Errorf("create application: %w", err)
 	}
 	return application, nil
+}
+
+func normalizedAutoScoreScorers(scorers []string) ([]string, error) {
+	if err := validateAutoScoreScorers(scorers); err != nil {
+		return nil, err
+	}
+	if scorers == nil {
+		return []string{}, nil
+	}
+	return scorers, nil
 }
 
 // ListApplications returns all applications or those owned by one project.
@@ -83,6 +95,63 @@ func (s *Service) GetApplication(
 		return Application{}, fmt.Errorf("get application %s: %w", applicationID, err)
 	}
 	return application, nil
+}
+
+// ResolveTargetEndpoint returns executable endpoint settings with the secret decrypted.
+func (s *Service) ResolveTargetEndpoint(
+	ctx context.Context,
+	applicationID uuid.UUID,
+) (ResolvedTargetEndpoint, error) {
+	application, err := s.GetApplication(ctx, applicationID)
+	if err != nil {
+		return ResolvedTargetEndpoint{}, err
+	}
+	endpoint := application.TargetEndpoint
+	if endpoint == nil {
+		return ResolvedTargetEndpoint{}, fmt.Errorf(
+			"resolve target endpoint: %w: application has no target endpoint", ErrInvalid,
+		)
+	}
+	secret := ""
+	if len(endpoint.SecretCiphertext) > 0 {
+		plaintext, err := s.cipher.Decrypt(endpoint.SecretCiphertext)
+		if err != nil {
+			return ResolvedTargetEndpoint{}, fmt.Errorf("decrypt target endpoint secret: %w", err)
+		}
+		secret = string(plaintext)
+	}
+	return ResolvedTargetEndpoint{
+		URL:             endpoint.URL,
+		Method:          endpoint.Method,
+		Headers:         maps.Clone(endpoint.Headers),
+		RequestTemplate: cloneJSONMap(endpoint.RequestTemplate),
+		ResponseMapping: endpoint.ResponseMapping,
+		Timeout:         time.Duration(endpoint.TimeoutMS) * time.Millisecond,
+		Secret:          secret,
+	}, nil
+}
+
+func cloneJSONMap(value map[string]any) map[string]any {
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = cloneJSONValue(item)
+	}
+	return cloned
+}
+
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(typed)
+	case []any:
+		cloned := make([]any, len(typed))
+		for index, item := range typed {
+			cloned[index] = cloneJSONValue(item)
+		}
+		return cloned
+	default:
+		return typed
+	}
 }
 
 // UpdateApplication merges and persists supplied application fields.
@@ -121,6 +190,23 @@ func (s *Service) UpdateApplication(
 func validateApplicationUpdate(input UpdateApplicationInput) error {
 	if input.Name == nil && input.Slug == nil && input.Config == nil && input.AutoScoreScorers == nil {
 		return fmt.Errorf("update application: %w: no fields supplied", ErrInvalid)
+	}
+	if input.AutoScoreScorers != nil {
+		return validateAutoScoreScorers(*input.AutoScoreScorers)
+	}
+	return nil
+}
+
+func validateAutoScoreScorers(scorers []string) error {
+	seen := make(map[string]struct{}, len(scorers))
+	for _, scorer := range scorers {
+		if scorer != ScorerGroundedness && scorer != ScorerCorrectness {
+			return fmt.Errorf("automatic scorers: %w: unsupported scorer %q", ErrInvalid, scorer)
+		}
+		if _, duplicate := seen[scorer]; duplicate {
+			return fmt.Errorf("automatic scorers: %w: duplicate scorer %q", ErrInvalid, scorer)
+		}
+		seen[scorer] = struct{}{}
 	}
 	return nil
 }

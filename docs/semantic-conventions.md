@@ -40,6 +40,27 @@ If unresolved and `ASSAY_AUTO_CREATE_APPS=true`, the app is auto-created; otherw
 | `gen_ai.usage.output_tokens` | int | + `reasoning.output_tokens` |
 | `gen_ai.request.{temperature,top_p,top_k,max_tokens,seed,…}` | number | request params |
 
+### Scoring content
+
+Online scoring reads captured conversation content only from `gen_ai.input.messages` and
+`gen_ai.output.messages` on the one span marked `assay.scorable=true`. Each attribute may be an
+in-memory structured array after OTLP decoding or a string containing a JSON array. Every message
+requires a `role` and either a non-blank string `content` or `parts` containing text objects with
+string `content` values. Assay joins text parts in order, uses the final `user` input message, and
+uses the first `assistant` output candidate. It does not read `assay.input` or `assay.output`
+fallback attributes.
+
+Groundedness context uses flattened `assay.context.chunks.<i>.id` and `.text` fields when any
+flattened context field or `assay.context.chunk.count` is present. Indices must be contiguous from
+zero through `count - 1`, with non-blank, unique IDs and non-blank text. Malformed flattened context
+is rejected rather than falling back. When flattened context is absent,
+`gen_ai.retrieval.documents` may be a structured or JSON-string array of strings or objects with a
+non-blank `text` and optional non-blank `id`; missing IDs become `k0`, `k1`, and so on.
+
+Correctness uses the span or trace reference answer captured from `assay.reference.answer`.
+Groundedness requires at least one valid context chunk, and correctness requires a non-blank
+reference.
+
 **Retrieval / RAG spans** (`gen_ai.operation.name = "retrieval"`) — already defined by OTel (Development):
 
 | Attribute | Type | Notes |
@@ -137,14 +158,3 @@ Trace (resource: assay.application.slug="support-bot")
          gen_ai.evaluation.name="groundedness"  gen_ai.evaluation.score.value=1.0
          gen_ai.evaluation.score.label="pass"   assay.evaluation.judge.model="gpt-4o-mini"
 ```
-
-## Client helper → attribute mapping (`assay` Python lib)
-
-| Helper | Sets |
-|---|---|
-| `assay.init(application=…)` | resource `assay.application.slug`, `service.name` |
-| `assay.span(kind="retrieval")` + `s.set_context(chunks)` | `gen_ai.operation.name=retrieval`, `gen_ai.retrieval.documents`, `assay.context.chunks.*`, `assay.context.chunk.count` |
-| `assay.span(scorable=True)` + `s.set_input/s.set_output` | `assay.scorable=true`, `assay.scorable.kind`, input/output content (opt-in) |
-| `s.set_reference(text)` | `assay.reference.answer`, `assay.reference.source` |
-
-Users never hand-type these keys; the helpers own the mapping so the convention can evolve in one place.

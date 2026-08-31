@@ -59,6 +59,24 @@ func TestTraceOutputBuildsTreeAndKeepsOrphansAsRoots(t *testing.T) {
 	assertExtractedChildFields(t, output.Spans[0].Children[0])
 }
 
+func TestScoreOutputIncludesOnlineAuditFields(t *testing.T) {
+	traceID := uuid.Must(uuid.NewV7())
+	spanID := int64(42)
+	spanTime := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	reference := "reference"
+	response := scoreOutput(domain.Score{
+		TraceID: &traceID, SpanID: &spanID, SpanStartTime: &spanTime,
+		JudgedInput: "question", JudgedOutput: "answer",
+		JudgedContext:   []domain.Chunk{{ID: "k0", Text: "context"}},
+		JudgedReference: &reference,
+	})
+	if response.TraceID == nil || *response.TraceID != traceID.String() ||
+		response.JudgedInput == nil || *response.JudgedInput != "question" ||
+		response.SpanStartTime == nil || len(response.JudgedContext) != 1 {
+		t.Fatalf("online score response = %#v", response)
+	}
+}
+
 func assertTraceTree(t *testing.T, output traceResponse, traceID [16]byte) {
 	t.Helper()
 	if output.OTelTraceID != hex.EncodeToString(traceID[:]) || len(output.Spans) != 2 {

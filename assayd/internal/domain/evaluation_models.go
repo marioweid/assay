@@ -20,6 +20,13 @@ const (
 
 	// EvalModeScoreExisting scores outputs already stored in dataset items.
 	EvalModeScoreExisting = "score_existing"
+	// EvalModeGenerateThenScore generates outputs before scoring them.
+	EvalModeGenerateThenScore = "generate_then_score"
+
+	// JobKindEvalRun executes one offline evaluation run.
+	JobKindEvalRun = "eval_run"
+	// JobKindScoringTask scores one trace with one scorer.
+	JobKindScoringTask = "scoring_task"
 	// EvalStatusPending indicates a run or item is queued.
 	EvalStatusPending = "pending"
 	// EvalStatusRunning indicates a run or item is executing.
@@ -209,15 +216,24 @@ type EvalRunPage struct {
 
 // EvalRunItem records one dataset item's outcome within a run.
 type EvalRunItem struct {
-	EvalRunID     uuid.UUID
-	DatasetItemID uuid.UUID
-	Status        string
-	Error         *string
-	StartedAt     *time.Time
-	FinishedAt    *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Item          DatasetItem
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	Status           string
+	Error            *string
+	StartedAt        *time.Time
+	FinishedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Item             DatasetItem
+	GeneratedOutput  *string
+	GeneratedContext []Chunk
+	GeneratedAt      *time.Time
+}
+
+// Generation is one target endpoint's mapped output and context.
+type Generation struct {
+	Output  string
+	Context []Chunk
 }
 
 // EvalRunItemPage is one page of item outcomes.
@@ -226,7 +242,7 @@ type EvalRunItemPage struct {
 	NextCursor *PageCursor
 }
 
-// Score is one persisted scorer result for a dataset item.
+// Score is one persisted scorer result for an offline item or online trace.
 type Score struct {
 	ID               int64
 	Scorer           string
@@ -240,8 +256,15 @@ type Score struct {
 	JudgeModel       string
 	JudgeProvider    string
 	JudgeTokens      int
-	EvalRunID        uuid.UUID
-	DatasetItemID    uuid.UUID
+	EvalRunID        *uuid.UUID
+	DatasetItemID    *uuid.UUID
+	TraceID          *uuid.UUID
+	SpanID           *int64
+	SpanStartTime    *time.Time
+	JudgedInput      string
+	JudgedOutput     string
+	JudgedContext    []Chunk
+	JudgedReference  *string
 	CreatedAt        time.Time
 }
 
@@ -267,7 +290,9 @@ type ScorePage struct {
 type Job struct {
 	ID             uuid.UUID
 	Kind           string
-	EvalRunID      uuid.UUID
+	EvalRunID      *uuid.UUID
+	TraceID        *uuid.UUID
+	Scorer         string
 	Status         string
 	RunAfter       time.Time
 	Attempts       int
@@ -286,6 +311,23 @@ type JobLease struct {
 	WorkerID string
 }
 
+// AutoScoreIntent identifies an automatic task before an ingested trace has its stored ID.
+type AutoScoreIntent struct {
+	ApplicationID uuid.UUID
+	OTelTraceID   [16]byte
+	Scorer        string
+	JobID         uuid.UUID
+	MaxAttempts   int
+}
+
+// TraceScoreRequest identifies one validated persisted trace/scorer task.
+type TraceScoreRequest struct {
+	TraceID     uuid.UUID
+	Scorer      string
+	JobID       uuid.UUID
+	MaxAttempts int
+}
+
 // EvaluationRepository persists the M3 catalog and run intent.
 type EvaluationRepository interface {
 	GetApplication(context.Context, uuid.UUID) (Application, error)
@@ -297,6 +339,8 @@ type EvaluationRepository interface {
 	CreateDatasetItems(context.Context, uuid.UUID, []DatasetItem) ([]DatasetItem, error)
 	ListDatasetItems(context.Context, uuid.UUID, PageQuery) ([]DatasetItem, error)
 	CountDatasetItems(context.Context, uuid.UUID) (int, error)
+	CountDatasetItemsMissingOutput(context.Context, uuid.UUID) (int, error)
+	CountDatasetItemsMissingReference(context.Context, uuid.UUID) (int, error)
 	UpsertScorerConfig(context.Context, ScorerConfig) (ScorerConfig, error)
 	ListScorerConfigs(context.Context, uuid.UUID) ([]ScorerConfig, error)
 	CreateEvalRun(context.Context, EvalRun, Job) (EvalRun, error)

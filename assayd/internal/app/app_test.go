@@ -46,8 +46,8 @@ func TestAppMigratesBeforeServingAndStops(t *testing.T) {
 		}
 	})
 
-	if version := migrationVersion(t, dsn); version != 4 {
-		t.Fatalf("migration version before serving = %d, want 4", version)
+	if version := migrationVersion(t, dsn); version != 5 {
+		t.Fatalf("migration version before serving = %d, want 5", version)
 	}
 
 	serveCtx, cancel := context.WithCancel(t.Context())

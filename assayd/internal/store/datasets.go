@@ -117,6 +117,30 @@ func (d *Database) CountDatasetItems(ctx context.Context, datasetID uuid.UUID) (
 	return int(count), nil
 }
 
+// CountDatasetItemsMissingOutput returns the number of cases without stored output.
+func (d *Database) CountDatasetItemsMissingOutput(
+	ctx context.Context,
+	datasetID uuid.UUID,
+) (int, error) {
+	count, err := d.queries.CountDatasetItemsMissingOutput(ctx, datasetID)
+	if err != nil {
+		return 0, mapStoreError("count dataset items missing output", err)
+	}
+	return int(count), nil
+}
+
+// CountDatasetItemsMissingReference returns the number of cases without expected output.
+func (d *Database) CountDatasetItemsMissingReference(
+	ctx context.Context,
+	datasetID uuid.UUID,
+) (int, error) {
+	count, err := d.queries.CountDatasetItemsMissingReference(ctx, datasetID)
+	if err != nil {
+		return 0, mapStoreError("count dataset items missing reference", err)
+	}
+	return int(count), nil
+}
+
 // ListDatasetItems returns cursor-paginated items from one dataset.
 func (d *Database) ListDatasetItems(
 	ctx context.Context,

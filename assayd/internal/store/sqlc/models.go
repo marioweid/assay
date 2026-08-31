@@ -79,20 +79,23 @@ type EvalRun struct {
 }
 
 type EvalRunItem struct {
-	EvalRunID     uuid.UUID
-	DatasetItemID uuid.UUID
-	Status        string
-	Error         pgtype.Text
-	StartedAt     pgtype.Timestamptz
-	FinishedAt    pgtype.Timestamptz
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	Status           string
+	Error            pgtype.Text
+	StartedAt        pgtype.Timestamptz
+	FinishedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	GeneratedOutput  pgtype.Text
+	GeneratedContext []byte
+	GeneratedAt      pgtype.Timestamptz
 }
 
 type Job struct {
 	ID             uuid.UUID
 	Kind           string
-	EvalRunID      uuid.UUID
+	EvalRunID      pgtype.UUID
 	Status         string
 	RunAfter       pgtype.Timestamptz
 	Attempts       int32
@@ -103,6 +106,8 @@ type Job struct {
 	LastError      pgtype.Text
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	TraceID        pgtype.UUID
+	Scorer         pgtype.Text
 }
 
 type Project struct {
@@ -126,9 +131,16 @@ type Score struct {
 	JudgeModel       string
 	JudgeProvider    string
 	JudgeTokens      int32
-	EvalRunID        uuid.UUID
-	DatasetItemID    uuid.UUID
+	EvalRunID        pgtype.UUID
+	DatasetItemID    pgtype.UUID
 	CreatedAt        pgtype.Timestamptz
+	TraceID          pgtype.UUID
+	SpanID           pgtype.Int8
+	SpanStartTime    pgtype.Timestamptz
+	JudgedInput      pgtype.Text
+	JudgedOutput     pgtype.Text
+	JudgedContext    []byte
+	JudgedReference  pgtype.Text
 }
 
 type ScorerConfig struct {
@@ -156,8 +168,8 @@ type ScoresDefault struct {
 	JudgeModel       string
 	JudgeProvider    string
 	JudgeTokens      int32
-	EvalRunID        uuid.UUID
-	DatasetItemID    uuid.UUID
+	EvalRunID        pgtype.UUID
+	DatasetItemID    pgtype.UUID
 	CreatedAt        pgtype.Timestamptz
 }
 

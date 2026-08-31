@@ -48,7 +48,7 @@ type listDatasetItemsInput struct {
 type datasetItemInput struct {
 	ExternalID     *string        `json:"external_id,omitempty"`
 	Input          map[string]any `json:"input"`
-	Output         string         `json:"output"`
+	Output         string         `json:"output,omitempty"`
 	ExpectedOutput *string        `json:"expected_output,omitempty"`
 	Context        []domain.Chunk `json:"context,omitempty"`
 	Metadata       map[string]any `json:"metadata,omitempty"`

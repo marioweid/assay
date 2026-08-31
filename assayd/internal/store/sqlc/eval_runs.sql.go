@@ -77,7 +77,7 @@ type CancelEvalRunRow struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-func (q *Queries) CancelEvalRun(ctx context.Context, selectedID uuid.UUID) (CancelEvalRunRow, error) {
+func (q *Queries) CancelEvalRun(ctx context.Context, selectedID pgtype.UUID) (CancelEvalRunRow, error) {
 	row := q.db.QueryRow(ctx, cancelEvalRun, selectedID)
 	var i CancelEvalRunRow
 	err := row.Scan(
@@ -126,7 +126,7 @@ type CompleteEvalRunItemParams struct {
 	SelectedItemID uuid.UUID
 	JobID          uuid.UUID
 	WorkerID       pgtype.Text
-	SelectedRunID  uuid.UUID
+	SelectedRunID  pgtype.UUID
 }
 
 func (q *Queries) CompleteEvalRunItem(ctx context.Context, arg CompleteEvalRunItemParams) (uuid.UUID, error) {
@@ -146,12 +146,12 @@ INSERT INTO eval_runs (
     id, application_id, dataset_id, name, status, mode, params, scorers, total_items
 )
 SELECT
-    $1, datasets.application_id, datasets.id, $2, 'pending',
-    'score_existing', $3, $4,
+	    $1, datasets.application_id, datasets.id, $2, 'pending',
+	    $3, $4, $5,
     (SELECT count(*)::integer FROM dataset_items WHERE dataset_id = datasets.id)
 FROM datasets
-WHERE datasets.id = $5
-  AND datasets.application_id = $6
+WHERE datasets.id = $6
+  AND datasets.application_id = $7
 RETURNING id, application_id, dataset_id, name, status, mode, params, scorers, aggregates,
           total_items, succeeded_items, failed_items, canceled_items, started_at, finished_at,
           error, created_at, updated_at
@@ -160,6 +160,7 @@ RETURNING id, application_id, dataset_id, name, status, mode, params, scorers, a
 type CreateEvalRunParams struct {
 	ID            uuid.UUID
 	Name          string
+	Mode          string
 	Params        json.RawMessage
 	Scorers       []string
 	DatasetID     uuid.UUID
@@ -170,6 +171,7 @@ func (q *Queries) CreateEvalRun(ctx context.Context, arg CreateEvalRunParams) (E
 	row := q.db.QueryRow(ctx, createEvalRun,
 		arg.ID,
 		arg.Name,
+		arg.Mode,
 		arg.Params,
 		arg.Scorers,
 		arg.DatasetID,
@@ -221,8 +223,8 @@ DELETE FROM scores WHERE eval_run_id = $1 AND dataset_item_id = $2
 `
 
 type DeleteEvalRunItemScoresParams struct {
-	EvalRunID     uuid.UUID
-	DatasetItemID uuid.UUID
+	EvalRunID     pgtype.UUID
+	DatasetItemID pgtype.UUID
 }
 
 func (q *Queries) DeleteEvalRunItemScores(ctx context.Context, arg DeleteEvalRunItemScoresParams) error {
@@ -254,7 +256,7 @@ type FailEvalRunItemParams struct {
 	SelectedItemID uuid.UUID
 	JobID          uuid.UUID
 	WorkerID       pgtype.Text
-	SelectedRunID  uuid.UUID
+	SelectedRunID  pgtype.UUID
 }
 
 func (q *Queries) FailEvalRunItem(ctx context.Context, arg FailEvalRunItemParams) (uuid.UUID, error) {
@@ -332,11 +334,29 @@ type InsertOfflineScoreParams struct {
 	JudgeModel       string
 	JudgeProvider    string
 	JudgeTokens      int32
-	EvalRunID        uuid.UUID
-	DatasetItemID    uuid.UUID
+	EvalRunID        pgtype.UUID
+	DatasetItemID    pgtype.UUID
 }
 
-func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScoreParams) (Score, error) {
+type InsertOfflineScoreRow struct {
+	ID               int64
+	Scorer           string
+	ScorerConfigID   pgtype.UUID
+	Value            pgtype.Numeric
+	Threshold        pgtype.Numeric
+	Passed           bool
+	Rationale        string
+	Details          json.RawMessage
+	PromptTemplateID string
+	JudgeModel       string
+	JudgeProvider    string
+	JudgeTokens      int32
+	EvalRunID        pgtype.UUID
+	DatasetItemID    pgtype.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScoreParams) (InsertOfflineScoreRow, error) {
 	row := q.db.QueryRow(ctx, insertOfflineScore,
 		arg.Scorer,
 		arg.ScorerConfigID,
@@ -352,7 +372,7 @@ func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScore
 		arg.EvalRunID,
 		arg.DatasetItemID,
 	)
-	var i Score
+	var i InsertOfflineScoreRow
 	err := row.Scan(
 		&i.ID,
 		&i.Scorer,
@@ -375,7 +395,7 @@ func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScore
 
 const listEvalRunItems = `-- name: ListEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-       ri.created_at, ri.updated_at,
+	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
        di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
        di.created_at AS item_created_at, di.updated_at AS item_updated_at
 FROM eval_run_items ri
@@ -398,23 +418,26 @@ type ListEvalRunItemsParams struct {
 }
 
 type ListEvalRunItemsRow struct {
-	EvalRunID      uuid.UUID
-	DatasetItemID  uuid.UUID
-	Status         string
-	Error          pgtype.Text
-	StartedAt      pgtype.Timestamptz
-	FinishedAt     pgtype.Timestamptz
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DatasetID      uuid.UUID
-	ExternalID     pgtype.Text
-	Input          json.RawMessage
-	Output         pgtype.Text
-	ExpectedOutput pgtype.Text
-	Context        []byte
-	Metadata       json.RawMessage
-	ItemCreatedAt  pgtype.Timestamptz
-	ItemUpdatedAt  pgtype.Timestamptz
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	Status           string
+	Error            pgtype.Text
+	StartedAt        pgtype.Timestamptz
+	FinishedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	GeneratedOutput  pgtype.Text
+	GeneratedContext []byte
+	GeneratedAt      pgtype.Timestamptz
+	DatasetID        uuid.UUID
+	ExternalID       pgtype.Text
+	Input            json.RawMessage
+	Output           pgtype.Text
+	ExpectedOutput   pgtype.Text
+	Context          []byte
+	Metadata         json.RawMessage
+	ItemCreatedAt    pgtype.Timestamptz
+	ItemUpdatedAt    pgtype.Timestamptz
 }
 
 func (q *Queries) ListEvalRunItems(ctx context.Context, arg ListEvalRunItemsParams) ([]ListEvalRunItemsRow, error) {
@@ -441,6 +464,9 @@ func (q *Queries) ListEvalRunItems(ctx context.Context, arg ListEvalRunItemsPara
 			&i.FinishedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GeneratedOutput,
+			&i.GeneratedContext,
+			&i.GeneratedAt,
 			&i.DatasetID,
 			&i.ExternalID,
 			&i.Input,
@@ -463,8 +489,9 @@ func (q *Queries) ListEvalRunItems(ctx context.Context, arg ListEvalRunItemsPara
 
 const listEvalRunScores = `-- name: ListEvalRunScores :many
 SELECT id, scorer, scorer_config_id, value, threshold, passed, rationale, details,
-       prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
-       dataset_item_id, created_at
+	   prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
+	   dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input,
+	   judged_output, judged_context, judged_reference
 FROM scores
 WHERE eval_run_id = $1
   AND (NOT $2::boolean
@@ -474,7 +501,7 @@ LIMIT $5
 `
 
 type ListEvalRunScoresParams struct {
-	EvalRunID  uuid.UUID
+	EvalRunID  pgtype.UUID
 	HasCursor  bool
 	CursorTime pgtype.Timestamptz
 	CursorID   int64
@@ -512,6 +539,13 @@ func (q *Queries) ListEvalRunScores(ctx context.Context, arg ListEvalRunScoresPa
 			&i.EvalRunID,
 			&i.DatasetItemID,
 			&i.CreatedAt,
+			&i.TraceID,
+			&i.SpanID,
+			&i.SpanStartTime,
+			&i.JudgedInput,
+			&i.JudgedOutput,
+			&i.JudgedContext,
+			&i.JudgedReference,
 		); err != nil {
 			return nil, err
 		}
@@ -598,7 +632,7 @@ func (q *Queries) ListEvalRuns(ctx context.Context, arg ListEvalRunsParams) ([]E
 
 const listPendingEvalRunItems = `-- name: ListPendingEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-       ri.created_at, ri.updated_at,
+	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
        di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
        di.created_at AS item_created_at, di.updated_at AS item_updated_at
 FROM eval_run_items ri
@@ -608,23 +642,26 @@ ORDER BY ri.created_at, ri.dataset_item_id
 `
 
 type ListPendingEvalRunItemsRow struct {
-	EvalRunID      uuid.UUID
-	DatasetItemID  uuid.UUID
-	Status         string
-	Error          pgtype.Text
-	StartedAt      pgtype.Timestamptz
-	FinishedAt     pgtype.Timestamptz
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	DatasetID      uuid.UUID
-	ExternalID     pgtype.Text
-	Input          json.RawMessage
-	Output         pgtype.Text
-	ExpectedOutput pgtype.Text
-	Context        []byte
-	Metadata       json.RawMessage
-	ItemCreatedAt  pgtype.Timestamptz
-	ItemUpdatedAt  pgtype.Timestamptz
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	Status           string
+	Error            pgtype.Text
+	StartedAt        pgtype.Timestamptz
+	FinishedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	GeneratedOutput  pgtype.Text
+	GeneratedContext []byte
+	GeneratedAt      pgtype.Timestamptz
+	DatasetID        uuid.UUID
+	ExternalID       pgtype.Text
+	Input            json.RawMessage
+	Output           pgtype.Text
+	ExpectedOutput   pgtype.Text
+	Context          []byte
+	Metadata         json.RawMessage
+	ItemCreatedAt    pgtype.Timestamptz
+	ItemUpdatedAt    pgtype.Timestamptz
 }
 
 func (q *Queries) ListPendingEvalRunItems(ctx context.Context, evalRunID uuid.UUID) ([]ListPendingEvalRunItemsRow, error) {
@@ -645,6 +682,9 @@ func (q *Queries) ListPendingEvalRunItems(ctx context.Context, evalRunID uuid.UU
 			&i.FinishedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GeneratedOutput,
+			&i.GeneratedContext,
+			&i.GeneratedAt,
 			&i.DatasetID,
 			&i.ExternalID,
 			&i.Input,
@@ -688,7 +728,7 @@ type MarkEvalRunItemRunningParams struct {
 	SelectedItemID uuid.UUID
 	JobID          uuid.UUID
 	WorkerID       pgtype.Text
-	SelectedRunID  uuid.UUID
+	SelectedRunID  pgtype.UUID
 }
 
 func (q *Queries) MarkEvalRunItemRunning(ctx context.Context, arg MarkEvalRunItemRunningParams) (uuid.UUID, error) {
@@ -727,12 +767,54 @@ type ResetEvalRunItemPendingParams struct {
 	SelectedItemID uuid.UUID
 	JobID          uuid.UUID
 	WorkerID       pgtype.Text
-	SelectedRunID  uuid.UUID
+	SelectedRunID  pgtype.UUID
 }
 
 func (q *Queries) ResetEvalRunItemPending(ctx context.Context, arg ResetEvalRunItemPendingParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, resetEvalRunItemPending,
 		arg.Error,
+		arg.SelectedItemID,
+		arg.JobID,
+		arg.WorkerID,
+		arg.SelectedRunID,
+	)
+	var eval_run_id uuid.UUID
+	err := row.Scan(&eval_run_id)
+	return eval_run_id, err
+}
+
+const saveEvalRunItemGeneration = `-- name: SaveEvalRunItemGeneration :one
+WITH owned_job AS MATERIALIZED (
+    SELECT j.id, j.eval_run_id
+    FROM jobs j
+    WHERE j.id = $4 AND j.status = 'running'
+      AND j.kind = 'eval_run' AND j.locked_by = $5
+      AND j.lease_expires_at > now() AND j.eval_run_id = $6
+    FOR UPDATE
+)
+UPDATE eval_run_items eri
+SET generated_output = $1,
+    generated_context = $2, generated_at = now(), updated_at = now()
+FROM owned_job
+WHERE eri.eval_run_id = owned_job.eval_run_id
+  AND eri.dataset_item_id = $3 AND eri.status = 'running'
+  AND EXISTS (SELECT 1 FROM eval_runs er WHERE er.id = eri.eval_run_id AND er.status = 'running')
+RETURNING eri.eval_run_id
+`
+
+type SaveEvalRunItemGenerationParams struct {
+	GeneratedOutput  pgtype.Text
+	GeneratedContext []byte
+	SelectedItemID   uuid.UUID
+	JobID            uuid.UUID
+	WorkerID         pgtype.Text
+	SelectedRunID    pgtype.UUID
+}
+
+func (q *Queries) SaveEvalRunItemGeneration(ctx context.Context, arg SaveEvalRunItemGenerationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, saveEvalRunItemGeneration,
+		arg.GeneratedOutput,
+		arg.GeneratedContext,
 		arg.SelectedItemID,
 		arg.JobID,
 		arg.WorkerID,
@@ -764,7 +846,7 @@ RETURNING er.id, application_id, dataset_id, name, status, mode, params, scorers
 type StartEvalRunParams struct {
 	JobID         uuid.UUID
 	WorkerID      pgtype.Text
-	SelectedRunID uuid.UUID
+	SelectedRunID pgtype.UUID
 }
 
 func (q *Queries) StartEvalRun(ctx context.Context, arg StartEvalRunParams) (EvalRun, error) {

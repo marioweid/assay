@@ -34,6 +34,12 @@ func TestEvaluationServiceValidatesDatasetItems(t *testing.T) {
 	if len(items) != 1 || repository.items[0].Input["question"] != "What is Assay?" {
 		t.Fatalf("created items = %#v", items)
 	}
+	items, err = service.CreateDatasetItems(t.Context(), datasetID, []domain.CreateDatasetItemInput{{
+		Input: map[string]any{"question": "Generate this"},
+	}})
+	if err != nil || items[0].Output != nil {
+		t.Fatalf("create generation dataset item = %#v, %v", items, err)
+	}
 
 	_, err = service.CreateDatasetItems(t.Context(), datasetID, []domain.CreateDatasetItemInput{
 		{Input: map[string]any{"question": ""}, Output: "answer"},
@@ -107,8 +113,63 @@ func TestEvaluationServiceCreatesRunIntent(t *testing.T) {
 		t.Fatalf("create eval run: %v", err)
 	}
 	if run.Status != domain.EvalStatusPending || repository.job.MaxAttempts != 3 ||
-		repository.job.EvalRunID != run.ID {
+		repository.job.EvalRunID == nil || *repository.job.EvalRunID != run.ID {
 		t.Fatalf("run/job = %#v/%#v", run, repository.job)
+	}
+}
+
+func TestEvaluationServiceValidatesRunModeRequirements(t *testing.T) {
+	applicationID := uuid.Must(uuid.NewV7())
+	datasetID := uuid.Must(uuid.NewV7())
+	tests := []struct {
+		name        string
+		mode        string
+		scorers     []string
+		application domain.Application
+		missingOut  int
+		missingRef  int
+		wantError   bool
+	}{
+		{
+			name: "existing output required", mode: domain.EvalModeScoreExisting,
+			scorers: []string{domain.ScorerGroundedness}, missingOut: 1, wantError: true,
+		},
+		{
+			name: "generated endpoint required", mode: domain.EvalModeGenerateThenScore,
+			scorers: []string{domain.ScorerGroundedness}, wantError: true,
+		},
+		{
+			name: "generated output accepted", mode: domain.EvalModeGenerateThenScore,
+			scorers: []string{domain.ScorerGroundedness}, missingOut: 1,
+			application: domain.Application{TargetEndpoint: &domain.TargetEndpoint{}},
+		},
+		{
+			name: "correctness reference required", mode: domain.EvalModeGenerateThenScore,
+			scorers: []string{domain.ScorerCorrectness}, missingRef: 1, wantError: true,
+			application: domain.Application{TargetEndpoint: &domain.TargetEndpoint{}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &evaluationRepositoryFake{
+				application: test.application, dataset: domain.Dataset{
+					ID: datasetID, ApplicationID: applicationID,
+				},
+				itemCount: 1, missingOutput: test.missingOut, missingReference: test.missingRef,
+			}
+			repository.application.ID = applicationID
+			service := newEvaluationService(t, repository)
+			run, err := service.CreateEvalRun(t.Context(), domain.CreateEvalRunInput{
+				ApplicationID: applicationID, DatasetID: datasetID, Name: "run",
+				Mode: test.mode, Scorers: test.scorers,
+			})
+			if test.wantError && !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("create eval run error = %v, want ErrInvalid", err)
+			}
+			if !test.wantError && (err != nil || run.Mode != test.mode) {
+				t.Fatalf("create eval run = %#v, %v", run, err)
+			}
+		})
 	}
 }
 
@@ -180,14 +241,16 @@ func newEvaluationService(
 
 type evaluationRepositoryFake struct {
 	domain.EvaluationRepository
-	application domain.Application
-	project     domain.Project
-	dataset     domain.Dataset
-	items       []domain.DatasetItem
-	configs     []domain.ScorerConfig
-	itemCount   int
-	job         domain.Job
-	upserted    domain.ScorerConfig
+	application      domain.Application
+	project          domain.Project
+	dataset          domain.Dataset
+	items            []domain.DatasetItem
+	configs          []domain.ScorerConfig
+	itemCount        int
+	missingOutput    int
+	missingReference int
+	job              domain.Job
+	upserted         domain.ScorerConfig
 }
 
 func (f *evaluationRepositoryFake) GetApplication(
@@ -240,6 +303,20 @@ func (f *evaluationRepositoryFake) CountDatasetItems(
 	_ uuid.UUID,
 ) (int, error) {
 	return f.itemCount, nil
+}
+
+func (f *evaluationRepositoryFake) CountDatasetItemsMissingOutput(
+	_ context.Context,
+	_ uuid.UUID,
+) (int, error) {
+	return f.missingOutput, nil
+}
+
+func (f *evaluationRepositoryFake) CountDatasetItemsMissingReference(
+	_ context.Context,
+	_ uuid.UUID,
+) (int, error) {
+	return f.missingReference, nil
 }
 
 func (f *evaluationRepositoryFake) CreateEvalRun(

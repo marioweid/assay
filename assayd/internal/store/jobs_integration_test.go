@@ -53,6 +53,37 @@ func TestJobLeaseReapingOwnershipAndReleaseExhaustion(t *testing.T) {
 	}
 }
 
+//nolint:cyclop // The integration test checks each durable transition in one lifecycle.
+func TestScoringTaskClaimsAndCompletesWithoutEvalRun(t *testing.T) {
+	database := openTraceDatabase(t)
+	service, traces := newTraceServices(t, database)
+	project, application := createTraceApplication(t, service, "Online Queue")
+	trace := traceFixture(application.ID)
+	if err := traces.Ingest(t.Context(), project.ID, []domain.Trace{trace}); err != nil {
+		t.Fatalf("ingest trace: %v", err)
+	}
+	page, err := traces.List(t.Context(), project.ID, domain.TraceQuery{Limit: 1})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("list trace: %#v, %v", page.Items, err)
+	}
+	traceID := page.Items[0].ID
+	task, err := database.QueueScoringTask(t.Context(), domain.Job{
+		ID: uuid.Must(uuid.NewV7()), Kind: domain.JobKindScoringTask,
+		TraceID: &traceID, Scorer: domain.ScorerGroundedness, MaxAttempts: 3,
+	}, false)
+	if err != nil {
+		t.Fatalf("queue scoring task: %v", err)
+	}
+	claimed := claimJob(t, database, "online-worker", 30*time.Second)
+	if claimed.ID != task.ID || claimed.TraceID == nil || *claimed.TraceID != traceID ||
+		claimed.EvalRunID != nil || claimed.Scorer != domain.ScorerGroundedness {
+		t.Fatalf("claimed scoring task = %#v", claimed)
+	}
+	if err := database.CompleteJob(t.Context(), claimed.ID, "online-worker"); err != nil {
+		t.Fatalf("complete scoring task: %v", err)
+	}
+}
+
 func createLeaseFixture(
 	t *testing.T,
 ) (*store.Database, *domain.EvaluationService, uuid.UUID, uuid.UUID) {

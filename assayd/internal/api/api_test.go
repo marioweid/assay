@@ -271,7 +271,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatalf("create secret cipher: %v", err)
 	}
 	service := domain.NewService(database, cipher)
-	traceService := domain.NewTraceService(database, service)
+	traceService := domain.NewTraceService(database, service, 3)
 	evaluations := domain.NewEvaluationService(database, cipher, 3)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
@@ -285,7 +285,7 @@ func newDocumentationHandler(t *testing.T) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := domain.NewService(nil, nil)
-	traceService := domain.NewTraceService(nil, service)
+	traceService := domain.NewTraceService(nil, service, 3)
 	evaluations := domain.NewEvaluationService(nil, nil, 3)
 	mux := http.NewServeMux()
 	api.Register(mux, api.Dependencies{

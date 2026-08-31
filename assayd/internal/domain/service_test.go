@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/marioweid/assay/assayd/internal/auth"
 	secretcrypto "github.com/marioweid/assay/assayd/internal/crypto"
@@ -127,6 +128,32 @@ func TestServicePreservesAndClearsEndpointSecret(t *testing.T) {
 	}
 }
 
+func TestServiceResolvesExecutableTargetEndpoint(t *testing.T) {
+	service, _ := newService(t)
+	application := createApplication(t, service, createProject(t, service).ID)
+	secret := "endpoint-secret"
+	application, err := service.SetApplicationEndpoint(
+		t.Context(), application.ID,
+		domain.EndpointPatch{Endpoint: endpointInput(&secret)},
+	)
+	if err != nil {
+		t.Fatalf("set application endpoint: %v", err)
+	}
+
+	resolved, err := service.ResolveTargetEndpoint(t.Context(), application.ID)
+	if err != nil {
+		t.Fatalf("resolve target endpoint: %v", err)
+	}
+	if resolved.URL != application.TargetEndpoint.URL || resolved.Secret != secret ||
+		resolved.Timeout != 30*time.Second {
+		t.Fatalf("resolved target endpoint = %#v", resolved)
+	}
+	resolved.Headers["X-Test"] = "changed"
+	if application.TargetEndpoint.Headers["X-Test"] == "changed" {
+		t.Fatal("resolved target headers alias persisted configuration")
+	}
+}
+
 func TestServiceFiltersApplicationsAndCascadesProjectDelete(t *testing.T) {
 	service, _ := newService(t)
 	project := createProject(t, service)
@@ -144,6 +171,32 @@ func TestServiceFiltersApplicationsAndCascadesProjectDelete(t *testing.T) {
 	_, err = service.GetApplication(t.Context(), application.ID)
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("get cascaded application error = %v, want not found", err)
+	}
+}
+
+func TestServiceValidatesAutomaticScorers(t *testing.T) {
+	service, _ := newService(t)
+	project := createProject(t, service)
+	_, err := service.CreateApplication(t.Context(), domain.CreateApplicationInput{
+		ProjectID: project.ID, Name: "invalid", Slug: "invalid",
+		AutoScoreScorers: []string{"unknown"},
+	})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown automatic scorer error = %v, want ErrInvalid", err)
+	}
+	application, err := service.CreateApplication(t.Context(), domain.CreateApplicationInput{
+		ProjectID: project.ID, Name: "valid", Slug: "valid",
+		AutoScoreScorers: []string{domain.ScorerGroundedness},
+	})
+	if err != nil {
+		t.Fatalf("create application: %v", err)
+	}
+	duplicates := []string{domain.ScorerCorrectness, domain.ScorerCorrectness}
+	_, err = service.UpdateApplication(t.Context(), application.ID, domain.UpdateApplicationInput{
+		AutoScoreScorers: &duplicates,
+	})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("duplicate automatic scorer error = %v, want ErrInvalid", err)
 	}
 }
 

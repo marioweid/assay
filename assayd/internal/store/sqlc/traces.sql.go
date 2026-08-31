@@ -13,6 +13,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const attachTraceReference = `-- name: AttachTraceReference :one
+WITH target AS MATERIALIZED (
+    SELECT traces.id
+    FROM traces
+    JOIN applications ON applications.id = traces.application_id
+    WHERE traces.id = $2 AND applications.project_id = $3
+      AND (SELECT count(*) FROM spans WHERE spans.trace_id = traces.id AND is_scorable) = 1
+    FOR UPDATE
+), updated_span AS (
+    UPDATE spans
+    SET reference_answer = $1
+    WHERE trace_id = (SELECT id FROM target) AND is_scorable
+    RETURNING trace_id
+)
+UPDATE traces
+SET reference_answer = $1, updated_at = now()
+WHERE id = (SELECT trace_id FROM updated_span)
+RETURNING id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at
+`
+
+type AttachTraceReferenceParams struct {
+	ReferenceAnswer pgtype.Text
+	TraceID         uuid.UUID
+	ProjectID       uuid.UUID
+}
+
+func (q *Queries) AttachTraceReference(ctx context.Context, arg AttachTraceReferenceParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, attachTraceReference, arg.ReferenceAnswer, arg.TraceID, arg.ProjectID)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.OtelTraceID,
+		&i.RootName,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Status,
+		&i.SpanCount,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ReferenceAnswer,
+		&i.Attributes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteOnlineScore = `-- name: DeleteOnlineScore :exec
+DELETE FROM scores WHERE trace_id = $1 AND scorer = $2
+`
+
+type DeleteOnlineScoreParams struct {
+	TraceID pgtype.UUID
+	Scorer  string
+}
+
+func (q *Queries) DeleteOnlineScore(ctx context.Context, arg DeleteOnlineScoreParams) error {
+	_, err := q.db.Exec(ctx, deleteOnlineScore, arg.TraceID, arg.Scorer)
+	return err
+}
+
 const getProjectTrace = `-- name: GetProjectTrace :one
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
@@ -48,6 +110,186 @@ func (q *Queries) GetProjectTrace(ctx context.Context, arg GetProjectTraceParams
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getScoredSpanEvents = `-- name: GetScoredSpanEvents :one
+SELECT events FROM spans
+WHERE id = $1 AND trace_id = $2
+  AND start_time = $3
+FOR UPDATE
+`
+
+type GetScoredSpanEventsParams struct {
+	SpanID        int64
+	TraceID       uuid.UUID
+	SpanStartTime pgtype.Timestamptz
+}
+
+func (q *Queries) GetScoredSpanEvents(ctx context.Context, arg GetScoredSpanEventsParams) (json.RawMessage, error) {
+	row := q.db.QueryRow(ctx, getScoredSpanEvents, arg.SpanID, arg.TraceID, arg.SpanStartTime)
+	var events json.RawMessage
+	err := row.Scan(&events)
+	return events, err
+}
+
+const getTraceForScoring = `-- name: GetTraceForScoring :one
+SELECT id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at FROM traces WHERE id = $1
+`
+
+func (q *Queries) GetTraceForScoring(ctx context.Context, id uuid.UUID) (Trace, error) {
+	row := q.db.QueryRow(ctx, getTraceForScoring, id)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.OtelTraceID,
+		&i.RootName,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Status,
+		&i.SpanCount,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ReferenceAnswer,
+		&i.Attributes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertOnlineScore = `-- name: InsertOnlineScore :one
+INSERT INTO scores (
+    scorer, scorer_config_id, value, threshold, passed, rationale, details,
+    prompt_template_id, judge_model, judge_provider, judge_tokens,
+    trace_id, span_id, span_start_time, judged_input, judged_output,
+    judged_context, judged_reference
+)
+VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7, $8,
+    $9, $10, $11,
+    $12, $13, $14, $15,
+    $16, $17, $18
+)
+RETURNING id, scorer, scorer_config_id, value, threshold, passed, rationale, details, prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id, dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input, judged_output, judged_context, judged_reference
+`
+
+type InsertOnlineScoreParams struct {
+	Scorer           string
+	ScorerConfigID   pgtype.UUID
+	Value            pgtype.Numeric
+	Threshold        pgtype.Numeric
+	Passed           bool
+	Rationale        string
+	Details          json.RawMessage
+	PromptTemplateID string
+	JudgeModel       string
+	JudgeProvider    string
+	JudgeTokens      int32
+	TraceID          pgtype.UUID
+	SpanID           pgtype.Int8
+	SpanStartTime    pgtype.Timestamptz
+	JudgedInput      pgtype.Text
+	JudgedOutput     pgtype.Text
+	JudgedContext    []byte
+	JudgedReference  pgtype.Text
+}
+
+func (q *Queries) InsertOnlineScore(ctx context.Context, arg InsertOnlineScoreParams) (Score, error) {
+	row := q.db.QueryRow(ctx, insertOnlineScore,
+		arg.Scorer,
+		arg.ScorerConfigID,
+		arg.Value,
+		arg.Threshold,
+		arg.Passed,
+		arg.Rationale,
+		arg.Details,
+		arg.PromptTemplateID,
+		arg.JudgeModel,
+		arg.JudgeProvider,
+		arg.JudgeTokens,
+		arg.TraceID,
+		arg.SpanID,
+		arg.SpanStartTime,
+		arg.JudgedInput,
+		arg.JudgedOutput,
+		arg.JudgedContext,
+		arg.JudgedReference,
+	)
+	var i Score
+	err := row.Scan(
+		&i.ID,
+		&i.Scorer,
+		&i.ScorerConfigID,
+		&i.Value,
+		&i.Threshold,
+		&i.Passed,
+		&i.Rationale,
+		&i.Details,
+		&i.PromptTemplateID,
+		&i.JudgeModel,
+		&i.JudgeProvider,
+		&i.JudgeTokens,
+		&i.EvalRunID,
+		&i.DatasetItemID,
+		&i.CreatedAt,
+		&i.TraceID,
+		&i.SpanID,
+		&i.SpanStartTime,
+		&i.JudgedInput,
+		&i.JudgedOutput,
+		&i.JudgedContext,
+		&i.JudgedReference,
+	)
+	return i, err
+}
+
+const listOnlineScores = `-- name: ListOnlineScores :many
+SELECT id, scorer, scorer_config_id, value, threshold, passed, rationale, details, prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id, dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input, judged_output, judged_context, judged_reference FROM scores WHERE trace_id = $1 ORDER BY created_at, id
+`
+
+func (q *Queries) ListOnlineScores(ctx context.Context, traceID pgtype.UUID) ([]Score, error) {
+	rows, err := q.db.Query(ctx, listOnlineScores, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Score
+	for rows.Next() {
+		var i Score
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scorer,
+			&i.ScorerConfigID,
+			&i.Value,
+			&i.Threshold,
+			&i.Passed,
+			&i.Rationale,
+			&i.Details,
+			&i.PromptTemplateID,
+			&i.JudgeModel,
+			&i.JudgeProvider,
+			&i.JudgeTokens,
+			&i.EvalRunID,
+			&i.DatasetItemID,
+			&i.CreatedAt,
+			&i.TraceID,
+			&i.SpanID,
+			&i.SpanStartTime,
+			&i.JudgedInput,
+			&i.JudgedOutput,
+			&i.JudgedContext,
+			&i.JudgedReference,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProjectTraceSpans = `-- name: ListProjectTraceSpans :many
@@ -197,6 +439,80 @@ func (q *Queries) ListProjectTraces(ctx context.Context, arg ListProjectTracesPa
 	return items, nil
 }
 
+const listTraceSpansForScoring = `-- name: ListTraceSpansForScoring :many
+SELECT id, trace_id, application_id, otel_span_id, parent_span_id, name, kind, operation_name, start_time, end_time, duration_ms, status_code, status_message, is_scorable, scorable_kind, attributes, events, input_tokens, output_tokens, reference_answer, created_at FROM spans WHERE trace_id = $1 ORDER BY start_time, id
+`
+
+func (q *Queries) ListTraceSpansForScoring(ctx context.Context, traceID uuid.UUID) ([]Span, error) {
+	rows, err := q.db.Query(ctx, listTraceSpansForScoring, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Span
+	for rows.Next() {
+		var i Span
+		if err := rows.Scan(
+			&i.ID,
+			&i.TraceID,
+			&i.ApplicationID,
+			&i.OtelSpanID,
+			&i.ParentSpanID,
+			&i.Name,
+			&i.Kind,
+			&i.OperationName,
+			&i.StartTime,
+			&i.EndTime,
+			&i.DurationMs,
+			&i.StatusCode,
+			&i.StatusMessage,
+			&i.IsScorable,
+			&i.ScorableKind,
+			&i.Attributes,
+			&i.Events,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.ReferenceAnswer,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOwnedScoringTask = `-- name: LockOwnedScoringTask :one
+SELECT id
+FROM jobs
+WHERE id = $1 AND kind = 'scoring_task' AND status = 'running'
+  AND locked_by = $2 AND lease_expires_at > now()
+  AND trace_id = $3 AND scorer = $4
+FOR UPDATE
+`
+
+type LockOwnedScoringTaskParams struct {
+	JobID    uuid.UUID
+	WorkerID pgtype.Text
+	TraceID  pgtype.UUID
+	Scorer   pgtype.Text
+}
+
+func (q *Queries) LockOwnedScoringTask(ctx context.Context, arg LockOwnedScoringTaskParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockOwnedScoringTask,
+		arg.JobID,
+		arg.WorkerID,
+		arg.TraceID,
+		arg.Scorer,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const refreshTraceSummary = `-- name: RefreshTraceSummary :one
 WITH summary AS (
     SELECT
@@ -256,6 +572,72 @@ func (q *Queries) RefreshTraceSummary(ctx context.Context, selectedTraceID uuid.
 	return i, err
 }
 
+const traceEligibleForAutoScore = `-- name: TraceEligibleForAutoScore :one
+SELECT
+    (SELECT count(*) FROM spans s WHERE s.trace_id = $1 AND s.is_scorable) = 1
+    AND EXISTS (
+        SELECT 1 FROM spans s
+        WHERE s.trace_id = $1 AND s.is_scorable
+          AND s.attributes ? 'gen_ai.input.messages'
+          AND s.attributes ? 'gen_ai.output.messages'
+    )
+    AND CASE $2::text
+        WHEN 'correctness' THEN traces.reference_answer IS NOT NULL
+        WHEN 'groundedness' THEN EXISTS (
+            SELECT 1 FROM spans s
+            WHERE s.trace_id = $1
+              AND (
+                  s.attributes ? 'assay.context.chunk.count'
+                  OR s.attributes ? 'gen_ai.retrieval.documents'
+                  OR EXISTS (
+                      SELECT 1 FROM jsonb_object_keys(s.attributes) key
+                      WHERE key LIKE 'assay.context.chunks.%'
+                  )
+              )
+        )
+        ELSE false
+    END
+FROM traces WHERE id = $1
+`
+
+type TraceEligibleForAutoScoreParams struct {
+	SelectedTraceID uuid.UUID
+	Scorer          string
+}
+
+func (q *Queries) TraceEligibleForAutoScore(ctx context.Context, arg TraceEligibleForAutoScoreParams) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, traceEligibleForAutoScore, arg.SelectedTraceID, arg.Scorer)
+	var column_1 pgtype.Bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const updateScoredSpanEvents = `-- name: UpdateScoredSpanEvents :one
+UPDATE spans SET events = $1
+WHERE id = $2 AND trace_id = $3
+  AND start_time = $4
+RETURNING id
+`
+
+type UpdateScoredSpanEventsParams struct {
+	Events        json.RawMessage
+	SpanID        int64
+	TraceID       uuid.UUID
+	SpanStartTime pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateScoredSpanEvents(ctx context.Context, arg UpdateScoredSpanEventsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, updateScoredSpanEvents,
+		arg.Events,
+		arg.SpanID,
+		arg.TraceID,
+		arg.SpanStartTime,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const upsertSpan = `-- name: UpsertSpan :exec
 INSERT INTO spans (
     trace_id, application_id, otel_span_id, parent_span_id, name, kind,
@@ -285,7 +667,19 @@ SET application_id = EXCLUDED.application_id,
     is_scorable = EXCLUDED.is_scorable,
     scorable_kind = EXCLUDED.scorable_kind,
     attributes = EXCLUDED.attributes,
-    events = EXCLUDED.events,
+    events = coalesce((
+        SELECT jsonb_agg(preserved.event ORDER BY preserved.source, preserved.position)
+        FROM (
+            SELECT event AS event, 0 AS source, position
+            FROM jsonb_array_elements(EXCLUDED.events) WITH ORDINALITY incoming(event, position)
+            WHERE event->>'name' NOT LIKE 'assay.%'
+            UNION ALL
+            SELECT event AS event, 1 AS source, position
+            FROM jsonb_array_elements(spans.events) WITH ORDINALITY stored(event, position)
+            WHERE event->>'name' = 'gen_ai.evaluation.result'
+              AND event->'attributes' ? 'assay.evaluation.judge.model'
+        ) preserved
+    ), '[]'::jsonb),
     input_tokens = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     reference_answer = EXCLUDED.reference_answer

@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from "react-router";
 
 import { ConnectionGate } from "@/auth/connection-gate";
 import { AppShell } from "@/components/app-shell";
+import { DatasetDetail } from "@/features/datasets/dataset-detail";
+import { DatasetsPage } from "@/features/datasets/datasets-page";
 import { TraceDetail } from "@/features/traces/trace-detail";
 import { TracesPage } from "@/features/traces/traces-page";
 import { ApplicationsPage } from "@/features/applications/applications-page";
@@ -17,7 +19,8 @@ export function AppRoutes(): ReactNode {
           <Route index element={<Navigate replace to="traces" />} />
           <Route path="traces" element={<TracesPage />} />
           <Route path="traces/:traceId" element={<TraceDetail />} />
-          <Route path="datasets" element={<Workspace title="Datasets" />} />
+          <Route path="datasets" element={<DatasetsPage />} />
+          <Route path="datasets/:datasetId" element={<DatasetDetail />} />
           <Route path="runs" element={<Workspace title="Runs" />} />
         </Route>
         <Route path="*" element={<NotFound />} />

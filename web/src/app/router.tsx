@@ -3,11 +3,13 @@ import { Navigate, Route, Routes } from "react-router";
 
 import { ConnectionGate } from "@/auth/connection-gate";
 import { AppShell } from "@/components/app-shell";
+import { ApplicationsPage } from "@/features/applications/applications-page";
 import { DatasetDetail } from "@/features/datasets/dataset-detail";
 import { DatasetsPage } from "@/features/datasets/datasets-page";
+import { RunDetail } from "@/features/runs/run-detail";
+import { RunsPage } from "@/features/runs/runs-page";
 import { TraceDetail } from "@/features/traces/trace-detail";
 import { TracesPage } from "@/features/traces/traces-page";
-import { ApplicationsPage } from "@/features/applications/applications-page";
 
 export function AppRoutes(): ReactNode {
   return (
@@ -21,7 +23,8 @@ export function AppRoutes(): ReactNode {
           <Route path="traces/:traceId" element={<TraceDetail />} />
           <Route path="datasets" element={<DatasetsPage />} />
           <Route path="datasets/:datasetId" element={<DatasetDetail />} />
-          <Route path="runs" element={<Workspace title="Runs" />} />
+          <Route path="runs" element={<RunsPage />} />
+          <Route path="runs/:runId" element={<RunDetail />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Route>
@@ -34,13 +37,5 @@ function NotFound(): ReactNode {
     <main className="px-5 py-6 sm:px-8">
       <h1 className="text-xl font-semibold">Page not found</h1>
     </main>
-  );
-}
-
-function Workspace({ title }: { title: string }): ReactNode {
-  return (
-    <div>
-      <h1 className="text-xl font-semibold">{title}</h1>
-    </div>
   );
 }

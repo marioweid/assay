@@ -114,6 +114,20 @@ func TestListTracesValidatesFilters(t *testing.T) {
 	}
 }
 
+func TestGetAdminLoadsUnscopedTrace(t *testing.T) {
+	want := domain.Trace{ID: uuid.Must(uuid.NewV7())}
+	repository := &traceRepositoryFake{trace: want}
+	service := domain.NewTraceService(repository, &applicationCreatorFake{}, 3)
+
+	got, err := service.GetAdmin(t.Context(), want.ID)
+	if err != nil {
+		t.Fatalf("get admin trace: %v", err)
+	}
+	if got.ID != want.ID || repository.traceID != want.ID {
+		t.Fatalf("admin trace/repository ID = %s/%s, want %s", got.ID, repository.traceID, want.ID)
+	}
+}
+
 func TestIngestCreatesUniqueEligibleAutomaticScoreIntents(t *testing.T) {
 	applicationID := uuid.Must(uuid.NewV7())
 	trace := scoringTrace(applicationID)
@@ -202,6 +216,7 @@ type traceRepositoryFake struct {
 	ingested       []domain.Trace
 	intents        []domain.AutoScoreIntent
 	trace          domain.Trace
+	traceID        uuid.UUID
 	requests       []domain.TraceScoreRequest
 	refresh        bool
 	queueCalls     int
@@ -258,9 +273,18 @@ func (f *traceRepositoryFake) ListTraces(
 func (f *traceRepositoryFake) GetTrace(
 	_ context.Context,
 	projectID uuid.UUID,
-	_ uuid.UUID,
+	traceID uuid.UUID,
 ) (domain.Trace, error) {
 	f.projectID = projectID
+	f.traceID = traceID
+	return f.trace, nil
+}
+
+func (f *traceRepositoryFake) GetTraceDetailByID(
+	_ context.Context,
+	traceID uuid.UUID,
+) (domain.Trace, error) {
+	f.traceID = traceID
 	return f.trace, nil
 }
 

@@ -22,6 +22,10 @@ func (h *handler) requireAdmin(ctx huma.Context, next func(huma.Context)) {
 	next(ctx)
 }
 
+func (h *handler) isAdmin(authorization string) bool {
+	return auth.ValidAdminAuthorization(authorization, h.adminToken)
+}
+
 func (h *handler) authenticateProject(
 	ctx context.Context,
 	authorization string,

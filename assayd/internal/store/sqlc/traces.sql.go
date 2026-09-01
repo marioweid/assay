@@ -132,12 +132,12 @@ func (q *Queries) GetScoredSpanEvents(ctx context.Context, arg GetScoredSpanEven
 	return events, err
 }
 
-const getTraceForScoring = `-- name: GetTraceForScoring :one
+const getTraceByID = `-- name: GetTraceByID :one
 SELECT id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at FROM traces WHERE id = $1
 `
 
-func (q *Queries) GetTraceForScoring(ctx context.Context, id uuid.UUID) (Trace, error) {
-	row := q.db.QueryRow(ctx, getTraceForScoring, id)
+func (q *Queries) GetTraceByID(ctx context.Context, id uuid.UUID) (Trace, error) {
+	row := q.db.QueryRow(ctx, getTraceByID, id)
 	var i Trace
 	err := row.Scan(
 		&i.ID,

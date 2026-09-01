@@ -215,8 +215,6 @@ func traceListParameters(projectID uuid.UUID, query domain.TraceQuery) db.ListPr
 }
 
 // GetTrace returns one project-owned trace with all of its spans.
-//
-//nolint:cyclop // Detail assembly validates three independently decoded child collections.
 func (d *Database) GetTrace(
 	ctx context.Context,
 	projectID uuid.UUID,
@@ -248,29 +246,37 @@ func (d *Database) GetTrace(
 		}
 		trace.Spans = append(trace.Spans, span)
 	}
+	if err := d.loadTraceScoresAndTasks(ctx, &trace); err != nil {
+		return domain.Trace{}, err
+	}
+	return trace, nil
+}
+
+func (d *Database) loadTraceScoresAndTasks(ctx context.Context, trace *domain.Trace) error {
+	traceID := trace.ID
 	scoreRows, err := d.queries.ListOnlineScores(ctx, nullableUUID(&traceID))
 	if err != nil {
-		return domain.Trace{}, mapStoreError("select trace scores", err)
+		return mapStoreError("select trace scores", err)
 	}
 	for _, scoreRow := range scoreRows {
 		score, convertErr := scoreFromRow(scoreRow)
 		if convertErr != nil {
-			return domain.Trace{}, convertErr
+			return convertErr
 		}
 		trace.Scores = append(trace.Scores, score)
 	}
 	jobRows, err := d.queries.ListTraceScoringTasks(ctx, nullableUUID(&traceID))
 	if err != nil {
-		return domain.Trace{}, mapStoreError("select trace scoring tasks", err)
+		return mapStoreError("select trace scoring tasks", err)
 	}
 	for _, jobRow := range jobRows {
 		job, convertErr := jobFromRow(jobRow)
 		if convertErr != nil {
-			return domain.Trace{}, convertErr
+			return convertErr
 		}
 		trace.ScoringTasks = append(trace.ScoringTasks, job)
 	}
-	return trace, nil
+	return nil
 }
 
 // QueueTraceScores atomically creates or refreshes validated project trace tasks.
@@ -392,14 +398,14 @@ func (d *Database) AttachTraceReference(
 	return trace, nil
 }
 
-// GetTraceForScoring returns one trace and all spans without project presentation scoping.
-func (d *Database) GetTraceForScoring(
+// GetTraceByID returns one trace and all spans without project presentation scoping.
+func (d *Database) GetTraceByID(
 	ctx context.Context,
 	traceID uuid.UUID,
 ) (domain.Trace, error) {
-	row, err := d.queries.GetTraceForScoring(ctx, traceID)
+	row, err := d.queries.GetTraceByID(ctx, traceID)
 	if err != nil {
-		return domain.Trace{}, mapStoreError("select trace for scoring", err)
+		return domain.Trace{}, mapStoreError("select trace by ID", err)
 	}
 	trace, err := traceFromRow(row)
 	if err != nil {
@@ -415,6 +421,21 @@ func (d *Database) GetTraceForScoring(
 			return domain.Trace{}, convertErr
 		}
 		trace.Spans = append(trace.Spans, span)
+	}
+	return trace, nil
+}
+
+// GetTraceDetailByID returns one unscoped trace with spans, scores, and scoring tasks.
+func (d *Database) GetTraceDetailByID(
+	ctx context.Context,
+	traceID uuid.UUID,
+) (domain.Trace, error) {
+	trace, err := d.GetTraceByID(ctx, traceID)
+	if err != nil {
+		return domain.Trace{}, err
+	}
+	if err := d.loadTraceScoresAndTasks(ctx, &trace); err != nil {
+		return domain.Trace{}, err
 	}
 	return trace, nil
 }

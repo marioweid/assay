@@ -93,6 +93,11 @@ func (h *handler) projectOperation(
 	}
 }
 
+func traceReadOperation(operation huma.Operation) huma.Operation {
+	operation.Security = append(operation.Security, map[string][]string{"adminBearer": {}})
+	return operation
+}
+
 func (h *handler) operation(
 	method string,
 	path string,

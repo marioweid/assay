@@ -140,7 +140,7 @@ JOIN applications ON applications.id = spans.application_id
 WHERE spans.trace_id = $1 AND applications.project_id = $2
 ORDER BY spans.start_time, spans.id;
 
--- name: GetTraceForScoring :one
+-- name: GetTraceByID :one
 SELECT * FROM traces WHERE id = $1;
 
 -- name: ListTraceSpansForScoring :many

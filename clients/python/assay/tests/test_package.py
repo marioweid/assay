@@ -1,12 +1,20 @@
-import unittest
+from importlib import metadata, resources
 
 import assay
 
 
-class PackageTest(unittest.TestCase):
-    def test_exposes_bootstrap_version(self) -> None:
-        self.assertEqual(assay.__version__, "0.1.0")
+def test_exposes_functional_release_version() -> None:
+    assert assay.__version__ == "0.2.0"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_distribution_exposes_console_entry_point() -> None:
+    entry_points = metadata.entry_points(group="console_scripts", name="assay")
+
+    assert len(entry_points) == 1
+    assert next(iter(entry_points)).value == "assay.cli:main"
+
+
+def test_distribution_includes_typed_marker() -> None:
+    marker = resources.files("assay").joinpath("py.typed")
+
+    assert marker.is_file()

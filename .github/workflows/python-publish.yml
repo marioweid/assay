@@ -33,8 +33,16 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match package version ${package_version}" >&2
             exit 1
           fi
+      - name: Sync
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Check formatting
+        run: uv run ruff format --check .
+      - name: Type check
+        run: uv run ty check
       - name: Test
-        run: uv run --frozen python -m unittest discover -s tests -v
+        run: uv run pytest -q
       - name: Build
         run: uv build
       - name: Smoke test wheel

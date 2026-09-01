@@ -5,10 +5,9 @@
 For the implemented backend layers, dependency direction, and an API-key request walkthrough,
 see [`docs/architecture.md`](../architecture.md).
 
-**Implementation status (2026-08-31):** M0-M4 are implemented. M4 adds automatic and on-demand
-online trace scoring, reference attachment, typed scoring tasks, target endpoint execution, and
-durable `generate_then_score` snapshots alongside existing offline scoring. `trace_selection` runs,
-the functional Python client/CLI, UI, binary OTLP/protobuf, and OTLP/gRPC remain deferred.
+**Implementation status (2026-09-01):** M0-M5 are implemented. M5 adds opt-in Python tracing, the
+typed API client, dataset import workflows, and CLI orchestration with run gates. The UI, binary
+OTLP/protobuf, OTLP/gRPC, score export/filter commands, and `trace_selection` runs remain deferred.
 
 ---
 
@@ -670,8 +669,8 @@ assay/
 **M5 — Python client + CLI** → *verify: `@assay.trace` round-trips to a real assayd; CLI creates/imports/runs/watches; `run watch --gate` exits non-zero on failure.*
 - `assay.init`/decorator/spans/helpers, `assay.Client`, CLI, in-memory-exporter tests.
 - **Completed ahead of M5:** bootstrap the `assay-sdk` distribution at version 0.1.0 and add
-  Trusted Publishing so the PyPI project name can be reserved. This bootstrap exposes only the
-  `assay` import namespace and version; the functional SDK and CLI remain M5 work.
+  Trusted Publishing so the PyPI project name can be reserved. M5 replaces that bootstrap with
+  the functional version 0.2.0 SDK and CLI.
 
 **M5.5 — Minimal web UI (embedded React SPA)** → *verify: `vite build` output embeds into the binary; visiting `/` lists apps, opens a trace's span tree + scores, and triggers a run + watches aggregates; admin-token stored in-browser; UI toggles off via `ASSAY_UI_ENABLED`.*
 - React + Vite + TS + Tailwind + shadcn/ui in `web/`; OpenAPI-generated client; `embed.FS` serving + SPA fallback in `internal/ui`; Docker multi-stage (node build → go embed).

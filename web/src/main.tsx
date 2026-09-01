@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
 
-import "./styles.css";
+import { AppRoutes } from "@/app/router";
+import { AuthProvider } from "@/auth/auth-context";
+import "@/styles.css";
 
 const rootElement = document.getElementById("root");
 if (rootElement === null) {
@@ -8,8 +11,9 @@ if (rootElement === null) {
 }
 
 createRoot(rootElement).render(
-  <main className="min-h-screen bg-canvas px-6 py-8 text-ink">
-    <h1 className="text-xl font-semibold tracking-tight">Assay</h1>
-    <p className="mt-2 text-sm text-muted">Evaluation workbench</p>
-  </main>,
+  <BrowserRouter>
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  </BrowserRouter>,
 );

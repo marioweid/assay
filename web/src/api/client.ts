@@ -1,5 +1,5 @@
-import { client } from "./generated/client.gen";
-import { normalizeProblem } from "./errors";
+import { normalizeProblem } from "@/api/errors";
+import { client } from "@/api/generated/client.gen";
 
 let requestInterceptor: number | undefined;
 let errorInterceptor: number | undefined;

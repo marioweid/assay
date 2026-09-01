@@ -1,10 +1,10 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 
-import { configureClient } from "./client";
-import { client } from "./generated/client.gen";
-import { listApplications } from "./generated/sdk.gen";
-import { Problem } from "./errors";
+import { configureClient } from "@/api/client";
+import { Problem } from "@/api/errors";
+import { client } from "@/api/generated/client.gen";
+import { listApplications } from "@/api/generated/sdk.gen";
 
 const server = setupServer();
 

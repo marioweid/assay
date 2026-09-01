@@ -17,12 +17,11 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-M5 tracing, the Python API client, and CLI orchestration are implemented. Assay accepts JSON
-OTLP/HTTP traces, automatically or explicitly queues groundedness/correctness scoring, supports
-reference attachment, and returns online scores and task state with trace detail. Offline runs
-support persisted dataset output or per-run generation through an encrypted application target
-configuration. Binary protobuf, OTLP/gRPC, `trace_selection` runs, score export/filter commands,
-and the UI remain deferred.
+Tracing, evaluation, the Python client, CLI orchestration, and the M5.5 embedded web UI are
+implemented. Assay accepts JSON OTLP/HTTP traces, queues groundedness/correctness scoring, supports
+reference attachment, and runs offline evaluations against persisted or generated outputs. Binary
+protobuf, OTLP/gRPC, `trace_selection` runs, score export/filter commands, and M6 metrics/trends
+remain deferred.
 
 The implementation follows these references:
 
@@ -60,7 +59,7 @@ assayd/                 # Go 1.27 backend (single binary): API + OTLP receiver +
 web/                     # React + Vite + Tailwind + shadcn/ui SPA (embedded into the binary)
 clients/python/assay/   # assay-sdk distribution: tracing, typed client, and CLI
 .claude/skills/assay/    # Claude Code skill wrapping the CLI
-assets/                  # reusable brand assets, including the transparent app icon
+assets/                  # reusable source brand assets
 docs/                    # design spec and supporting documentation
 ```
 
@@ -68,8 +67,34 @@ docs/                    # design spec and supporting documentation
 
 One binary, one Postgres — two ways to run it:
 
-- **Standalone / local:** `docker compose up` (assayd + postgres). One command; migrations auto-apply on start.
+- **Standalone / local:** after creating `.env`, `docker compose up` starts assayd + Postgres;
+  migrations auto-apply on start.
 - **Scale:** assayd container(s) against a managed/separate Postgres; add replicas for worker capacity (the queue lives in Postgres). No SQLite, no object store — Postgres only.
+
+## Web UI
+
+With `ASSAY_UI_ENABLED=true` (the default), open `http://localhost:8080/` and connect with
+`ASSAY_ADMIN_TOKEN`. The UI can inspect applications, traces, spans, scores, and datasets, and can
+create and watch evaluation runs. Metrics and score-trend charts remain deferred to M6.
+
+The M5.5 UI is a single-user test tool, not a login system. It stores the admin token in browser
+`localStorage` under `assay.admin-token.v1`, where JavaScript running on the same origin can access
+it. Use a trusted browser and origin. Select **Disconnect** to remove the stored token. Set
+`ASSAY_UI_ENABLED=false` to return 404 for UI routes without disabling the API, OpenAPI document,
+interactive docs, or health endpoints.
+
+For frontend development, run `assayd` on port 8080, then start Vite's proxying development server:
+
+```bash
+cd web
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Regenerate the committed OpenAPI snapshot and TypeScript client with `pnpm generate:api`. Run
+`pnpm build` to write production assets to `assayd/internal/ui/dist`; subsequent Go builds embed
+those files into the binary. The production Dockerfile performs both builds automatically.
 
 ## Development quickstart
 

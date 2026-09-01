@@ -1,4 +1,4 @@
-# Assay standalone/local deployment. One command: `docker compose up`.
+# Assay standalone/local deployment. After creating .env, run `docker compose up`.
 # Two services, one storage engine (Postgres). Migrations auto-apply on assayd startup.
 # Copy `.env.example` to `.env` first.
 
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
 
   assayd:
-    # Context is the repository root; the M0 image currently builds the Go service only.
+    # Context is the repository root so the image can build and embed the web UI.
     build:
       context: .
       dockerfile: assayd/Dockerfile
@@ -33,6 +33,8 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
+      # Keep the container target aligned with ports and the healthcheck.
+      ASSAY_HTTP_ADDR: ":8080"
       # Override so assayd reaches the compose postgres service regardless of .env host.
       ASSAY_DATABASE_URL: postgres://${ASSAY_POSTGRES_USER:-assay}:${ASSAY_POSTGRES_PASSWORD:-assay}@postgres:5432/${ASSAY_POSTGRES_DB:-assay}?sslmode=disable
     ports:

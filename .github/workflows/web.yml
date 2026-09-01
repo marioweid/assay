@@ -1,0 +1,90 @@
+name: web
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "assayd/cmd/openapi/**"
+      - "assayd/internal/api/**"
+      - "assayd/internal/ui/**"
+      - "assayd/Dockerfile"
+      - "assayd/go.mod"
+      - "assayd/go.sum"
+      - ".dockerignore"
+      - ".env.example"
+      - "docker-compose.yml"
+      - ".github/workflows/web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "assayd/cmd/openapi/**"
+      - "assayd/internal/api/**"
+      - "assayd/internal/ui/**"
+      - "assayd/Dockerfile"
+      - "assayd/go.mod"
+      - "assayd/go.sum"
+      - ".dockerignore"
+      - ".env.example"
+      - "docker-compose.yml"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assayd/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.22.0"
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install frontend dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Verify generated API client
+        working-directory: web
+        run: |
+          pnpm generate:api
+          git diff --exit-code -- openapi.json src/api/generated
+      - name: Lint frontend
+        working-directory: web
+        run: pnpm lint
+      - name: Check frontend formatting
+        working-directory: web
+        run: pnpm format:check
+      - name: Type-check frontend
+        working-directory: web
+        run: pnpm typecheck
+      - name: Test frontend
+        working-directory: web
+        run: pnpm test
+      - name: Build frontend
+        working-directory: web
+        run: pnpm build
+      - name: Verify production assets
+        working-directory: assayd
+        run: |
+          rg --fixed-strings 'src="/assets/' internal/ui/dist/index.html
+          test -f internal/ui/dist/assay-icon.png
+      - name: Test embedded UI
+        working-directory: assayd
+        run: go test ./internal/ui ./internal/app
+      - name: Build embedded binary
+        working-directory: assayd
+        run: go build ./cmd/assayd
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Build release image
+        run: docker build --file assayd/Dockerfile --tag assay-web-ci .

@@ -91,14 +91,13 @@ func TestHandlerHEADAndDisabled(t *testing.T) {
 	})
 }
 
-func TestRegisterServesEmbeddedPlaceholder(t *testing.T) {
+func TestRegisterServesEmbeddedIndex(t *testing.T) {
 	t.Parallel()
 	router := http.NewServeMux()
 	Register(router, true)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/apps/example/traces", nil))
-	if response.Code != http.StatusOK ||
-		!strings.Contains(response.Body.String(), "UI assets were not built") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "<title>Assay") {
 		t.Fatalf("embedded route status/body = %d/%q", response.Code, response.Body.String())
 	}
 }

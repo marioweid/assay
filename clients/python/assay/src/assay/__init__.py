@@ -1,5 +1,85 @@
-"""Python SDK namespace for Assay."""
+"""Python SDK for Assay tracing and evaluation workflows."""
 
-__version__ = "0.1.0"
+from assay.client import Client
+from assay.exceptions import (
+    AssayAPIError,
+    AssayConfigurationError,
+    AssayError,
+    AssayImportError,
+    AssayProtocolError,
+    AssayTimeoutError,
+    AssayTransportError,
+)
+from assay.models import (
+    APIKey,
+    Application,
+    Chunk,
+    CreatedAPIKey,
+    Dataset,
+    DatasetItem,
+    DatasetItemInput,
+    EvalRun,
+    EvalRunItem,
+    ImportResult,
+    JudgeConfig,
+    JudgeConfigView,
+    Page,
+    Project,
+    ResponseMapping,
+    ResponseMappingView,
+    Score,
+    ScoreAggregate,
+    ScorerConfig,
+    ScoringTask,
+    Span,
+    SpanEvent,
+    TargetEndpoint,
+    TargetEndpointView,
+    Trace,
+)
+from assay.tracing import AssaySpan, flush, init, shutdown, span, trace
 
-__all__ = ["__version__"]
+__version__ = "0.2.0"
+
+__all__ = [
+    "APIKey",
+    "Application",
+    "AssayAPIError",
+    "AssayConfigurationError",
+    "AssayError",
+    "AssayImportError",
+    "AssayProtocolError",
+    "AssaySpan",
+    "AssayTimeoutError",
+    "AssayTransportError",
+    "Chunk",
+    "Client",
+    "CreatedAPIKey",
+    "Dataset",
+    "DatasetItem",
+    "DatasetItemInput",
+    "EvalRun",
+    "EvalRunItem",
+    "ImportResult",
+    "JudgeConfig",
+    "JudgeConfigView",
+    "Page",
+    "Project",
+    "ResponseMapping",
+    "ResponseMappingView",
+    "Score",
+    "ScoreAggregate",
+    "ScorerConfig",
+    "ScoringTask",
+    "Span",
+    "SpanEvent",
+    "TargetEndpoint",
+    "TargetEndpointView",
+    "Trace",
+    "__version__",
+    "flush",
+    "init",
+    "shutdown",
+    "span",
+    "trace",
+]

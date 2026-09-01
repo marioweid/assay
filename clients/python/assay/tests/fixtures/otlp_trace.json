@@ -1,0 +1,138 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "assay.application.slug",
+            "value": {"stringValue": "support-bot"}
+          },
+          {
+            "key": "replicas",
+            "value": {"intValue": "2"}
+          }
+        ],
+        "droppedAttributesCount": 0
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "assay.tests",
+            "attributes": [
+              {
+                "key": "scope.flag",
+                "value": {"boolValue": true}
+              }
+            ],
+            "droppedAttributesCount": 0,
+            "version": "0.2.0"
+          },
+          "spans": [
+            {
+              "traceId": "00112233445566778899aabbccddeeff",
+              "spanId": "0102030405060708",
+              "traceState": "vendor=state",
+              "flags": 1,
+              "name": "chat model",
+              "kind": 3,
+              "startTimeUnixNano": "1787911200000000000",
+              "endTimeUnixNano": "1787911201000000000",
+              "attributes": [
+                {
+                  "key": "assay.context.chunk.count",
+                  "value": {"intValue": "1"}
+                },
+                {
+                  "key": "assay.context.chunks.0.id",
+                  "value": {"stringValue": "k0"}
+                },
+                {
+                  "key": "assay.context.chunks.0.text",
+                  "value": {"stringValue": "Assay evaluates AI systems."}
+                },
+                {
+                  "key": "assay.reference.answer",
+                  "value": {"stringValue": "Assay evaluates AI systems."}
+                },
+                {
+                  "key": "assay.scorable",
+                  "value": {"boolValue": true}
+                },
+                {
+                  "key": "assay.scorable.kind",
+                  "value": {"stringValue": "rag_answer"}
+                },
+                {
+                  "key": "gen_ai.input.messages",
+                  "value": {
+                    "stringValue": "[{\"role\":\"user\",\"content\":\"What is Assay?\"}]"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {"stringValue": "chat"}
+                },
+                {
+                  "key": "gen_ai.output.messages",
+                  "value": {
+                    "stringValue": "[{\"role\":\"assistant\",\"content\":\"Assay evaluates AI systems.\"}]"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {"intValue": "4"}
+                },
+                {
+                  "key": "tags",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {"stringValue": "one"},
+                        {"stringValue": "two"}
+                      ]
+                    }
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0,
+              "events": [
+                {
+                  "timeUnixNano": "1787911200500000000",
+                  "name": "answer.ready",
+                  "attributes": [
+                    {
+                      "key": "cached",
+                      "value": {"boolValue": false}
+                    }
+                  ],
+                  "droppedAttributesCount": 0
+                }
+              ],
+              "droppedEventsCount": 0,
+              "links": [
+                {
+                  "traceId": "ffeeddccbbaa99887766554433221100",
+                  "spanId": "2122232425262728",
+                  "traceState": "link=value",
+                  "flags": 1,
+                  "attributes": [
+                    {
+                      "key": "reason",
+                      "value": {"stringValue": "retry"}
+                    }
+                  ],
+                  "droppedAttributesCount": 0
+                }
+              ],
+              "droppedLinksCount": 0,
+              "status": {"code": 2, "message": "model failed"},
+              "parentSpanId": "1112131415161718"
+            }
+          ],
+          "schemaUrl": "https://scope.schema.test"
+        }
+      ],
+      "schemaUrl": "https://resource.schema.test"
+    }
+  ]
+}

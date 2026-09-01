@@ -168,11 +168,11 @@ Before the first publish, create a pending Trusted Publisher at
 | Environment | `pypi` |
 
 Create a GitHub environment named `pypi`, protect it as appropriate, merge the package and
-workflow, then publish 0.1.0:
+workflow, then publish the current package version:
 
 ```bash
-git tag python-v0.1.0
-git push origin python-v0.1.0
+git tag python-v0.2.0
+git push origin python-v0.2.0
 ```
 
 The workflow builds the sdist and wheel, smoke-tests the wheel in an isolated uv environment,

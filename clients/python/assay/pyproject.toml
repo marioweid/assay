@@ -1,6 +1,6 @@
 [project]
 name = "assay-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK for the Assay LLM tracing and evaluation platform"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,14 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+  "httpx==0.28.1",
+  "opentelemetry-api==1.44.0",
+  "opentelemetry-sdk==1.44.0",
+]
+
+[project.scripts]
+assay = "assay.cli:main"
 
 [project.urls]
 Documentation = "https://github.com/marioweid/assay#readme"
@@ -31,3 +38,35 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "assay"
+
+[dependency-groups]
+dev = [
+  "hypothesis==6.167.1",
+  "pytest==9.1.1",
+  "ruff==0.16.5",
+  "ty==0.0.75",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers"]
+testpaths = ["tests"]
+markers = ["integration: requires a built assayd and PostgreSQL"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "PT", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.rules]
+all = "error"

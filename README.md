@@ -17,12 +17,12 @@ Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and run
 
 ## Status
 
-M4 online scoring and generate-then-score runs are implemented. Assay accepts JSON OTLP/HTTP traces,
-automatically or explicitly queues groundedness/correctness scoring, supports reference attachment,
-and returns online scores and task state with trace detail. Offline runs support persisted dataset
-output or per-run generation through an encrypted application target configuration. Binary
-protobuf, OTLP/gRPC, `trace_selection` runs, CLI orchestration, the functional Python client, and the
-UI remain deferred.
+M5 tracing, the Python API client, and CLI orchestration are implemented. Assay accepts JSON
+OTLP/HTTP traces, automatically or explicitly queues groundedness/correctness scoring, supports
+reference attachment, and returns online scores and task state with trace detail. Offline runs
+support persisted dataset output or per-run generation through an encrypted application target
+configuration. Binary protobuf, OTLP/gRPC, `trace_selection` runs, score export/filter commands,
+and the UI remain deferred.
 
 The implementation follows these references:
 
@@ -48,15 +48,17 @@ import assay
 print(assay.__version__)
 ```
 
-Version 0.1.0 is a bootstrap release that establishes the package name and import namespace.
-The tracing, API client, and CLI interfaces described below remain planned for milestone M5.
+Version 0.2.0 provides opt-in tracing, a typed synchronous API client, dataset import workflows,
+and the `assay` CLI. Configure the CLI with `ASSAY_ENDPOINT` and the credential required by the
+operation: `ASSAY_ADMIN_TOKEN` for management and evaluation commands or `ASSAY_API_KEY` for trace
+commands.
 
 ## Repo layout
 
 ```
 assayd/                 # Go 1.27 backend (single binary): API + OTLP receiver + embedded worker + UI
 web/                     # React + Vite + Tailwind + shadcn/ui SPA (embedded into the binary)
-clients/python/assay/   # assay-sdk distribution; functional SDK lands in M5
+clients/python/assay/   # assay-sdk distribution: tracing, typed client, and CLI
 .claude/skills/assay/    # Claude Code skill wrapping the CLI
 assets/                  # reusable brand assets, including the transparent app icon
 docs/                    # design spec and supporting documentation
@@ -166,7 +168,7 @@ OpenAPI is available at `http://localhost:8080/openapi.json`; interactive docs a
 ```python
 import assay
 assay.init(endpoint="http://localhost:8080", api_key="asy_...",
-           project="my-project", application="support-bot")
+           application="support-bot", capture=True)
 
 @assay.trace
 def answer(q: str) -> str:

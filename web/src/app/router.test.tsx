@@ -93,16 +93,24 @@ test("keeps request errors in the connection gate", async () => {
   expect(screen.getByLabelText("Admin token")).toHaveValue("admin-secret");
 });
 
-test("moves focus into the mobile navigation drawer", async () => {
+test("manages focus and Escape in the mobile navigation drawer", async () => {
   localStorage.setItem(storageKey, "admin-secret");
   server.use(http.get("*/v1/applications", () => HttpResponse.json({ items: [application] })));
   renderApp(`/apps/${application.id}/traces`);
   const user = userEvent.setup();
 
-  await user.click(await screen.findByRole("button", { name: "Open navigation" }));
+  const opener = await screen.findByRole("button", { name: "Open navigation" });
+  await user.click(opener);
 
   const drawer = screen.getByRole("dialog", { name: "Application navigation" });
   await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement));
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Close navigation" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getAllByRole("link", { name: "traces" }).at(-1)).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "Application navigation" })).not.toBeInTheDocument();
+  expect(opener).toHaveFocus();
 });
 
 function renderApp(path: string): void {

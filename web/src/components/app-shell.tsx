@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
@@ -11,25 +11,18 @@ export function AppShell(): ReactNode {
   const { applications, disconnect } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const firstDrawerLink = useRef<HTMLAnchorElement>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
   const application = applications.find((item) => item.id === appId);
-
-  useEffect(() => {
-    if (drawerOpen) {
-      firstDrawerLink.current?.focus();
-    }
-  }, [drawerOpen]);
 
   if (application === undefined) {
     return <main className="p-8">Application not found.</main>;
   }
 
-  const navigation = (mobile: boolean): ReactNode => (
+  const navigation = (): ReactNode => (
     <nav aria-label="Application">
-      {sections.map((section, index) => (
+      {sections.map((section) => (
         <NavLink
           key={section}
-          ref={mobile && index === 0 ? firstDrawerLink : undefined}
           to={`/apps/${application.id}/${section}`}
           onClick={() => setDrawerOpen(false)}
           className={({ isActive }) =>
@@ -51,11 +44,17 @@ export function AppShell(): ReactNode {
       <aside className="hidden min-h-screen bg-rail px-3 py-5 text-white md:block">
         <p className="px-4 font-mono text-sm font-semibold tracking-[0.16em]">ASSAY</p>
         <p className="mt-6 truncate px-4 text-sm font-medium">{application.name}</p>
-        <div className="mt-4">{navigation(false)}</div>
+        <div className="mt-4">{navigation()}</div>
       </aside>
       <div>
         <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3">
-          <button className="text-sm md:hidden" onClick={() => setDrawerOpen(true)}>
+          <button
+            aria-controls="mobile-navigation"
+            aria-expanded={drawerOpen}
+            className="text-sm md:hidden"
+            onClick={() => setDrawerOpen(true)}
+            ref={openButton}
+          >
             Open navigation
           </button>
           <select
@@ -74,23 +73,69 @@ export function AppShell(): ReactNode {
             Disconnect
           </button>
         </header>
-        <Outlet />
+        <main className="px-5 py-6 sm:px-8">
+          <Outlet />
+        </main>
       </div>
       {drawerOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Application navigation"
-          className="fixed inset-0 z-10 bg-black/30 md:hidden"
-        >
-          <div className="h-full w-72 bg-rail px-3 py-5 text-white">
-            <button className="mb-5 px-4 text-sm" onClick={() => setDrawerOpen(false)}>
-              Close navigation
-            </button>
-            {navigation(true)}
-          </div>
-        </div>
+        <MobileDrawer onClose={() => setDrawerOpen(false)} returnFocus={openButton}>
+          {navigation()}
+        </MobileDrawer>
       ) : null}
+    </div>
+  );
+}
+
+type MobileDrawerProps = {
+  children: ReactNode;
+  onClose: () => void;
+  returnFocus: RefObject<HTMLButtonElement | null>;
+};
+
+function MobileDrawer({ children, onClose, returnFocus }: MobileDrawerProps) {
+  const dialog = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialog.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+    return () => returnFocus.current?.focus();
+  }, [returnFocus]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || dialog.current === null) return;
+    const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>("a, button"));
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first === undefined || last === undefined) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return (
+    <div
+      aria-label="Application navigation"
+      aria-modal="true"
+      className="fixed inset-0 z-10 bg-black/30 md:hidden"
+      id="mobile-navigation"
+      onKeyDown={handleKeyDown}
+      ref={dialog}
+      role="dialog"
+    >
+      <div className="h-full w-72 bg-rail px-3 py-5 text-white">
+        {children}
+        <button className="mt-5 px-4 text-sm" onClick={onClose}>
+          Close navigation
+        </button>
+      </div>
     </div>
   );
 }

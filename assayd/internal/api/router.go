@@ -65,11 +65,9 @@ func Register(
 	handlers.registerAPIKeyRoutes()
 	handlers.registerApplicationRoutes()
 	handlers.registerTraceRoutes()
-	if handlers.evaluations != nil {
-		handlers.registerDatasetRoutes()
-		handlers.registerScorerConfigRoutes()
-		handlers.registerEvalRunRoutes()
-	}
+	handlers.registerDatasetRoutes()
+	handlers.registerScorerConfigRoutes()
+	handlers.registerEvalRunRoutes()
 	return humaAPI
 }
 

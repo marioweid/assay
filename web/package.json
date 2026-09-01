@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
-    "lint": "oxlint --deny-warnings src vite.config.ts vitest.config.ts",
+    "lint": "oxlint --deny-warnings src openapi-ts.config.ts vite.config.ts vitest.config.ts",
     "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit",
-    "generate:api": "go run ../assayd/cmd/openapi --output openapi.json && openapi-ts"
+    "generate:openapi": "go -C ../assayd run ./cmd/openapi --output ../web/openapi.json",
+    "generate:api": "corepack pnpm generate:openapi && oxfmt openapi.json && openapi-ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
@@ -41,7 +42,7 @@
     "msw": "2.15.0",
     "oxfmt": "0.65.0",
     "oxlint": "1.80.0",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "vite": "8.2.2",
     "vitest": "4.1.11"
   },

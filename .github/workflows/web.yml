@@ -74,7 +74,8 @@ jobs:
       - name: Verify production assets
         working-directory: assayd
         run: |
-          rg --fixed-strings 'src="/assets/' internal/ui/dist/index.html
+          set -euo pipefail
+          grep --fixed-strings 'src="/assets/' internal/ui/dist/index.html
           test -f internal/ui/dist/assay-icon.png
       - name: Test embedded UI
         working-directory: assayd

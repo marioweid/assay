@@ -131,19 +131,20 @@ func (h *handler) registerTraceRoutes() {
 		http.MethodPatch, "/v1/traces/{id}/reference", "attach-trace-reference",
 		"Attach a trace reference", http.StatusNotFound,
 	), h.attachTraceReference)
-	huma.Register(h.api, h.projectOperation(
+	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodGet,
 		"/v1/traces",
 		"list-traces",
 		"List traces",
-	), h.listTraces)
-	huma.Register(h.api, h.projectOperation(
+		http.StatusBadRequest,
+	)), h.listTraces)
+	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodGet,
 		"/v1/traces/{id}",
 		"get-trace",
 		"Get a trace and its span tree",
 		http.StatusNotFound,
-	), h.getTrace)
+	)), h.getTrace)
 }
 
 func (h *handler) scoreTraces(
@@ -199,13 +200,13 @@ func (h *handler) listTraces(
 	ctx context.Context,
 	input *listTracesInput,
 ) (*traceCollectionResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("list traces", err)
-	}
 	query, err := traceQuery(input)
 	if err != nil {
 		return nil, h.responseError("list traces", err)
+	}
+	projectID, err := h.traceListProjectID(ctx, input, query)
+	if err != nil {
+		return nil, err
 	}
 	page, err := h.traces.List(ctx, projectID, query)
 	if err != nil {
@@ -223,19 +224,53 @@ func (h *handler) listTraces(
 	return result, nil
 }
 
+func (h *handler) traceListProjectID(
+	ctx context.Context,
+	input *listTracesInput,
+	query domain.TraceQuery,
+) (uuid.UUID, error) {
+	if !h.isAdmin(input.Authorization) {
+		projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+		if err != nil {
+			return uuid.Nil, h.responseError("list traces", err)
+		}
+		return projectID, nil
+	}
+	if query.ApplicationID == nil {
+		return uuid.Nil, huma.Error400BadRequest(
+			"application_id is required for admin trace lists",
+		)
+	}
+	application, err := h.service.GetApplication(ctx, *query.ApplicationID)
+	if err != nil {
+		return uuid.Nil, h.responseError("list traces", err)
+	}
+	return application.ProjectID, nil
+}
+
 func (h *handler) getTrace(
 	ctx context.Context,
 	input *traceIDInput,
 ) (*traceResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("get trace", err)
+	admin := h.isAdmin(input.Authorization)
+	var projectID uuid.UUID
+	var err error
+	if !admin {
+		projectID, err = h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+		if err != nil {
+			return nil, h.responseError("get trace", err)
+		}
 	}
 	traceID, err := parseID(input.ID, "trace ID")
 	if err != nil {
 		return nil, h.responseError("get trace", err)
 	}
-	trace, err := h.traces.Get(ctx, projectID, traceID)
+	var trace domain.Trace
+	if admin {
+		trace, err = h.traces.GetAdmin(ctx, traceID)
+	} else {
+		trace, err = h.traces.Get(ctx, projectID, traceID)
+	}
 	if err != nil {
 		return nil, h.responseError("get trace", err)
 	}

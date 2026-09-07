@@ -23,6 +23,7 @@ from assay._parsing import (
     parse_dataset_item,
     parse_eval_run,
     parse_eval_run_item,
+    parse_metric,
     parse_page,
     parse_project,
     parse_score,
@@ -52,6 +53,7 @@ from assay.models import (
     ImportResult,
     JSONValue,
     JudgeConfig,
+    MetricPoint,
     Page,
     Project,
     Score,
@@ -63,7 +65,7 @@ from assay.models import (
 
 AuthMode = Literal["none", "admin", "project"]
 JsonObject = dict[str, object]
-USER_AGENT = "assay-sdk/0.2.0"
+USER_AGENT = "assay-sdk/0.3.0"
 _INVALID_JSON = object()
 T = TypeVar("T")
 
@@ -167,6 +169,8 @@ class Client:
         self.scorers = ScorersResource(self._transport)
         self.runs = RunsResource(self._transport)
         self.traces = TracesResource(self._transport)
+        self.scores = ScoresResource(self._transport)
+        self.metrics = MetricsResource(self._transport)
 
     def ready(self) -> None:
         """Raise if the Assay service is not ready."""
@@ -186,6 +190,120 @@ class Client:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+
+class MetricsResource:
+    """Application score trends using recorded thresholds and UTC days."""
+
+    def __init__(self, transport: _Transport) -> None:
+        self._transport = transport
+
+    def list(
+        self,
+        application_id: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        scorer: str | None = None,
+    ) -> tuple[MetricPoint, ...]:
+        operation = "application metrics"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            f"/v1/applications/{_segment(application_id, 'application ID')}/metrics",
+            auth="admin",
+            params=_analytics_params(start, end, scorer),
+        )
+        return parse_collection(operation, _payload(operation, payload), parse_metric)
+
+
+class ScoresResource:
+    """Paginated application scores and retained judge evidence."""
+
+    def __init__(self, transport: _Transport) -> None:
+        self._transport = transport
+
+    def list(
+        self,
+        application_id: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        scorer: str | None = None,
+        passed: bool | None = None,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> Page[Score]:
+        params = _analytics_params(start, end, scorer)
+        params = params.set("application_id", _required_text(application_id, "application ID"))
+        paging = _page_params(limit, cursor, maximum=500)
+        if paging is not None:
+            params = params.merge(paging)
+        if passed is not None:
+            params = params.set("passed", str(passed).lower())
+        operation = "list application scores"
+        payload = self._transport.request(
+            operation, "GET", "/v1/scores", auth="admin", params=params
+        )
+        return parse_page(operation, _payload(operation, payload), parse_score)
+
+    def iter_all(
+        self,
+        application_id: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        scorer: str | None = None,
+        passed: bool | None = None,
+    ) -> Iterator[Score]:
+        """Read every page with a fixed window so paging cannot move the default time range."""
+        from datetime import timezone
+
+        end = end or datetime.now(timezone.utc)
+        return _iter_pages(
+            lambda cursor: self.list(
+                application_id,
+                start=start,
+                end=end,
+                scorer=scorer,
+                passed=passed,
+                cursor=cursor,
+            )
+        )
+
+
+def _regression_item(score: Score, trace_id: str, expected_output: str | None) -> DatasetItemInput:
+    if score.judged_input is None or score.judged_output is None:
+        raise AssayConfigurationError("score has no captured input/output evidence")
+    reference = score.judged_reference if expected_output is None else expected_output
+    if reference is not None and not reference.strip():
+        raise AssayConfigurationError("expected output must not be blank")
+    return DatasetItemInput(
+        input={"question": score.judged_input},
+        output=score.judged_output,
+        expected_output=reference,
+        context=score.judged_context,
+        external_id=f"trace:{trace_id}:{score.scorer}",
+        metadata={"trace_id": trace_id, "score_id": score.id, "scorer": score.scorer},
+    )
+
+
+def _analytics_params(
+    start: datetime | None,
+    end: datetime | None,
+    scorer: str | None,
+) -> httpx.QueryParams:
+    params = httpx.QueryParams()
+    for key, value in (("start", start), ("end", end)):
+        if value is not None:
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise AssayConfigurationError(f"{key} must include a timezone")
+            params = params.set(key, value.isoformat())
+    if scorer is not None:
+        if scorer not in {"groundedness", "correctness"}:
+            raise AssayConfigurationError("unknown scorer")
+        params = params.set("scorer", scorer)
+    return params
 
 
 class ProjectsResource:
@@ -450,6 +568,47 @@ class DatasetsResource:
             f"/v1/datasets/{_segment(dataset_id, 'dataset ID')}",
             auth="admin",
         )
+
+    def from_trace(
+        self,
+        dataset_id: str,
+        trace_id: str,
+        *,
+        scorer: str,
+        expected_output: str | None = None,
+    ) -> DatasetItem:
+        """Import the latest score's captured evidence as a regression case.
+
+        Args:
+            dataset_id: Existing dataset belonging to the trace's application.
+            trace_id: Assay trace ID with a persisted online score.
+            scorer: Scorer whose latest snapshot supplies the case.
+            expected_output: Optional corrected reference, overriding the judged reference.
+
+        Returns:
+            The created dataset item, keyed by trace ID and scorer. Importing the
+            same trace and scorer again returns an API conflict without changing the item.
+
+        Raises:
+            AssayConfigurationError: Applications differ or captured score evidence is absent.
+        """
+        dataset = self.get(dataset_id)
+        operation = "read regression trace"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            f"/v1/traces/{_segment(trace_id, 'trace ID')}",
+            auth="admin",
+        )
+        trace = parse_trace(operation, _payload(operation, payload))
+        if trace.application_id != dataset.application_id:
+            raise AssayConfigurationError("trace and dataset must belong to the same application")
+        candidates = [score for score in trace.scores if score.scorer == scorer]
+        if not candidates:
+            raise AssayConfigurationError("trace has no score for this scorer; score it first")
+        score = max(candidates, key=lambda score: (score.created_at, score.id))
+        item = _regression_item(score, trace_id, expected_output)
+        return self.create_items(dataset_id, (item,))[0]
 
     def create_items(
         self,

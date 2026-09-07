@@ -112,7 +112,7 @@ def init(
             )
         )
         provider.add_span_processor(_processor_factory(exporter))
-        tracer = provider.get_tracer("assay", "0.2.0")
+        tracer = provider.get_tracer("assay", "0.3.0")
         _state = _State(config=config, provider=provider, tracer=tracer)
 
 

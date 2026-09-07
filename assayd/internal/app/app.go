@@ -19,6 +19,7 @@ import (
 	"github.com/marioweid/assay/assayd/internal/otlp"
 	"github.com/marioweid/assay/assayd/internal/store"
 	"github.com/marioweid/assay/assayd/internal/target"
+	"github.com/marioweid/assay/assayd/internal/ui"
 	"github.com/marioweid/assay/assayd/internal/worker"
 
 	"github.com/google/uuid"
@@ -94,7 +95,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 func (a *App) Serve(ctx context.Context) error {
 	serveCtx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(1)
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		a.maintainPartitions(serveCtx)
+	}()
 	go func() {
 		defer workers.Done()
 		a.workers.Run(serveCtx)
@@ -104,15 +109,21 @@ func (a *App) Serve(ctx context.Context) error {
 		workers.Wait()
 	}()
 	handler := httpserver.NewMux(a.database, a.logger)
-	api.Register(handler, api.Dependencies{
-		Service: a.service, Traces: a.traces, Evaluations: a.evaluations,
-		AdminToken: a.config.AdminToken, Logger: a.logger,
-	})
-	otlp.Register(handler, a.service, a.traces, a.config.AutoCreateApps, a.logger)
+	a.registerRoutes(handler)
 	if err := httpserver.Serve(serveCtx, a.config.HTTPAddr, handler, a.logger); err != nil {
 		return fmt.Errorf("run application HTTP server: %w", err)
 	}
 	return nil
+}
+
+func (a *App) registerRoutes(handler *http.ServeMux) {
+	api.Register(handler, api.Dependencies{
+		Analytics: domain.NewAnalyticsService(a.database),
+		Service:   a.service, Traces: a.traces, Evaluations: a.evaluations,
+		AdminToken: a.config.AdminToken, Logger: a.logger,
+	})
+	otlp.Register(handler, a.service, a.traces, a.config.AutoCreateApps, a.logger)
+	ui.Register(handler, a.config.UIEnabled)
 }
 
 // Close releases every process-scoped resource owned by App.

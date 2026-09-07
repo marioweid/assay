@@ -12,6 +12,7 @@ import (
 )
 
 type handler struct {
+	analytics   *domain.AnalyticsService
 	api         huma.API
 	service     *domain.Service
 	traces      *domain.TraceService
@@ -22,6 +23,7 @@ type handler struct {
 
 // Dependencies contains process-scoped collaborators used by REST handlers.
 type Dependencies struct {
+	Analytics   *domain.AnalyticsService
 	Service     *domain.Service
 	Traces      *domain.TraceService
 	Evaluations *domain.EvaluationService
@@ -55,6 +57,7 @@ func Register(
 	humaAPI := humago.New(router, config)
 	handlers := &handler{
 		api:         humaAPI,
+		analytics:   dependencies.Analytics,
 		service:     dependencies.Service,
 		traces:      dependencies.Traces,
 		evaluations: dependencies.Evaluations,
@@ -65,11 +68,10 @@ func Register(
 	handlers.registerAPIKeyRoutes()
 	handlers.registerApplicationRoutes()
 	handlers.registerTraceRoutes()
-	if handlers.evaluations != nil {
-		handlers.registerDatasetRoutes()
-		handlers.registerScorerConfigRoutes()
-		handlers.registerEvalRunRoutes()
-	}
+	handlers.registerDatasetRoutes()
+	handlers.registerScorerConfigRoutes()
+	handlers.registerEvalRunRoutes()
+	handlers.registerAnalyticsRoutes()
 	return humaAPI
 }
 
@@ -91,6 +93,11 @@ func (h *handler) projectOperation(
 			{"projectAPIKey": {}},
 		},
 	}
+}
+
+func traceReadOperation(operation huma.Operation) huma.Operation {
+	operation.Security = append(operation.Security, map[string][]string{"adminBearer": {}})
+	return operation
 }
 
 func (h *handler) operation(

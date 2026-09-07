@@ -57,7 +57,18 @@ assay datasets import APPLICATION_ID --file regression.jsonl
 assay run create APPLICATION_ID --dataset DATASET_ID --scorers groundedness,correctness
 assay run watch RUN_ID --gate groundedness:0.8
 assay traces score --scorer correctness TRACE_ID
+assay scores export APPLICATION_ID --failed --format jsonl
+assay datasets from-trace DATASET_ID TRACE_ID --scorer groundedness
+assay metrics APPLICATION_ID --scorer groundedness
 ```
 
 Commands emit JSON. `assay run watch` returns exit code 1 when a run fails or a gate is not met,
 which makes it suitable for CI checks.
+
+M6 commands are available from this checkout via `uv run assay ...`. Metrics and score export
+require admin authentication and default to 30 days. `--start` and `--end` accept timezone-bearing
+timestamps for ranges up to 366 days. Trace imports preserve the selected scorer's latest evidence
+and reject duplicate trace/scorer pairs without overwriting existing items.
+
+The optional `tests/test_live_workflow.py` acceptance test requires `ASSAY_LIVE_TEST_ENDPOINT`
+and `ASSAY_ADMIN_TOKEN`. It makes real judge calls using synthetic data and deletes its project.

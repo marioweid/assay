@@ -1,6 +1,9 @@
 # Assay — CI/CD Plan
 
-*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-08-27. The backend and Python package publishing workflows are implemented; later product surfaces remain planned. Companion to `docs/specs/2026-08-26-assay-design.md`.*
+*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-09-01.
+The backend, frontend, and Python package publishing workflows are implemented; image publishing
+and the scheduled security workflow remain planned. Companion to
+`docs/specs/2026-08-26-assay-design.md`.*
 
 ## Philosophy
 
@@ -16,7 +19,7 @@ Validation workflows run for relevant pull requests and `main`; publishing uses 
 | Workflow | Triggers | Gate |
 |---|---|---|
 | `backend.yml` | `assayd/**`, `.github/workflows/backend.yml` | build · golangci-lint v2 · `go test` (unit + testcontainers) · sqlc-drift · goose validate |
-| `web.yml` | `web/**` | install · lint · `tsc --noEmit` · vitest · `vite build` · OpenAPI-client drift |
+| `web.yml` | frontend, UI-serving, and OpenAPI-affecting files | generation drift · frontend gates · production assets · embedded Go tests/build · release image |
 | `python.yml` | `clients/python/assay/**` | `ruff check` · `ruff format --check` · `ty check` · `pytest` · `pip-audit` |
 | `python-publish.yml` | tags `python-v*` | version/tag match · test · build · isolated wheel smoke test · PyPI Trusted Publishing |
 | `image.yml` | push to `main`, tags `v*` | multi-stage build (web → embed → go) · push to GHCR |
@@ -33,14 +36,14 @@ Notes:
 |---|---|
 | Go | `1.27.0` |
 | Postgres (tests/compose) | `postgres:18.6-trixie` (volume at `/var/lib/postgresql`) |
-| Node.js | `24` (Active LTS) → `node:24-trixie-slim` |
-| pnpm | `11.23.0` |
+| Node.js | `22.22.0` → `node:22.22.0-trixie-slim` |
+| pnpm | `11.25.0` |
 | uv | `0.12.6` |
 | golangci-lint | `v2.13.1` (config format v2) |
 | testcontainers-go | `v0.44.0` |
 | Vite (bundler) | `8` (scaffolder `create-vite@9`) |
 | Tailwind CSS | `4.3.x` (`@tailwindcss/vite`) |
-| shadcn CLI | `shadcn@latest` (v4; package renamed from `shadcn-ui`) |
+| shadcn CLI | v4 (scaffolding only; not installed by the frontend build) |
 
 **SHA-pinned actions** (dereferenced release commits — re-verify before merge):
 ```
@@ -98,29 +101,82 @@ jobs:
         run: go test -race -count=1 ./...
 ```
 
-## `web.yml` (sketch)
+## `web.yml`
 
 ```yaml
 name: web
 on:
-  pull_request: { paths: ["web/**", ".github/workflows/web.yml"] }
-  push: { branches: [main], paths: ["web/**"] }
-permissions: { contents: read }
+  pull_request:
+    paths:
+      - "web/**"
+      - "assayd/cmd/openapi/**"
+      - "assayd/internal/api/**"
+      - "assayd/internal/ui/**"
+      - "assayd/Dockerfile"
+      - "assayd/go.mod"
+      - "assayd/go.sum"
+      - ".dockerignore"
+      - ".env.example"
+      - "docker-compose.yml"
+      - ".github/workflows/web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "assayd/cmd/openapi/**"
+      - "assayd/internal/api/**"
+      - "assayd/internal/ui/**"
+      - "assayd/Dockerfile"
+      - "assayd/go.mod"
+      - "assayd/go.sum"
+      - ".dockerignore"
+      - ".env.example"
+      - "docker-compose.yml"
+      - ".github/workflows/web.yml"
+permissions:
+  contents: read
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: web } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
-        with: { persist-credentials: false }
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assayd/go.sum
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020   # v7.0.0
-        with: { node-version: "24" }
-      - run: corepack enable && corepack prepare pnpm@11.23.0 --activate
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint            # oxlint
-      - run: pnpm exec tsc --noEmit
-      - run: pnpm test            # vitest
-      - run: pnpm build           # vite build → dist/ (embedded by the Go image build)
+        with:
+          node-version: "22.22.0"
+      - run: corepack enable
+      - working-directory: web
+        run: pnpm install --frozen-lockfile
+      - working-directory: web
+        run: |
+          pnpm generate:api
+          git diff --exit-code -- openapi.json src/api/generated
+      - working-directory: web
+        run: pnpm lint
+      - working-directory: web
+        run: pnpm format:check
+      - working-directory: web
+        run: pnpm typecheck
+      - working-directory: web
+        run: pnpm test
+      - working-directory: web
+        run: pnpm build
+      - working-directory: assayd
+        run: |
+          rg --fixed-strings 'src="/assets/' internal/ui/dist/index.html
+          test -f internal/ui/dist/assay-icon.png
+      - working-directory: assayd
+        run: go test ./internal/ui ./internal/app
+      - working-directory: assayd
+        run: go build ./cmd/assayd
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker build --file assayd/Dockerfile --tag assay-web-ci .
 ```
 
 ## `python.yml` (sketch)
@@ -213,33 +269,33 @@ jobs:
 
 ```dockerfile
 # 1) build the embedded SPA
-FROM node:24-trixie-slim AS web
-WORKDIR /web
-RUN corepack enable && corepack prepare pnpm@11.23.0 --activate
-COPY web/package.json web/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+FROM node:22.22.0-trixie-slim@sha256:465a8c8f0f4103861bcbcf3e512608394b7155eccb1955425f4ea3f672ddc53e AS web-build
+WORKDIR /src/web
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/.npmrc ./
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY web/ ./
-RUN pnpm build                                   # -> /web/dist
+RUN pnpm build
 
 # 2) build the Go binary with the SPA embedded
-FROM golang:1.27.0-trixie AS go
-WORKDIR /src
-COPY assayd/go.mod assayd/go.sum ./assayd/
-RUN cd assayd && go mod download
-COPY assayd/ ./assayd/
-COPY --from=web /web/dist ./assayd/internal/ui/dist
-RUN cd assayd && CGO_ENABLED=0 go build -o /assayd ./cmd/assayd
+FROM golang:1.27.0-trixie@sha256:ae28539d2ef595b9a2930dd7f031d9592376829dc0eae7cb869559f7d5812c3a AS build
+WORKDIR /src/assayd
+COPY assayd/go.mod assayd/go.sum ./
+RUN go mod download
+COPY assayd/ ./
+COPY --from=web-build /src/assayd/internal/ui/dist ./internal/ui/dist
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/assayd ./cmd/assayd
 
 # 3) minimal runtime
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=go /assayd /assayd
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+COPY --from=build /out/assayd /assayd
 EXPOSE 8080
 ENTRYPOINT ["/assayd"]
 ```
 
 ## Supply chain & hygiene
 
-- **Dependabot** (`.github/dependabot.yml`): ecosystems `gomod` (assayd), `npm` (web, pnpm-aware), `pip`/`uv` (python client), and `github-actions`. Grouped updates, **7-day cooldown**.
+- **Planned Dependabot:** add `gomod`, pnpm-aware `npm`, `uv`, and `github-actions` updates with
+  groups and a 7-day cooldown in `.github/dependabot.yml`.
 - **pnpm hardening:** `minimumReleaseAge 1440` (24h publish delay), `ignore-scripts true` (block postinstall), exact-pinned versions (no `^`/`~`).
 - **Python:** pinned `==` versions, `pip-audit` in CI, `uv.lock` committed.
 - **Go:** `go.sum` committed; consider `govulncheck` as an added job.

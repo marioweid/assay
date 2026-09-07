@@ -27,7 +27,7 @@ def test_ready_accepts_plain_text_without_credentials() -> None:
     assert requests[0].url == httpx.URL("https://assay.test/readyz")
     assert "authorization" not in requests[0].headers
     assert "x-api-key" not in requests[0].headers
-    assert requests[0].headers["user-agent"] == "assay-sdk/0.2.0"
+    assert requests[0].headers["user-agent"] == "assay-sdk/0.3.0"
     assert not http_client.is_closed
     http_client.close()
 
@@ -63,7 +63,7 @@ def test_transport_selects_exactly_one_credential(
 
     assert result == {"items": []}
     assert requests[0].headers[expected_header] == expected_value
-    assert requests[0].headers["user-agent"] == "assay-sdk/0.2.0"
+    assert requests[0].headers["user-agent"] == "assay-sdk/0.3.0"
     other_header = "x-api-key" if expected_header == "authorization" else "authorization"
     assert other_header not in requests[0].headers
     http_client.close()

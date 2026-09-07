@@ -57,7 +57,51 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_scorer_commands(commands.add_parser("scorers"))
     _add_run_commands(commands.add_parser("run"))
     _add_trace_commands(commands.add_parser("traces"))
+    _add_score_commands(commands.add_parser("scores"))
+    metrics = commands.add_parser("metrics")
+    _add_analytics_filters(metrics)
+    metrics.set_defaults(execute=_metrics)
     return parser
+
+
+def _add_analytics_filters(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("application")
+    parser.add_argument("--scorer", choices=SCORERS)
+    parser.add_argument("--start", type=datetime.fromisoformat)
+    parser.add_argument("--end", type=datetime.fromisoformat)
+
+
+def _add_score_commands(parser: argparse.ArgumentParser) -> None:
+    commands = parser.add_subparsers(required=True)
+    for name in ("list", "export"):
+        command = commands.add_parser(name)
+        _add_analytics_filters(command)
+        command.add_argument("--failed", action="store_true")
+        command.add_argument("--format", choices=("jsonl",), default="jsonl")
+        command.set_defaults(execute=_scores)
+
+
+def _scores(args: argparse.Namespace, client: Client) -> int:
+    for score in client.scores.iter_all(
+        cast(str, args.application),
+        start=cast(datetime | None, args.start),
+        end=cast(datetime | None, args.end),
+        scorer=cast(str | None, args.scorer),
+        passed=False if args.failed else None,
+    ):
+        print(json.dumps(_json_value(score), ensure_ascii=False))
+    return 0
+
+
+def _metrics(args: argparse.Namespace, client: Client) -> int:
+    return _success(
+        client.metrics.list(
+            cast(str, args.application),
+            start=cast(datetime | None, args.start),
+            end=cast(datetime | None, args.end),
+            scorer=cast(str | None, args.scorer),
+        )
+    )
 
 
 def _add_project_commands(parser: argparse.ArgumentParser) -> None:
@@ -100,6 +144,12 @@ def _add_dataset_commands(parser: argparse.ArgumentParser) -> None:
     import_command.add_argument("--name")
     import_command.add_argument("--batch-size", type=int, default=1000)
     import_command.set_defaults(execute=_datasets_import)
+    regression = commands.add_parser("from-trace")
+    regression.add_argument("dataset")
+    regression.add_argument("trace_id")
+    regression.add_argument("--scorer", choices=SCORERS, required=True)
+    regression.add_argument("--expected-output")
+    regression.set_defaults(execute=_datasets_from_trace)
 
 
 def _add_scorer_commands(parser: argparse.ArgumentParser) -> None:
@@ -176,6 +226,17 @@ def _apps_list(args: argparse.Namespace, client: Client) -> int:
 def _apps_set_endpoint(args: argparse.Namespace, client: Client) -> int:
     endpoint = _load_endpoint(cast(Path, args.file))
     return _success(client.applications.set_endpoint(cast(str, args.application), endpoint))
+
+
+def _datasets_from_trace(args: argparse.Namespace, client: Client) -> int:
+    return _success(
+        client.datasets.from_trace(
+            cast(str, args.dataset),
+            cast(str, args.trace_id),
+            scorer=cast(str, args.scorer),
+            expected_output=cast(str | None, args.expected_output),
+        )
+    )
 
 
 def _datasets_import(args: argparse.Namespace, client: Client) -> int:

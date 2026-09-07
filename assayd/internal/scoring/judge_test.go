@@ -49,8 +49,32 @@ func assertJudgeRequest(t *testing.T, request *http.Request) {
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 		t.Errorf("decode judge body: %v", err)
 	}
-	if body["model"] != "judge-model" || body["temperature"] != float64(0) {
+	if body["model"] != "judge-model" {
 		t.Errorf("judge body = %#v", body)
+	}
+}
+
+func TestHTTPJudgeSupportsModelWithDefaultSamplingOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if body["temperature"] != nil {
+			http.Error(w, "model supports only default sampling", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"ok\":true}"}}]}`))
+	}))
+	defer server.Close()
+	judge := NewHTTPJudge(server.Client(), domain.ResolvedJudgeConfig{
+		BaseURL: server.URL, Model: "gpt-5.6-luna",
+	})
+	response, err := judge.Complete(t.Context(), JudgeRequest{System: "Return JSON"})
+	if err != nil || response.Content != `{"ok":true}` {
+		t.Fatalf("default sampling completion = %v, %v", response, err)
 	}
 }
 

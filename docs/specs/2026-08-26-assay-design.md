@@ -5,9 +5,10 @@
 For the implemented backend layers, dependency direction, and an API-key request walkthrough,
 see [`docs/architecture.md`](../architecture.md).
 
-**Implementation status (2026-09-01):** M0-M5 are implemented. M5 adds opt-in Python tracing, the
-typed API client, dataset import workflows, and CLI orchestration with run gates. The UI, binary
-OTLP/protobuf, OTLP/gRPC, score export/filter commands, and `trace_selection` runs remain deferred.
+**Implementation status (2026-09-01):** M0-M5.5 are implemented. M5 adds opt-in Python tracing, the
+typed API client, dataset import workflows, and CLI orchestration with run gates. M5.5 adds the
+embedded single-user web UI. Binary OTLP/protobuf, OTLP/gRPC, score export/filter commands,
+`trace_selection` runs, and M6 metrics/trends remain deferred.
 
 ---
 
@@ -318,7 +319,7 @@ type ScoreResult struct {
 }
 ```
 
-**Judge** = an OpenAI-compatible chat client (injected): `{BaseURL, APIKey (decrypted), Model, Temperature=0}`. Config resolution: **ScorerConfig.judge_config → Project.judge_config → global env default**. All judge calls use `temperature=0` and **structured JSON output** (response_format / function-calling where supported), validated against a schema, with one reparse-retry on malformed output.
+**Judge** = an OpenAI-compatible chat client (injected): `{BaseURL, APIKey (decrypted), Model}`. Config resolution: **ScorerConfig.judge_config → Project.judge_config → global env default**. All judge calls use model-default sampling (no temperature override) and **structured JSON output** (response_format / function-calling where supported), validated against a schema, with one reparse-retry on malformed output.
 
 ### 9.1 Groundedness (reference-free, claim decomposition)
 
@@ -389,7 +390,7 @@ Post-processing: enforce schema (retry on parse failure); optional deterministic
 
 ### 9.3 Bias mitigations (baked into defaults)
 
-- `temperature=0`; structured JSON output; rationale-before-score (CoT ordering).
+- Model-default sampling; structured JSON output; rationale-before-score (CoT ordering).
 - Anchored rubric levels; conciseness handled by reference-based grading.
 - **Cross-family judge recommended** (judge from a different provider than the generator) to curb self-preference — documented, not enforced.
 - Prompts are **versioned** (`prompt_template_id`), so score history stays interpretable when a prompt changes.
@@ -500,7 +501,7 @@ A minimal, single-user **test UI** now; it grows into the login-capable dashboar
 - **Why not Next.js:** the UI is embedded as **static files** in the Go binary. Next.js is a full-stack framework whose value (SSR, server components, API routes) runs on its own Node server — which we don't have, our backend is Go. A static export would discard everything Next adds. A Vite SPA builds straight to embeddable static assets.
 - **API client:** generated from the huma **OpenAPI 3.1** spec (`/openapi.json`) via `@hey-api/openapi-ts` into `web/src/api/` — **generated, never hand-edited**; stays in lockstep with the backend contract.
 - **Delivery:** `vite build` → static assets embedded via Go `embed.FS`, served by `assayd` at `/` (SPA fallback). No extra container, no separate deploy — the UI rides inside `assayd`. Toggle with `ASSAY_UI_ENABLED`.
-- **v1 scope (test-only, single-user):** list applications; list + inspect traces (span tree, attributes, scores + rationales); browse datasets/items; trigger an eval run and watch status/aggregates; view score trends. **Auth in v1 = the admin token entered once and kept in the browser (localStorage)** — deliberately not real login; it's a personal test tool.
+- **v1 scope (test-only, single-user):** list applications; list + inspect traces (span tree, attributes, scores + rationales); browse datasets/items; trigger an eval run and watch status/aggregates. Score metrics and trends remain M6. **Auth in v1 = the admin token entered once and kept in the browser (localStorage)** — deliberately not real login; it's a personal test tool.
 - **Future (out of scope now):** real user login (OIDC/password), multi-user/roles, richer dashboards. Since the SPA already speaks the `/v1` API and is versioned independently, adding auth later = API auth + a login view, with no change to how it deploys (still embedded, or optionally split into its own container if SSR is ever wanted).
 
 ---
@@ -672,11 +673,17 @@ assay/
   Trusted Publishing so the PyPI project name can be reserved. M5 replaces that bootstrap with
   the functional version 0.2.0 SDK and CLI.
 
-**M5.5 — Minimal web UI (embedded React SPA)** → *verify: `vite build` output embeds into the binary; visiting `/` lists apps, opens a trace's span tree + scores, and triggers a run + watches aggregates; admin-token stored in-browser; UI toggles off via `ASSAY_UI_ENABLED`.*
+**M5.5 — Minimal web UI (embedded React SPA) — complete** → *verified: `vite build` output embeds into the binary; visiting `/` lists apps, opens a trace's span tree + scores, and triggers a run + watches aggregates; admin-token stored in-browser; UI toggles off via `ASSAY_UI_ENABLED`.*
 - React + Vite + TS + Tailwind + shadcn/ui in `web/`; OpenAPI-generated client; `embed.FS` serving + SPA fallback in `internal/ui`; Docker multi-stage (node build → go embed).
 
-**M6 — Agent-native + polish** → *verify: Claude skill drives a full loop (find failing trace → make regression item → run → gate); metrics endpoint returns trends; retention job prunes old partitions.*
-- `.claude/skills/assay/SKILL.md`, `/metrics` trends, retention/TTL job, docs (`semantic-conventions.md`, README quickstart), dogfooding traces.
+**M6 — Agent-native + polish — complete** → *verified: the documented CLI loop finds a failing
+live trace, imports its score evidence, runs an evaluation, and rejects a failing gate; a corrected
+answer passes. The metrics endpoint returns trends; retention tests verify expired partition
+pruning, boundary rows, preserved score evidence, and concurrent maintenance.*
+- `.claude/skills/assay/SKILL.md`, `/v1/applications/{id}/metrics`, `/v1/scores` filters/export,
+  trace-to-dataset imports, score-trends UI, retention/TTL job, and README workflow.
+- Live acceptance test: `clients/python/assay/tests/test_live_workflow.py` (opt-in, synthetic
+  traces, configured judge; verified with `gpt-5.6-luna` on 2026-09-07).
 
 **Post-v1 (deliberately deferred):** binary protobuf OTLP/HTTP; OTLP/gRPC; HHEM local verifier for groundedness; prompt playground/versioning UI; **login-capable multi-user web UI (OIDC/password, roles)** — the v1 UI is a single-user test tool (§12.1); more scorers (answer-relevancy, context precision/recall); local-model cost tracking; SSO/RBAC.
 

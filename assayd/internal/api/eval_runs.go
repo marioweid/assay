@@ -291,6 +291,9 @@ func (h *handler) listEvalRunScores(
 }
 
 func evalRunOutput(run domain.EvalRun) evalRunResponse {
+	if run.Aggregates == nil {
+		run.Aggregates = map[string]domain.ScoreAggregate{}
+	}
 	return evalRunResponse{
 		ID: run.ID.String(), ApplicationID: run.ApplicationID.String(),
 		DatasetID: run.DatasetID.String(), Name: run.Name, Status: run.Status,

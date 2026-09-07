@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: sdk-lint
+        name: SDK lint
+        entry: uv run --project clients/python/assay ruff check clients/python/assay
+        language: system
+        files: ^clients/python/assay/
+        pass_filenames: false
+      - id: sdk-format
+        name: SDK formatting
+        entry: uv run --project clients/python/assay ruff format --check clients/python/assay
+        language: system
+        files: ^clients/python/assay/
+        pass_filenames: false
+      - id: sdk-types
+        name: SDK types
+        entry: uv run --project clients/python/assay ty check --project clients/python/assay
+        language: system
+        files: ^clients/python/assay/
+        pass_filenames: false
+      - id: go-vet
+        name: Go vet
+        entry: go -C assayd vet ./...
+        language: system
+        files: ^assayd/.*\.go$
+        pass_filenames: false

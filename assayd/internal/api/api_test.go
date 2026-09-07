@@ -132,8 +132,9 @@ func assertTraceOpenAPISecurity(t *testing.T, document openAPIDocument) {
 			continue
 		}
 		operation, found := operations["get"]
-		if !found || !hasProjectSecurity(operation.Security) {
-			t.Errorf("OpenAPI GET %s is missing project security", path)
+		if !found || !hasProjectSecurity(operation.Security) ||
+			!hasAdminSecurity(operation.Security) {
+			t.Errorf("OpenAPI GET %s is missing admin or project security", path)
 		}
 	}
 }
@@ -156,6 +157,7 @@ type apiFixture struct {
 	t       *testing.T
 	handler http.Handler
 	service *domain.Service
+	traces  *domain.TraceService
 }
 
 type requestSpec struct {
@@ -201,7 +203,7 @@ type openAPIDocument struct {
 	} `json:"components"`
 }
 
-func TestTraceReadRoutesRequireProjectKey(t *testing.T) {
+func TestTraceReadRoutesRequireCredentials(t *testing.T) {
 	handler := newDocumentationHandler(t)
 	for _, path := range []string{"/v1/traces", "/v1/traces/" + uuid.Must(uuid.NewV7()).String()} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
@@ -210,6 +212,17 @@ func TestTraceReadRoutesRequireProjectKey(t *testing.T) {
 		if response.Code != http.StatusUnauthorized {
 			t.Fatalf("GET %s status = %d, want 401", path, response.Code)
 		}
+	}
+}
+
+func TestAdminTraceListRequiresApplication(t *testing.T) {
+	handler := newDocumentationHandler(t)
+	request := httptest.NewRequest(http.MethodGet, "/v1/traces", nil)
+	request.Header.Set("Authorization", "Bearer "+adminToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("GET /v1/traces status = %d, want 400", response.Code)
 	}
 }
 
@@ -275,10 +288,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	evaluations := domain.NewEvaluationService(database, cipher, 3)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
-		Service: service, Traces: traceService, Evaluations: evaluations,
+		Analytics: domain.NewAnalyticsService(database),
+		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
-	return &apiFixture{t: t, handler: mux, service: service}
+	return &apiFixture{t: t, handler: mux, service: service, traces: traceService}
 }
 
 func newDocumentationHandler(t *testing.T) http.Handler {
@@ -289,7 +303,8 @@ func newDocumentationHandler(t *testing.T) http.Handler {
 	evaluations := domain.NewEvaluationService(nil, nil, 3)
 	mux := http.NewServeMux()
 	api.Register(mux, api.Dependencies{
-		Service: service, Traces: traceService, Evaluations: evaluations,
+		Analytics: domain.NewAnalyticsService(nil),
+		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
 	return mux
@@ -310,12 +325,16 @@ func (f *apiFixture) perform(spec requestSpec) *httptest.ResponseRecorder {
 }
 
 func (f *apiFixture) createProject(secret string) projectResponse {
+	return f.createProjectNamed("Support", secret)
+}
+
+func (f *apiFixture) createProjectNamed(name string, secret string) projectResponse {
 	f.t.Helper()
 	response := f.perform(requestSpec{
 		method: http.MethodPost,
 		path:   "/v1/projects",
 		token:  adminToken,
-		body: `{"name":"Support","judge_config":{"base_url":"https://judge.example.com/v1",` +
+		body: `{"name":"` + name + `","judge_config":{"base_url":"https://judge.example.com/v1",` +
 			`"model":"judge-model","api_key":"` + secret + `"}}`,
 	})
 	assertStatus(f.t, response, http.StatusCreated)

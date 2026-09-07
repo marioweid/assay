@@ -15,6 +15,7 @@ SQL        = describes reads and writes in Postgres
 OTLP       = decodes JSON trace exports and maps protocol values into domain traces
 Scoring    = evaluates normalized dataset items through built-in scorer contracts
 Worker     = leases durable jobs and owns retry, heartbeat, and recovery behavior
+Web UI     = serves the embedded React SPA and falls back to index.html for client routes
 ```
 
 ## Request Flow
@@ -62,6 +63,31 @@ OTLP ingest or POST /v1/traces/score
 The raw handler and Huma share one `net/http.ServeMux`: Huma owns trace `GET` routes while the OTLP
 adapter owns `POST /v1/traces`. M2 accepts JSON only. Binary protobuf and gRPC are deferred.
 
+The optional web UI shares that mux without changing API routing:
+
+```text
+web/ source -> deterministic OpenAPI client -> Vite build
+                                              |
+                                              v
+                                internal/ui/dist -> go:embed -> assayd /
+                                                                      |
+Browser SPA <---------------------------------------------------------+
+    |
+    +-> same-origin /v1 requests with the browser-provided admin token
+```
+
+API, OpenAPI, docs, OTLP, and health patterns are registered before the UI. The UI serves immutable
+hashed assets directly and falls back to `index.html` only for extensionless `GET` and `HEAD`
+routes. `ASSAY_UI_ENABLED=false` disables that final handler only. The single-user UI stores its
+admin token under `assay.admin-token.v1` in browser `localStorage`; Disconnect deletes it. The
+M6 score-trends screen reads daily aggregates from `/v1/applications/{id}/metrics`.
+
+Analytics follow API → `AnalyticsService` → Postgres aggregate/filter queries. `/v1/scores`
+returns application-scoped pages, including captured judge evidence. Partition maintenance runs
+at startup and hourly with cancellation, a transaction, and a database advisory lock across
+replicas. It moves default rows into monthly partitions and optionally expires spans while
+preserving trace summaries and scores. A zero retention TTL keeps every span.
+
 Offline scoring follows a durable asynchronous path:
 
 ```text
@@ -107,6 +133,7 @@ Postgres store, so calling a repository method calls the matching store method.
 | OTLP | Decodes JSON/gzip, applies OTLP partial-success rules, and maps spans. | [`internal/otlp`](../assayd/internal/otlp/) |
 | Scoring | Implements judge transport and built-in groundedness/correctness algorithms. | [`internal/scoring`](../assayd/internal/scoring/) |
 | Worker | Claims leased jobs and coordinates retries, heartbeats, and shutdown. | [`internal/worker`](../assayd/internal/worker/) |
+| Web UI | Embeds Vite output, serves static assets, and provides SPA fallback. | [`internal/ui`](../assayd/internal/ui/) |
 
 ## Offline Scoring State
 

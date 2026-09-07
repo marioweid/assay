@@ -14,7 +14,7 @@ import (
 
 // TraceWorkRepository loads score inputs and atomically completes online scores.
 type TraceWorkRepository interface {
-	GetTraceForScoring(context.Context, uuid.UUID) (domain.Trace, error)
+	GetTraceByID(context.Context, uuid.UUID) (domain.Trace, error)
 	CompleteTraceScore(context.Context, domain.Score, domain.JobLease) error
 }
 
@@ -47,7 +47,7 @@ func (r *TraceRunner) Run(ctx context.Context, job domain.Job, lease domain.JobL
 	if job.Kind != domain.JobKindScoringTask || job.TraceID == nil || job.Scorer == "" {
 		return fmt.Errorf("run trace score: %w: invalid job target", domain.ErrInvalid)
 	}
-	trace, err := r.repository.GetTraceForScoring(ctx, *job.TraceID)
+	trace, err := r.repository.GetTraceByID(ctx, *job.TraceID)
 	if err != nil {
 		return &jobRetryError{err: fmt.Errorf("load trace for scoring: %w", err)}
 	}

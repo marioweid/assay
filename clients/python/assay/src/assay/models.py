@@ -251,6 +251,17 @@ class ScoreAggregate:
 
 
 @dataclass(frozen=True, slots=True)
+class MetricPoint:
+    """Daily UTC score aggregate for one application and scorer."""
+
+    date: datetime
+    scorer: str
+    mean: float
+    pass_rate: float
+    n: int
+
+
+@dataclass(frozen=True, slots=True)
 class EvalRun:
     """Evaluation run and its current aggregate state."""
 

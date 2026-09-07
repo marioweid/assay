@@ -24,6 +24,7 @@ type TraceRepository interface {
 	UpsertTraces(context.Context, uuid.UUID, []Trace, []AutoScoreIntent) error
 	ListTraces(context.Context, uuid.UUID, TraceQuery) ([]Trace, error)
 	GetTrace(context.Context, uuid.UUID, uuid.UUID) (Trace, error)
+	GetTraceDetailByID(context.Context, uuid.UUID) (Trace, error)
 	QueueTraceScores(context.Context, uuid.UUID, []TraceScoreRequest, bool) ([]Job, error)
 	AttachTraceReference(context.Context, uuid.UUID, uuid.UUID, string, *Job) (Trace, error)
 }
@@ -331,6 +332,15 @@ func (s *TraceService) Get(
 	trace, err := s.repository.GetTrace(ctx, projectID, traceID)
 	if err != nil {
 		return Trace{}, fmt.Errorf("get trace %s: %w", traceID, err)
+	}
+	return trace, nil
+}
+
+// GetAdmin returns one trace and its spans without project presentation scoping.
+func (s *TraceService) GetAdmin(ctx context.Context, traceID uuid.UUID) (Trace, error) {
+	trace, err := s.repository.GetTraceDetailByID(ctx, traceID)
+	if err != nil {
+		return Trace{}, fmt.Errorf("get admin trace %s: %w", traceID, err)
 	}
 	return trace, nil
 }

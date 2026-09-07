@@ -69,7 +69,7 @@ type traceWorkRepositoryFake struct {
 	score domain.Score
 }
 
-func (f *traceWorkRepositoryFake) GetTraceForScoring(
+func (f *traceWorkRepositoryFake) GetTraceByID(
 	context.Context,
 	uuid.UUID,
 ) (domain.Trace, error) {

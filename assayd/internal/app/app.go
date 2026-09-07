@@ -95,7 +95,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 func (a *App) Serve(ctx context.Context) error {
 	serveCtx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(1)
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		a.maintainPartitions(serveCtx)
+	}()
 	go func() {
 		defer workers.Done()
 		a.workers.Run(serveCtx)
@@ -114,7 +118,8 @@ func (a *App) Serve(ctx context.Context) error {
 
 func (a *App) registerRoutes(handler *http.ServeMux) {
 	api.Register(handler, api.Dependencies{
-		Service: a.service, Traces: a.traces, Evaluations: a.evaluations,
+		Analytics: domain.NewAnalyticsService(a.database),
+		Service:   a.service, Traces: a.traces, Evaluations: a.evaluations,
 		AdminToken: a.config.AdminToken, Logger: a.logger,
 	})
 	otlp.Register(handler, a.service, a.traces, a.config.AutoCreateApps, a.logger)

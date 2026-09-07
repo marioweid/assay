@@ -19,6 +19,7 @@ from assay.models import (
     EvalRunItem,
     JSONValue,
     JudgeConfigView,
+    MetricPoint,
     Page,
     Project,
     ResponseMappingView,
@@ -33,6 +34,16 @@ from assay.models import (
 )
 
 T = TypeVar("T")
+
+
+def parse_metric(operation: str, payload: Mapping[str, object]) -> MetricPoint:
+    return MetricPoint(
+        date=_timestamp(operation, payload, "date"),
+        scorer=_string(operation, payload, "scorer"),
+        mean=_number(operation, payload, "mean"),
+        pass_rate=_number(operation, payload, "pass_rate"),
+        n=_integer(operation, payload, "n"),
+    )
 
 
 def parse_project(operation: str, payload: Mapping[str, object]) -> Project:

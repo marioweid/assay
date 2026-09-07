@@ -126,8 +126,15 @@ func validateValues(raw environmentConfig) error {
 	if int64(raw.JobMaxAttempts) > maxPostgresInteger {
 		return validationError("ASSAY_JOB_MAX_ATTEMPTS exceeds the database integer limit")
 	}
-	if raw.TraceRetentionDays < 0 {
+	return validateRetentionDays(raw.TraceRetentionDays)
+}
+
+func validateRetentionDays(days int) error {
+	if days < 0 {
 		return validationError("ASSAY_TRACE_RETENTION_DAYS must not be negative")
+	}
+	if days > 365000 {
+		return validationError("ASSAY_TRACE_RETENTION_DAYS must not exceed 365000")
 	}
 	return nil
 }

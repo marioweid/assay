@@ -4,7 +4,7 @@ import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
 
-const sections = ["traces", "datasets", "runs"] as const;
+const sections = ["traces", "datasets", "runs", "metrics"] as const;
 
 export function AppShell(): ReactNode {
   const { appId } = useParams();

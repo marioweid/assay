@@ -331,6 +331,22 @@ export type JudgeConfigResponse = {
   model?: string;
 };
 
+export type MetricPoint = {
+  date: string;
+  mean: number;
+  n: number;
+  pass_rate: number;
+  scorer: string;
+};
+
+export type MetricsResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  items: Array<MetricPoint> | null;
+};
+
 export type ProjectCollectionResultBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -748,6 +764,10 @@ export type JudgeConfigInputWritable = {
   api_key?: string;
   base_url?: string;
   model?: string;
+};
+
+export type MetricsResultBodyWritable = {
+  items: Array<MetricPoint> | null;
 };
 
 export type ProjectCollectionResultBodyWritable = {
@@ -1178,6 +1198,50 @@ export type UpdateApplicationEndpointResponses = {
 
 export type UpdateApplicationEndpointResponse =
   UpdateApplicationEndpointResponses[keyof UpdateApplicationEndpointResponses];
+
+export type ApplicationMetricsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    start?: string;
+    end?: string;
+    scorer?: "groundedness" | "correctness";
+  };
+  url: "/v1/applications/{id}/metrics";
+};
+
+export type ApplicationMetricsErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ApplicationMetricsError = ApplicationMetricsErrors[keyof ApplicationMetricsErrors];
+
+export type ApplicationMetricsResponses = {
+  /**
+   * OK
+   */
+  200: MetricsResultBody;
+};
+
+export type ApplicationMetricsResponse =
+  ApplicationMetricsResponses[keyof ApplicationMetricsResponses];
 
 export type ListDatasetsData = {
   body?: never;
@@ -1967,6 +2031,53 @@ export type ListEvalRunScoresResponses = {
 
 export type ListEvalRunScoresResponse =
   ListEvalRunScoresResponses[keyof ListEvalRunScoresResponses];
+
+export type ListApplicationScoresData = {
+  body?: never;
+  path?: never;
+  query: {
+    application_id: string;
+    start?: string;
+    end?: string;
+    scorer?: "groundedness" | "correctness";
+    passed?: "true" | "false";
+    limit?: number;
+    cursor?: string;
+  };
+  url: "/v1/scores";
+};
+
+export type ListApplicationScoresErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ListApplicationScoresError =
+  ListApplicationScoresErrors[keyof ListApplicationScoresErrors];
+
+export type ListApplicationScoresResponses = {
+  /**
+   * OK
+   */
+  200: ScoreCollectionResultBody;
+};
+
+export type ListApplicationScoresResponse =
+  ListApplicationScoresResponses[keyof ListApplicationScoresResponses];
 
 export type ListTracesData = {
   body?: never;

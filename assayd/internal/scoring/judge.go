@@ -130,7 +130,7 @@ func judgeRequestBody(model string, request JudgeRequest) ([]byte, error) {
 		})
 	}
 	return json.Marshal(map[string]any{
-		"model": model, "temperature": 0, "messages": messages,
+		"model": model, "messages": messages,
 		"response_format": map[string]string{"type": "json_object"},
 	})
 }

@@ -79,8 +79,14 @@ Browser SPA <---------------------------------------------------------+
 API, OpenAPI, docs, OTLP, and health patterns are registered before the UI. The UI serves immutable
 hashed assets directly and falls back to `index.html` only for extensionless `GET` and `HEAD`
 routes. `ASSAY_UI_ENABLED=false` disables that final handler only. The single-user UI stores its
-admin token under `assay.admin-token.v1` in browser `localStorage`; Disconnect deletes it. Metrics
-and score trends remain part of M6 rather than the M5.5 UI.
+admin token under `assay.admin-token.v1` in browser `localStorage`; Disconnect deletes it. The
+M6 score-trends screen reads daily aggregates from `/v1/applications/{id}/metrics`.
+
+Analytics follow API → `AnalyticsService` → Postgres aggregate/filter queries. `/v1/scores`
+returns application-scoped pages, including captured judge evidence. Partition maintenance runs
+at startup and hourly with cancellation, a transaction, and a database advisory lock across
+replicas. It moves default rows into monthly partitions and optionally expires spans while
+preserving trace summaries and scores. A zero retention TTL keeps every span.
 
 Offline scoring follows a durable asynchronous path:
 

@@ -79,7 +79,7 @@ def make_span() -> ReadableSpan:
         end_time=1_787_911_201_000_000_000,
         instrumentation_scope=InstrumentationScope(
             "assay.tests",
-            "0.2.0",
+            "0.3.0",
             "https://scope.schema.test",
             {"scope.flag": True},
         ),
@@ -109,7 +109,7 @@ def test_build_export_request_maps_complete_public_span() -> None:
     assert scope_group["schemaUrl"] == "https://scope.schema.test"
     assert scope_group["scope"] == {
         "name": "assay.tests",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "attributes": [{"key": "scope.flag", "value": {"boolValue": True}}],
         "droppedAttributesCount": 0,
     }

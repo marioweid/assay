@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { ApplicationsPage } from "@/features/applications/applications-page";
 import { DatasetDetail } from "@/features/datasets/dataset-detail";
 import { DatasetsPage } from "@/features/datasets/datasets-page";
+import { MetricsPage } from "@/features/metrics/metrics-page";
 import { RunDetail } from "@/features/runs/run-detail";
 import { RunsPage } from "@/features/runs/runs-page";
 import { TraceDetail } from "@/features/traces/trace-detail";
@@ -25,6 +26,7 @@ export function AppRoutes(): ReactNode {
           <Route path="datasets/:datasetId" element={<DatasetDetail />} />
           <Route path="runs" element={<RunsPage />} />
           <Route path="runs/:runId" element={<RunDetail />} />
+          <Route path="metrics" element={<MetricsPage />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -4,6 +4,9 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from "./client";
 import { client } from "./client.gen";
 import type {
+  ApplicationMetricsData,
+  ApplicationMetricsErrors,
+  ApplicationMetricsResponses,
   AttachTraceReferenceData,
   AttachTraceReferenceErrors,
   AttachTraceReferenceResponses,
@@ -55,6 +58,9 @@ import type {
   ListApiKeysData,
   ListApiKeysErrors,
   ListApiKeysResponses,
+  ListApplicationScoresData,
+  ListApplicationScoresErrors,
+  ListApplicationScoresResponses,
   ListApplicationsData,
   ListApplicationsErrors,
   ListApplicationsResponses,
@@ -300,6 +306,28 @@ export const updateApplicationEndpoint = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+  });
+
+/**
+ * Read daily application score trends
+ */
+export const applicationMetrics = <ThrowOnError extends boolean = false>(
+  options: Options<ApplicationMetricsData, ThrowOnError>,
+): RequestResult<ApplicationMetricsResponses, ApplicationMetricsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ApplicationMetricsResponses,
+    ApplicationMetricsErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/applications/{id}/metrics",
+    ...options,
   });
 
 /**
@@ -691,6 +719,28 @@ export const listEvalRunScores = <ThrowOnError extends boolean = false>(
       ...options,
     },
   );
+
+/**
+ * Filter application scores
+ */
+export const listApplicationScores = <ThrowOnError extends boolean = false>(
+  options: Options<ListApplicationScoresData, ThrowOnError>,
+): RequestResult<ListApplicationScoresResponses, ListApplicationScoresErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListApplicationScoresResponses,
+    ListApplicationScoresErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/scores",
+    ...options,
+  });
 
 /**
  * List traces

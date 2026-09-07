@@ -288,7 +288,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	evaluations := domain.NewEvaluationService(database, cipher, 3)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
-		Service: service, Traces: traceService, Evaluations: evaluations,
+		Analytics: domain.NewAnalyticsService(database),
+		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
 	return &apiFixture{t: t, handler: mux, service: service, traces: traceService}
@@ -302,7 +303,8 @@ func newDocumentationHandler(t *testing.T) http.Handler {
 	evaluations := domain.NewEvaluationService(nil, nil, 3)
 	mux := http.NewServeMux()
 	api.Register(mux, api.Dependencies{
-		Service: service, Traces: traceService, Evaluations: evaluations,
+		Analytics: domain.NewAnalyticsService(nil),
+		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
 	return mux

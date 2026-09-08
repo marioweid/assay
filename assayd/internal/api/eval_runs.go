@@ -72,7 +72,7 @@ type evalRunResponse struct {
 	ApplicationID  string                           `json:"application_id" format:"uuid"`
 	DatasetID      string                           `json:"dataset_id" format:"uuid"`
 	Name           string                           `json:"name"`
-	Status         string                           `json:"status"`
+	Status         string                           `json:"status" enum:"pending,running,succeeded,failed,canceled"`
 	Mode           string                           `json:"mode"`
 	Params         map[string]any                   `json:"params"`
 	Scorers        []string                         `json:"scorers"`
@@ -91,7 +91,7 @@ type evalRunResponse struct {
 type evalRunItemResponse struct {
 	EvalRunID        string         `json:"eval_run_id" format:"uuid"`
 	DatasetItemID    string         `json:"dataset_item_id" format:"uuid"`
-	Status           string         `json:"status"`
+	Status           string         `json:"status" enum:"pending,running,succeeded,failed,canceled"`
 	Error            *string        `json:"error,omitempty"`
 	StartedAt        *time.Time     `json:"started_at,omitempty"`
 	FinishedAt       *time.Time     `json:"finished_at,omitempty"`

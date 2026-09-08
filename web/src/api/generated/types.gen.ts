@@ -287,7 +287,7 @@ export type EvalRunItemResponse = {
   generated_context?: Array<Chunk> | null;
   generated_output?: string;
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   updated_at: string;
 };
 
@@ -314,7 +314,7 @@ export type EvalRunResponse = {
   };
   scorers: Array<string> | null;
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   succeeded_items: number;
   total_items: number;
   updated_at: string;
@@ -754,7 +754,7 @@ export type EvalRunResponseWritable = {
   };
   scorers: Array<string> | null;
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   succeeded_items: number;
   total_items: number;
   updated_at: string;

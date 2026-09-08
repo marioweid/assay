@@ -92,6 +92,16 @@ test("keeps problem details inside the creation dialog", async () => {
   expect(screen.getByRole("dialog", { name: "New evaluation run" })).toBeInTheDocument();
 });
 
+test("allows a pending run to be cancelled", async () => {
+  server.use(
+    ...baseHandlers(),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("pending"))),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+
+  expect(await screen.findByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+});
+
 test("confirms and applies active-run cancellation", async () => {
   let canceled = false;
   server.use(

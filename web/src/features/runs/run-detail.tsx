@@ -6,8 +6,7 @@ import { cancelEvalRun } from "@/api/generated/sdk.gen";
 import type { EvalRunResponse } from "@/api/generated/types.gen";
 import { Modal } from "@/components/modal";
 import { useRunPolling } from "@/features/runs/use-run-polling";
-
-const activeStatuses = new Set(["queued", "running"]);
+import { isActiveRun } from "@/features/runs/run-status";
 
 export function RunDetail() {
   const { appId = "", runId = "" } = useParams();
@@ -74,7 +73,7 @@ export function RunDetail() {
           </h1>
           <p className="mt-2 capitalize text-muted">{run.status}</p>
         </div>
-        {activeStatuses.has(run.status) && (
+        {isActiveRun(run.status) && (
           <button
             className="border border-red-300 px-4 py-2 text-sm text-red-800"
             onClick={() => setConfirming(true)}

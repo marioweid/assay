@@ -714,6 +714,7 @@
             "type": "string"
           },
           "status": {
+            "enum": ["pending", "running", "succeeded", "failed", "canceled"],
             "type": "string"
           },
           "updated_at": {
@@ -792,6 +793,7 @@
             "type": "string"
           },
           "status": {
+            "enum": ["pending", "running", "succeeded", "failed", "canceled"],
             "type": "string"
           },
           "succeeded_items": {

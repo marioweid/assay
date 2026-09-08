@@ -79,17 +79,27 @@ type EvalRun struct {
 }
 
 type EvalRunItem struct {
-	EvalRunID        uuid.UUID
-	DatasetItemID    uuid.UUID
-	Status           string
-	Error            pgtype.Text
-	StartedAt        pgtype.Timestamptz
-	FinishedAt       pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	GeneratedOutput  pgtype.Text
-	GeneratedContext []byte
-	GeneratedAt      pgtype.Timestamptz
+	EvalRunID              uuid.UUID
+	DatasetItemID          uuid.UUID
+	Status                 string
+	Error                  pgtype.Text
+	StartedAt              pgtype.Timestamptz
+	FinishedAt             pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	GeneratedOutput        pgtype.Text
+	GeneratedContext       []byte
+	GeneratedAt            pgtype.Timestamptz
+	SnapshotDatasetID      uuid.UUID
+	SnapshotExternalID     pgtype.Text
+	SnapshotInput          json.RawMessage
+	SnapshotOutput         pgtype.Text
+	SnapshotExpectedOutput pgtype.Text
+	SnapshotContext        json.RawMessage
+	SnapshotMetadata       json.RawMessage
+	SnapshotCreatedAt      pgtype.Timestamptz
+	SnapshotUpdatedAt      pgtype.Timestamptz
+	SnapshotOrigin         string
 }
 
 type Job struct {

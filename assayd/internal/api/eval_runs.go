@@ -68,10 +68,11 @@ type scoreCollectionResult struct {
 }
 
 type evalRunResponse struct {
-	ID             string                           `json:"id" format:"uuid"`
-	ApplicationID  string                           `json:"application_id" format:"uuid"`
-	DatasetID      string                           `json:"dataset_id" format:"uuid"`
-	Name           string                           `json:"name"`
+	ID            string `json:"id" format:"uuid"`
+	ApplicationID string `json:"application_id" format:"uuid"`
+	DatasetID     string `json:"dataset_id" format:"uuid"`
+	Name          string `json:"name"`
+	//nolint:lll // Huma requires the complete enum schema tag on this field.
 	Status         string                           `json:"status" enum:"pending,running,succeeded,failed,canceled"`
 	Mode           string                           `json:"mode"`
 	Params         map[string]any                   `json:"params"`

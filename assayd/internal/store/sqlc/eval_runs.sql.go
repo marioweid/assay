@@ -202,8 +202,14 @@ func (q *Queries) CreateEvalRun(ctx context.Context, arg CreateEvalRunParams) (E
 }
 
 const createEvalRunItems = `-- name: CreateEvalRunItems :exec
-INSERT INTO eval_run_items (eval_run_id, dataset_item_id, status)
-SELECT $1, id, 'pending'
+INSERT INTO eval_run_items (
+    eval_run_id, dataset_item_id, status, snapshot_dataset_id, snapshot_external_id,
+    snapshot_input, snapshot_output, snapshot_expected_output, snapshot_context,
+    snapshot_metadata, snapshot_created_at, snapshot_updated_at, snapshot_origin
+)
+SELECT
+    $1, id, 'pending', dataset_id, external_id, input, output,
+    expected_output, coalesce(context, '[]'::jsonb), metadata, created_at, updated_at, 'creation'
 FROM dataset_items
 WHERE dataset_id = $2
 `
@@ -395,11 +401,13 @@ func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScore
 
 const listEvalRunItems = `-- name: ListEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
-       di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
-       di.created_at AS item_created_at, di.updated_at AS item_updated_at
+       ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
+       ri.snapshot_dataset_id AS dataset_id, ri.snapshot_external_id AS external_id,
+       ri.snapshot_input AS input, ri.snapshot_output AS output,
+       ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
+       ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
+       ri.snapshot_updated_at AS item_updated_at
 FROM eval_run_items ri
-JOIN dataset_items di ON di.id = ri.dataset_item_id
 WHERE ri.eval_run_id = $1
   AND (NOT $2::boolean
        OR (ri.created_at, ri.dataset_item_id) > (
@@ -434,7 +442,7 @@ type ListEvalRunItemsRow struct {
 	Input            json.RawMessage
 	Output           pgtype.Text
 	ExpectedOutput   pgtype.Text
-	Context          []byte
+	Context          json.RawMessage
 	Metadata         json.RawMessage
 	ItemCreatedAt    pgtype.Timestamptz
 	ItemUpdatedAt    pgtype.Timestamptz
@@ -632,11 +640,13 @@ func (q *Queries) ListEvalRuns(ctx context.Context, arg ListEvalRunsParams) ([]E
 
 const listPendingEvalRunItems = `-- name: ListPendingEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
-	   ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
-       di.dataset_id, di.external_id, di.input, di.output, di.expected_output, di.context, di.metadata,
-       di.created_at AS item_created_at, di.updated_at AS item_updated_at
+       ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
+       ri.snapshot_dataset_id AS dataset_id, ri.snapshot_external_id AS external_id,
+       ri.snapshot_input AS input, ri.snapshot_output AS output,
+       ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
+       ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
+       ri.snapshot_updated_at AS item_updated_at
 FROM eval_run_items ri
-JOIN dataset_items di ON di.id = ri.dataset_item_id
 WHERE ri.eval_run_id = $1 AND ri.status = 'pending'
 ORDER BY ri.created_at, ri.dataset_item_id
 `
@@ -658,7 +668,7 @@ type ListPendingEvalRunItemsRow struct {
 	Input            json.RawMessage
 	Output           pgtype.Text
 	ExpectedOutput   pgtype.Text
-	Context          []byte
+	Context          json.RawMessage
 	Metadata         json.RawMessage
 	ItemCreatedAt    pgtype.Timestamptz
 	ItemUpdatedAt    pgtype.Timestamptz

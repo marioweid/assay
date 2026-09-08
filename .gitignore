@@ -34,3 +34,8 @@ build/
 # Custom stuff
 pipeline
 docs/superpowers
+
+docs
+improvements.md
+todo.md
+bugs.md

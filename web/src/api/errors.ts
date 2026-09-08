@@ -32,7 +32,13 @@ export function normalizeProblem(
   const body = isRecord(error) ? error : {};
   const status = response?.status ?? numberField(body, "status") ?? 0;
   const title = (stringField(body, "title") ?? response?.statusText) || "Request failed";
-  const detail = stringField(body, "detail");
+  const messages = Array.isArray(body["errors"])
+    ? body["errors"].flatMap((item: unknown) => {
+        const message = isRecord(item) ? stringField(item, "message") : undefined;
+        return message === undefined ? [] : [message];
+      })
+    : [];
+  const detail = [stringField(body, "detail"), ...messages].filter(Boolean).join(": ") || undefined;
   return new Problem({ operation, status, title, detail });
 }
 

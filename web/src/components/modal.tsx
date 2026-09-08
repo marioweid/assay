@@ -14,7 +14,7 @@ export function Modal({ children, label, onClose, role = "dialog" }: ModalProps)
   useEffect(() => {
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    modal.current?.querySelector<HTMLElement>("input, select, button")?.focus();
+    modal.current?.querySelector<HTMLElement>("input, textarea, select, button")?.focus();
     return () => previousFocus?.focus();
   }, []);
 
@@ -26,7 +26,7 @@ export function Modal({ children, label, onClose, role = "dialog" }: ModalProps)
     }
     if (event.key !== "Tab" || modal.current === null) return;
     const focusable = Array.from(
-      modal.current.querySelectorAll<HTMLElement>("button, input, select"),
+      modal.current.querySelectorAll<HTMLElement>("button, input, textarea, select"),
     ).filter((element) => !element.hasAttribute("disabled"));
     const first = focusable[0];
     const last = focusable.at(-1);

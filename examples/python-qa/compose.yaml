@@ -1,0 +1,24 @@
+name: assay
+
+include:
+  - ../../docker-compose.yml
+
+services:
+  chat:
+    build: .
+    env_file: ../../.env
+    environment:
+      ASSAY_ENDPOINT: http://assayd:8080
+      ASSAY_UI_URL: http://localhost:${ASSAY_HTTP_PORT:-8080}
+      ASSAY_TARGET_URL: http://chat:8090/api/chat
+    ports:
+      - "127.0.0.1:${ASSAY_CHAT_PORT:-8090}:8090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      assayd:
+        condition: service_healthy

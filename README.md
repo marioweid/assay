@@ -47,10 +47,22 @@ import assay
 print(assay.__version__)
 ```
 
-Version 0.2.0 provides opt-in tracing, a typed synchronous API client, dataset import workflows,
+Version 0.3.0 provides opt-in tracing, a typed synchronous API client, dataset import workflows,
 and the `assay` CLI. Configure the CLI with `ASSAY_ENDPOINT` and the credential required by the
 operation: `ASSAY_ADMIN_TOKEN` for management and evaluation commands or `ASSAY_API_KEY` for trace
 commands.
+
+## Try the chat example
+
+Configure the root `.env` with your Assay admin token and OpenAI judge credentials, then run:
+
+```bash
+docker compose --env-file .env -f examples/python-qa/compose.yaml up --build -d
+```
+
+Open [the chat app](http://localhost:8090). Each answer links to its trace in
+[Assay](http://localhost:8080), including context, token usage, and automatic groundedness scores.
+The standalone [uv example](examples/python-qa/README.md) uses `assay-sdk==0.3.0` from PyPI.
 
 ## Repo layout
 

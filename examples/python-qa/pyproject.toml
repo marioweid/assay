@@ -1,0 +1,41 @@
+[project]
+name = "assay-python-qa-example"
+version = "0.1.0"
+description = "A small OpenAI Q&A app traced and scored by a local Assay instance"
+requires-python = ">=3.13"
+dependencies = [
+    "assay-sdk==0.3.0",
+    "fastapi==0.141.1",
+    "openai==3.8.0",
+    "uvicorn==0.52.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ty.rules]
+all = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--strict-markers"]
+# Starlette 1.6 uses AnyIO's deprecated alias internally; remove when Starlette updates it.
+filterwarnings = ["ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette.testclient"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.6",
+    "ty==0.0.78",
+]

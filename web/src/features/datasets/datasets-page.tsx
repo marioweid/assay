@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router";
 import { Problem } from "@/api/errors";
 import { listDatasets } from "@/api/generated/sdk.gen";
 import type { DatasetResponse } from "@/api/generated/types.gen";
+import { CreateDatasetDialog } from "@/features/datasets/create-dataset-dialog";
 
 export function DatasetsPage() {
   const { appId = "" } = useParams();
@@ -11,6 +12,7 @@ export function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -18,6 +20,7 @@ export function DatasetsPage() {
     setDatasets([]);
     setLoading(true);
     setError(null);
+    setCreating(false);
     void listDatasets({
       query: { application_id: appId },
       signal: controller.signal,
@@ -47,6 +50,15 @@ export function DatasetsPage() {
       <h1 className="mt-1 text-2xl font-semibold" id="datasets-heading">
         Datasets
       </h1>
+      <button
+        className="mt-4 bg-blue-700 px-4 py-2 text-sm text-white"
+        onClick={() => setCreating(true)}
+      >
+        Create dataset
+      </button>
+      {creating && (
+        <CreateDatasetDialog key={appId} appID={appId} onClose={() => setCreating(false)} />
+      )}
       {error && (
         <p className="mt-4 border border-red-300 bg-red-50 p-3 text-sm" role="alert">
           {error}
@@ -54,7 +66,7 @@ export function DatasetsPage() {
       )}
       {loading && <p className="mt-8 text-muted">Loading datasets...</p>}
       {!loading && error === null && datasets.length === 0 && (
-        <p className="mt-8 text-muted">No datasets found. Create one with the Assay CLI or API.</p>
+        <p className="mt-8 text-muted">No datasets yet. Create one to collect evaluation cases.</p>
       )}
       {datasets.length > 0 && (
         <div className="mt-6 overflow-x-auto border border-line bg-white">

@@ -6,6 +6,7 @@ import { Problem } from "@/api/errors";
 import { getDataset, listDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemResponse, DatasetResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
+import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
@@ -77,7 +78,13 @@ export function DatasetDetail() {
       });
       if (controller.signal.aborted || requestNumber.current !== currentRequest) return;
       const receivedCursor = response.data.next_cursor ?? null;
-      setItems((current) => [...current, ...(response.data.items ?? [])]);
+      setItems((current) => {
+        const existing = new Set(current.map((item) => item.id));
+        return [
+          ...current,
+          ...(response.data.items ?? []).filter((item) => !existing.has(item.id)),
+        ];
+      });
       setSeenCursors(consumed);
       if (receivedCursor !== null && consumed.has(receivedCursor)) {
         setError("The server returned a repeated cursor. Pagination stopped.");
@@ -100,6 +107,7 @@ export function DatasetDetail() {
       loading={loading}
       nextCursor={nextCursor}
       onLoadMore={loadMore}
+      onCreated={(created) => setItems((current) => [...created, ...current])}
     />
   );
 }
@@ -112,6 +120,7 @@ type DatasetViewProps = {
   loading: boolean;
   nextCursor: string | null;
   onLoadMore: () => Promise<void>;
+  onCreated: (items: DatasetItemResponse[]) => void;
 };
 
 function DatasetView(props: DatasetViewProps) {
@@ -136,6 +145,13 @@ function DatasetView(props: DatasetViewProps) {
       <p className="mt-2 text-sm text-muted">
         {props.dataset.description?.trim() || "No description"}
       </p>
+      {!props.loading && (
+        <AddDatasetItem
+          key={props.dataset.id}
+          datasetID={props.dataset.id}
+          onCreated={props.onCreated}
+        />
+      )}
       {props.error && (
         <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
           {props.error}
@@ -166,7 +182,8 @@ function DatasetItem({ item }: { item: DatasetItemResponse }) {
   return (
     <details className="border border-line bg-white">
       <summary className="cursor-pointer px-4 py-3 font-medium">
-        {item.external_id ?? item.id}
+        {item.external_id ??
+          (typeof item.input["question"] === "string" ? item.input["question"] : item.id)}
       </summary>
       <div className="grid gap-5 border-t border-line p-4 lg:grid-cols-2">
         <ItemField label="Input">

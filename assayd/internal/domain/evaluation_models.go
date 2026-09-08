@@ -242,6 +242,7 @@ type EvalRunItem struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Item             DatasetItem
+	SnapshotOrigin   string
 	GeneratedOutput  *string
 	GeneratedContext []Chunk
 	GeneratedAt      *time.Time

@@ -141,6 +141,43 @@ func (q *Queries) CompleteEvalRunItem(ctx context.Context, arg CompleteEvalRunIt
 	return eval_run_id, err
 }
 
+const countEvalRunItems = `-- name: CountEvalRunItems :one
+SELECT count(*)::integer FROM eval_run_items WHERE eval_run_id = $1
+`
+
+func (q *Queries) CountEvalRunItems(ctx context.Context, evalRunID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countEvalRunItems, evalRunID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countInvalidEvalRunSnapshots = `-- name: CountInvalidEvalRunSnapshots :one
+SELECT count(*)::integer
+FROM eval_run_items
+WHERE eval_run_id = $1
+  AND (
+      ($2::text = 'score_existing' AND snapshot_output IS NULL)
+      OR ('correctness' = ANY($3::text[]) AND snapshot_expected_output IS NULL)
+      OR NOT snapshot_input ? 'question'
+      OR jsonb_typeof(snapshot_input->'question') <> 'string'
+      OR btrim(snapshot_input->>'question') = ''
+  )
+`
+
+type CountInvalidEvalRunSnapshotsParams struct {
+	EvalRunID uuid.UUID
+	Mode      string
+	Scorers   []string
+}
+
+func (q *Queries) CountInvalidEvalRunSnapshots(ctx context.Context, arg CountInvalidEvalRunSnapshotsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countInvalidEvalRunSnapshots, arg.EvalRunID, arg.Mode, arg.Scorers)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createEvalRun = `-- name: CreateEvalRun :one
 INSERT INTO eval_runs (
     id, application_id, dataset_id, name, status, mode, params, scorers, total_items
@@ -406,7 +443,7 @@ SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, r
        ri.snapshot_input AS input, ri.snapshot_output AS output,
        ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
        ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
-       ri.snapshot_updated_at AS item_updated_at
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
 FROM eval_run_items ri
 WHERE ri.eval_run_id = $1
   AND (NOT $2::boolean
@@ -446,6 +483,7 @@ type ListEvalRunItemsRow struct {
 	Metadata         json.RawMessage
 	ItemCreatedAt    pgtype.Timestamptz
 	ItemUpdatedAt    pgtype.Timestamptz
+	SnapshotOrigin   string
 }
 
 func (q *Queries) ListEvalRunItems(ctx context.Context, arg ListEvalRunItemsParams) ([]ListEvalRunItemsRow, error) {
@@ -484,6 +522,7 @@ func (q *Queries) ListEvalRunItems(ctx context.Context, arg ListEvalRunItemsPara
 			&i.Metadata,
 			&i.ItemCreatedAt,
 			&i.ItemUpdatedAt,
+			&i.SnapshotOrigin,
 		); err != nil {
 			return nil, err
 		}
@@ -645,7 +684,7 @@ SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, r
        ri.snapshot_input AS input, ri.snapshot_output AS output,
        ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
        ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
-       ri.snapshot_updated_at AS item_updated_at
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
 FROM eval_run_items ri
 WHERE ri.eval_run_id = $1 AND ri.status = 'pending'
 ORDER BY ri.created_at, ri.dataset_item_id
@@ -672,6 +711,7 @@ type ListPendingEvalRunItemsRow struct {
 	Metadata         json.RawMessage
 	ItemCreatedAt    pgtype.Timestamptz
 	ItemUpdatedAt    pgtype.Timestamptz
+	SnapshotOrigin   string
 }
 
 func (q *Queries) ListPendingEvalRunItems(ctx context.Context, evalRunID uuid.UUID) ([]ListPendingEvalRunItemsRow, error) {
@@ -704,6 +744,7 @@ func (q *Queries) ListPendingEvalRunItems(ctx context.Context, evalRunID uuid.UU
 			&i.Metadata,
 			&i.ItemCreatedAt,
 			&i.ItemUpdatedAt,
+			&i.SnapshotOrigin,
 		); err != nil {
 			return nil, err
 		}

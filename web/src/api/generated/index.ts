@@ -152,6 +152,7 @@ export type {
   EvalRunItemCollectionResultBody,
   EvalRunItemCollectionResultBodyWritable,
   EvalRunItemResponse,
+  EvalRunItemResponseWritable,
   EvalRunResponse,
   EvalRunResponseWritable,
   GetApplicationData,

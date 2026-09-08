@@ -290,6 +290,8 @@ export type EvalRunItemResponse = {
   generated_at?: string;
   generated_context?: Array<Chunk> | null;
   generated_output?: string;
+  snapshot: DatasetItemResponse;
+  snapshot_origin: "creation" | "legacy_backfill";
   started_at?: string;
   status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   updated_at: string;
@@ -779,8 +781,24 @@ export type EvalRunCollectionResultBodyWritable = {
 };
 
 export type EvalRunItemCollectionResultBodyWritable = {
-  items: Array<EvalRunItemResponse> | null;
+  items: Array<EvalRunItemResponseWritable> | null;
   next_cursor?: string;
+};
+
+export type EvalRunItemResponseWritable = {
+  created_at: string;
+  dataset_item_id: string;
+  error?: string;
+  eval_run_id: string;
+  finished_at?: string;
+  generated_at?: string;
+  generated_context?: Array<Chunk> | null;
+  generated_output?: string;
+  snapshot: DatasetItemResponseWritable;
+  snapshot_origin: "creation" | "legacy_backfill";
+  started_at?: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
+  updated_at: string;
 };
 
 export type EvalRunResponseWritable = {

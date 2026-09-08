@@ -716,6 +716,13 @@
           "generated_output": {
             "type": "string"
           },
+          "snapshot": {
+            "$ref": "#/components/schemas/DatasetItemResponse"
+          },
+          "snapshot_origin": {
+            "enum": ["creation", "legacy_backfill"],
+            "type": "string"
+          },
           "started_at": {
             "format": "date-time",
             "type": "string"
@@ -729,7 +736,15 @@
             "type": "string"
           }
         },
-        "required": ["eval_run_id", "dataset_item_id", "status", "created_at", "updated_at"],
+        "required": [
+          "eval_run_id",
+          "dataset_item_id",
+          "status",
+          "created_at",
+          "updated_at",
+          "snapshot",
+          "snapshot_origin"
+        ],
         "type": "object"
       },
       "EvalRunResponse": {

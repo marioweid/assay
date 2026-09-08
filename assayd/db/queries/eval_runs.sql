@@ -25,6 +25,21 @@ SELECT
 FROM dataset_items
 WHERE dataset_id = sqlc.arg(dataset_id);
 
+-- name: CountEvalRunItems :one
+SELECT count(*)::integer FROM eval_run_items WHERE eval_run_id = $1;
+
+-- name: CountInvalidEvalRunSnapshots :one
+SELECT count(*)::integer
+FROM eval_run_items
+WHERE eval_run_id = sqlc.arg(eval_run_id)
+  AND (
+      (sqlc.arg(mode)::text = 'score_existing' AND snapshot_output IS NULL)
+      OR ('correctness' = ANY(sqlc.arg(scorers)::text[]) AND snapshot_expected_output IS NULL)
+      OR NOT snapshot_input ? 'question'
+      OR jsonb_typeof(snapshot_input->'question') <> 'string'
+      OR btrim(snapshot_input->>'question') = ''
+  );
+
 -- name: ListEvalRuns :many
 SELECT id, application_id, dataset_id, name, status, mode, params, scorers, aggregates,
        total_items, succeeded_items, failed_items, canceled_items, started_at, finished_at,
@@ -52,7 +67,7 @@ SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, r
        ri.snapshot_input AS input, ri.snapshot_output AS output,
        ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
        ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
-       ri.snapshot_updated_at AS item_updated_at
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
 FROM eval_run_items ri
 WHERE ri.eval_run_id = sqlc.arg(eval_run_id)
   AND (NOT sqlc.arg(has_cursor)::boolean
@@ -69,7 +84,7 @@ SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, r
        ri.snapshot_input AS input, ri.snapshot_output AS output,
        ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
        ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
-       ri.snapshot_updated_at AS item_updated_at
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
 FROM eval_run_items ri
 WHERE ri.eval_run_id = $1 AND ri.status = 'pending'
 ORDER BY ri.created_at, ri.dataset_item_id;

@@ -90,17 +90,20 @@ type evalRunResponse struct {
 }
 
 type evalRunItemResponse struct {
-	EvalRunID        string         `json:"eval_run_id" format:"uuid"`
-	DatasetItemID    string         `json:"dataset_item_id" format:"uuid"`
-	Status           string         `json:"status" enum:"pending,running,succeeded,failed,canceled"`
-	Error            *string        `json:"error,omitempty"`
-	StartedAt        *time.Time     `json:"started_at,omitempty"`
-	FinishedAt       *time.Time     `json:"finished_at,omitempty"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	GeneratedOutput  *string        `json:"generated_output,omitempty"`
-	GeneratedContext []domain.Chunk `json:"generated_context,omitempty"`
-	GeneratedAt      *time.Time     `json:"generated_at,omitempty"`
+	EvalRunID     string `json:"eval_run_id" format:"uuid"`
+	DatasetItemID string `json:"dataset_item_id" format:"uuid"`
+	//nolint:lll // Huma requires the complete enum schema tag on this field.
+	Status           string              `json:"status" enum:"pending,running,succeeded,failed,canceled"`
+	Error            *string             `json:"error,omitempty"`
+	StartedAt        *time.Time          `json:"started_at,omitempty"`
+	FinishedAt       *time.Time          `json:"finished_at,omitempty"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+	Snapshot         datasetItemResponse `json:"snapshot"`
+	SnapshotOrigin   string              `json:"snapshot_origin" enum:"creation,legacy_backfill"`
+	GeneratedOutput  *string             `json:"generated_output,omitempty"`
+	GeneratedContext []domain.Chunk      `json:"generated_context,omitempty"`
+	GeneratedAt      *time.Time          `json:"generated_at,omitempty"`
 }
 
 type scoreResponse struct {
@@ -311,6 +314,7 @@ func evalRunItemOutput(item domain.EvalRunItem) evalRunItemResponse {
 		EvalRunID: item.EvalRunID.String(), DatasetItemID: item.DatasetItemID.String(),
 		Status: item.Status, Error: item.Error, StartedAt: item.StartedAt,
 		FinishedAt: item.FinishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+		Snapshot: datasetItemOutput(item.Item), SnapshotOrigin: item.SnapshotOrigin,
 		GeneratedOutput: item.GeneratedOutput, GeneratedContext: item.GeneratedContext,
 		GeneratedAt: item.GeneratedAt,
 	}

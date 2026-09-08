@@ -90,6 +90,7 @@ func TestDatasetItemReplacementAndScopedDeletion(t *testing.T) {
 	otherDatasetID := createDatasetForMutation(t, fixture, application.ID, "second")
 	itemID := createDatasetItemForMutation(t, fixture, datasetID, "case-1")
 	createDatasetItemForMutation(t, fixture, datasetID, "case-2")
+	runID := createRunForMutation(t, fixture, application.ID, datasetID)
 	path := "/v1/datasets/" + datasetID + "/items/" + itemID
 
 	conflict := fixture.perform(requestSpec{
@@ -141,6 +142,52 @@ func TestDatasetItemReplacementAndScopedDeletion(t *testing.T) {
 	assertStatus(t, deleted, http.StatusNoContent)
 	missing := fixture.perform(requestSpec{method: http.MethodGet, path: path, token: adminToken})
 	assertStatus(t, missing, http.StatusNotFound)
+	assertAPIRunSnapshot(t, fixture, runID, itemID)
+}
+
+func createRunForMutation(
+	t *testing.T,
+	fixture *apiFixture,
+	applicationID string,
+	datasetID string,
+) string {
+	t.Helper()
+	response := fixture.perform(requestSpec{
+		method: http.MethodPost, path: "/v1/runs", token: adminToken,
+		body: `{"application_id":"` + applicationID + `","dataset_id":"` + datasetID +
+			`","name":"snapshot","mode":"score_existing","scorers":["groundedness"]}`,
+	})
+	assertStatus(t, response, http.StatusAccepted)
+	var run struct {
+		ID string `json:"id"`
+	}
+	decodeResponse(t, response, &run)
+	return run.ID
+}
+
+func assertAPIRunSnapshot(t *testing.T, fixture *apiFixture, runID string, itemID string) {
+	t.Helper()
+	response := fixture.perform(requestSpec{
+		method: http.MethodGet, path: "/v1/runs/" + runID + "/items", token: adminToken,
+	})
+	assertStatus(t, response, http.StatusOK)
+	var page struct {
+		Items []struct {
+			DatasetItemID  string `json:"dataset_item_id"`
+			SnapshotOrigin string `json:"snapshot_origin"`
+			Snapshot       struct {
+				Input map[string]any `json:"input"`
+			} `json:"snapshot"`
+		} `json:"items"`
+	}
+	decodeResponse(t, response, &page)
+	for _, item := range page.Items {
+		if item.DatasetItemID == itemID && item.SnapshotOrigin == "creation" &&
+			item.Snapshot.Input["question"] == "original" {
+			return
+		}
+	}
+	t.Fatalf("original run snapshot missing from %#v", page.Items)
 }
 
 func createDatasetForMutation(

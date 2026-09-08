@@ -315,7 +315,7 @@ func pendingEvalRunItemFromRow(row db.ListPendingEvalRunItemsRow) (domain.EvalRu
 		EvalRunID: row.EvalRunID, DatasetItemID: row.DatasetItemID, Status: row.Status,
 		Error: optionalText(row.Error), StartedAt: optionalTimestamp(row.StartedAt),
 		FinishedAt: optionalTimestamp(row.FinishedAt), CreatedAt: row.CreatedAt.Time,
-		UpdatedAt: row.UpdatedAt.Time, Item: item,
+		UpdatedAt: row.UpdatedAt.Time, Item: item, SnapshotOrigin: row.SnapshotOrigin,
 		GeneratedOutput:  optionalText(row.GeneratedOutput),
 		GeneratedContext: generatedContext,
 		GeneratedAt:      optionalTimestamp(row.GeneratedAt),

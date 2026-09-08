@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, delay, http } from "msw";
+import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router";
 
@@ -64,12 +64,7 @@ test("disconnect clears the stored token", async () => {
 
 test("shows application loading and empty states", async () => {
   localStorage.setItem(storageKey, "admin-secret");
-  server.use(
-    http.get("*/v1/applications", async () => {
-      await delay(40);
-      return HttpResponse.json({ items: [] });
-    }),
-  );
+  server.use(http.get("*/v1/applications", () => HttpResponse.json({ items: [] })));
   renderApp("/apps");
 
   expect(screen.getByRole("status")).toHaveTextContent("Connecting to Assay");

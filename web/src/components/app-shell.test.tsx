@@ -39,6 +39,7 @@ function useApplications(): void {
     http.get("*/v1/applications", () => HttpResponse.json({ items: [primary, secondary] })),
     http.get("*/v1/runs", () => HttpResponse.json({ items: [] })),
     http.get("*/v1/traces", () => HttpResponse.json({ items: [], next_cursor: "" })),
+    http.get("*/v1/projects", () => HttpResponse.json({ items: [] })),
   );
 }
 

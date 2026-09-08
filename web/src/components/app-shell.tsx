@@ -1,145 +1,158 @@
-import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router";
+import { Activity, Database, FlaskConical, LineChart } from "lucide-react";
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 
-import { useAuth } from "@/auth/auth-context";
+import type { ApplicationResponse } from "@/api/generated/types.gen";
+import { LoadingState } from "@/components/loading-state";
+import { ProblemState } from "@/components/problem-state";
+import { Dialog } from "@/components/ui/dialog";
+import { WorkspaceHeader } from "@/components/workspace-header";
 import { useApplicationCatalog } from "@/features/applications/application-catalog";
 
-const sections = ["traces", "datasets", "runs", "metrics"] as const;
+const sections = [
+  { key: "traces", label: "Traces", icon: Activity },
+  { key: "datasets", label: "Datasets", icon: Database },
+  { key: "runs", label: "Evaluations", icon: FlaskConical },
+  { key: "metrics", label: "Score trends", icon: LineChart },
+] as const;
+
+function sectionLabel(pathname: string): string {
+  const last = pathname.split("/").filter(Boolean).at(-1) ?? "";
+  return sections.find((section) => section.key === last)?.label ?? "Workspace";
+}
 
 export function AppShell(): ReactNode {
-  const { appId } = useParams();
-  const { disconnect } = useAuth();
+  const { appId = "" } = useParams();
   const { applications, loading } = useApplicationCatalog();
   const navigate = useNavigate();
+  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const openButton = useRef<HTMLButtonElement>(null);
   const application = applications.find((item) => item.id === appId);
 
   if (application === undefined) {
     return (
-      <main className="p-8">{loading ? "Loading application..." : "Application not found."}</main>
+      <main className="grid min-h-screen place-items-center bg-canvas px-6 text-ink">
+        {loading ? (
+          <LoadingState label="Loading application" />
+        ) : (
+          <ProblemState
+            detail="This application is missing or no longer available."
+            title="Application not found"
+          />
+        )}
+        {!loading && (
+          <Link className="mt-4 text-sm font-medium text-accent hover:underline" to="/apps">
+            Back to applications
+          </Link>
+        )}
+      </main>
     );
   }
 
-  const navigation = (): ReactNode => (
-    <nav aria-label="Application">
-      {sections.map((section) => (
-        <NavLink
-          key={section}
-          to={`/apps/${application.id}/${section}`}
-          onClick={() => setDrawerOpen(false)}
-          className={({ isActive }) =>
-            `block border-l-2 px-4 py-2 text-sm capitalize ${
-              isActive
-                ? "border-blue-300 bg-white/10 text-white"
-                : "border-transparent text-slate-300"
-            }`
-          }
-        >
-          {section}
-        </NavLink>
-      ))}
-    </nav>
-  );
+  const selectApplication = (applicationID: string): void => {
+    navigate(`/apps/${applicationID}/traces`);
+  };
 
   return (
-    <div className="min-h-screen bg-canvas text-ink md:grid md:grid-cols-[15rem_1fr]">
-      <aside className="hidden min-h-screen bg-rail px-3 py-5 text-white md:block">
-        <p className="px-4 font-mono text-sm font-semibold tracking-[0.16em]">ASSAY</p>
-        <p className="mt-6 truncate px-4 text-sm font-medium">{application.name}</p>
-        <div className="mt-4">{navigation()}</div>
+    <div className="min-h-screen bg-canvas text-ink md:grid md:grid-cols-[224px_minmax(0,1fr)]">
+      <aside className="hidden min-h-screen border-r border-line bg-surface px-3 py-4 md:block">
+        <Link
+          className="flex items-center gap-2 px-2 text-sm font-semibold tracking-wide text-ink"
+          to="/apps"
+        >
+          <img alt="" className="h-6 w-6" src="/assay-icon.png" />
+          Assay
+        </Link>
+        <nav aria-label="Workspace" className="mt-6">
+          <GlobalLink label="Applications" to="/apps" />
+          <GlobalLink label="Projects" to="/projects" />
+        </nav>
+        <p className="mt-6 border-t border-line px-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted">
+          {application.name}
+        </p>
+        <SectionLinks application={application} onNavigate={null} />
       </aside>
-      <div>
-        <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3">
+      <div className="flex min-w-0 flex-col">
+        <div className="flex items-center gap-2 border-b border-line bg-surface md:hidden">
           <button
             aria-controls="mobile-navigation"
             aria-expanded={drawerOpen}
-            className="text-sm md:hidden"
+            className="px-3 py-3 text-sm text-ink"
             onClick={() => setDrawerOpen(true)}
-            ref={openButton}
+            type="button"
           >
             Open navigation
           </button>
-          <select
-            aria-label="Application"
-            value={application.id}
-            onChange={(event) => navigate(`/apps/${event.target.value}/traces`)}
-            className="max-w-64 border border-line bg-white px-2 py-1.5 text-sm"
-          >
-            {applications.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          <button className="ml-auto text-sm text-muted" onClick={disconnect}>
-            Disconnect
-          </button>
-        </header>
-        <main className="px-5 py-6 sm:px-8">
+        </div>
+        <WorkspaceHeader
+          application={application}
+          applications={applications}
+          onSelectApplication={selectApplication}
+          section={sectionLabel(location.pathname)}
+        />
+        <main className="min-w-0 px-5 py-6 sm:px-8">
           <Outlet />
         </main>
       </div>
-      {drawerOpen ? (
-        <MobileDrawer onClose={() => setDrawerOpen(false)} returnFocus={openButton}>
-          {navigation()}
-        </MobileDrawer>
-      ) : null}
+      <Dialog onOpenChange={setDrawerOpen} open={drawerOpen} title="Application navigation">
+        <div data-testid="mobile-navigation" id="mobile-navigation">
+          <SectionLinks application={application} onNavigate={() => setDrawerOpen(false)} />
+          <Link
+            className="mt-4 block px-4 py-2 text-sm text-muted"
+            onClick={() => setDrawerOpen(false)}
+            to="/apps"
+          >
+            All applications
+          </Link>
+        </div>
+      </Dialog>
     </div>
   );
 }
 
-type MobileDrawerProps = {
-  children: ReactNode;
-  onClose: () => void;
-  returnFocus: RefObject<HTMLButtonElement | null>;
-};
-
-function MobileDrawer({ children, onClose, returnFocus }: MobileDrawerProps) {
-  const dialog = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    dialog.current?.querySelector<HTMLAnchorElement>("a")?.focus();
-    return () => returnFocus.current?.focus();
-  }, [returnFocus]);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key !== "Tab" || dialog.current === null) return;
-    const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>("a, button"));
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (first === undefined || last === undefined) return;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
+function GlobalLink({ label, to }: { label: string; to: string }): ReactNode {
   return (
-    <div
-      aria-label="Application navigation"
-      aria-modal="true"
-      className="fixed inset-0 z-10 bg-black/30 md:hidden"
-      id="mobile-navigation"
-      onKeyDown={handleKeyDown}
-      ref={dialog}
-      role="dialog"
+    <NavLink
+      className={({ isActive }) =>
+        `block rounded-md px-3 py-2 text-sm ${
+          isActive ? "bg-accent/10 font-medium text-accent" : "text-muted hover:text-ink"
+        }`
+      }
+      to={to}
     >
-      <div className="h-full w-72 bg-rail px-3 py-5 text-white">
-        {children}
-        <button className="mt-5 px-4 text-sm" onClick={onClose}>
-          Close navigation
-        </button>
-      </div>
-    </div>
+      {label}
+    </NavLink>
+  );
+}
+
+function SectionLinks({
+  application,
+  onNavigate,
+}: {
+  application: ApplicationResponse;
+  onNavigate: (() => void) | null;
+}): ReactNode {
+  return (
+    <nav aria-label="Application" className="mt-2">
+      {sections.map((section) => (
+        <NavLink
+          className={({ isActive }) =>
+            `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+              isActive
+                ? "bg-accent/10 font-medium text-accent"
+                : "text-muted hover:bg-canvas hover:text-ink"
+            }`
+          }
+          end={false}
+          key={section.key}
+          onClick={() => onNavigate?.()}
+          to={`/apps/${application.id}/${section.key}`}
+        >
+          <section.icon aria-hidden="true" size={16} />
+          {section.label}
+        </NavLink>
+      ))}
+    </nav>
   );
 }

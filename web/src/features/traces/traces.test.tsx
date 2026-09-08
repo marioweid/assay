@@ -129,7 +129,7 @@ test("inspects nested spans, scores, and JSON as text", async () => {
   await user.click(screen.getByRole("tab", { name: "Attributes" }));
 
   expect(screen.getByText(/<img src=x onerror=alert/)).toBeInTheDocument();
-  expect(document.querySelector("img")).toBeNull();
+  expect(document.querySelector('img[src="x"]')).toBeNull();
   await user.click(screen.getByRole("tab", { name: "Events" }));
   expect(screen.getByText(/<script>unsafe event/)).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "Scores" }));

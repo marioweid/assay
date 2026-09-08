@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingState } from "@/components/loading-state";
+import { PageHeading } from "@/components/page-heading";
 import { useApplicationCatalog } from "@/features/applications/application-catalog";
 
 export function ApplicationsPage(): ReactNode {
@@ -10,25 +13,37 @@ export function ApplicationsPage(): ReactNode {
   return (
     <main className="min-h-screen bg-canvas px-5 py-6 text-ink sm:px-8">
       <header className="flex items-center justify-between border-b border-line pb-4">
-        <div>
-          <p className="font-mono text-xs uppercase tracking-[0.16em] text-accent">Workspace</p>
-          <h1 className="mt-1 text-xl font-semibold">Applications</h1>
+        <div className="flex items-center gap-2">
+          <img alt="" className="h-6 w-6" src="/assay-icon.png" />
+          <Link className="text-sm font-semibold" to="/apps">
+            Assay
+          </Link>
+          <span aria-hidden="true" className="text-muted">
+            /
+          </span>
+          <Link className="text-sm text-muted hover:text-ink" to="/projects">
+            Projects
+          </Link>
         </div>
         <button className="text-sm font-medium text-muted hover:text-ink" onClick={disconnect}>
           Disconnect
         </button>
       </header>
+      <PageHeading
+        description="Select an application to review traces, datasets, and evaluation runs."
+        title="Applications"
+      />
       {loading ? (
-        <p className="mt-12 text-sm text-muted">Loading applications...</p>
+        <LoadingState label="Loading applications" />
       ) : applications.length === 0 ? (
-        <section className="mt-12 border-y border-line py-10">
-          <h2 className="font-medium">No applications yet</h2>
-          <p className="mt-2 text-sm text-muted">Create an application with the CLI or API.</p>
-        </section>
+        <EmptyState
+          description="Create an application with the CLI or API to start collecting traces."
+          title="No applications yet"
+        />
       ) : (
-        <div className="mt-6 overflow-x-auto border border-line bg-surface">
+        <div className="overflow-x-auto border border-line bg-surface">
           <table className="w-full min-w-3xl border-collapse text-left text-sm">
-            <thead className="border-b border-line bg-slate-100 text-xs uppercase text-muted">
+            <thead className="border-b border-line bg-canvas text-xs uppercase text-muted">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Slug</th>

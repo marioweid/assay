@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assay · Chat lab</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script type="module" src="/static/chat.js"></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="/" aria-label="Assay chat home"
+        ><span class="mark">a.</span> assay<span class="lab">/ chat lab</span></a
+      >
+      <div class="sidebar-body">
+        <p class="eyebrow">YOUR LOCAL WORKSPACE</p>
+        <h2>A conversation.<br />The whole story.</h2>
+        <p>
+          Ask the demo assistant about Assay, then follow its answer back to the context and model
+          call.
+        </p>
+        <div class="context-card">
+          <p class="eyebrow">WHAT IT KNOWS</p>
+          <div><span>01</span> Trace storage</div>
+          <div><span>02</span> Local deployment</div>
+          <div><span>03</span> Answer evaluation</div>
+        </div>
+        <a
+          id="assay-link"
+          class="external-link"
+          href="http://localhost:8080"
+          target="_blank"
+          rel="noopener"
+          >Open Assay <span>↗</span></a
+        >
+        <p class="hint">Use your Assay admin token there to inspect traces and scores.</p>
+      </div>
+      <div class="local-badge"><i></i> Running on your machine</div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <span class="status-dot"></span> Python Q&A example <span class="tag">LIVE TRACING</span>
+        </div>
+        <button id="clear" class="quiet" type="button">New chat ↻</button>
+      </header>
+      <section id="conversation" aria-label="Conversation" aria-live="polite">
+        <div id="welcome">
+          <span class="welcome-icon">↗</span>
+          <p class="eyebrow">FROM QUESTION TO TRACE</p>
+          <h1>Talk to your app.<br /><em>See how it answered.</em></h1>
+          <p class="intro">
+            A small assistant with a small knowledge base.<br />Every reply opens a window into what
+            happened.
+          </p>
+          <div class="suggestions">
+            <button type="button">Where does Assay store traces? <span>↗</span></button>
+            <button type="button">How is groundedness evaluated? <span>↗</span></button>
+            <button type="button">What do I need to run Assay locally? <span>↗</span></button>
+          </div>
+        </div>
+        <div id="messages"></div>
+      </section>
+      <div class="composer-wrap">
+        <p id="error" role="alert" hidden></p>
+        <form id="chat-form">
+          <label class="sr-only" for="question">Your message</label>
+          <textarea
+            id="question"
+            rows="2"
+            maxlength="4000"
+            placeholder="Ask something about Assay…"
+            required
+          ></textarea>
+          <div class="composer-bottom">
+            <span id="model">Connecting…</span
+            ><button id="send" type="submit" disabled aria-label="Send message">Send ↑</button>
+          </div>
+        </form>
+        <p class="footnote">
+          Questions and answers are captured in your local Assay. Model requests use OpenAI.
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

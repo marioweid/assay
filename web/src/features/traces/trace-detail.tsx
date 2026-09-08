@@ -8,6 +8,7 @@ import type { SpanResponse, TraceResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { ScoreResult } from "@/components/score-result";
 import { SpanTree } from "@/features/traces/span-tree";
+import { CapturedContent, capturedSpans } from "@/features/traces/captured-content";
 
 const tabs = ["Overview", "Attributes", "Events", "Scores"] as const;
 type Tab = (typeof tabs)[number];
@@ -47,8 +48,8 @@ export function TraceDetail() {
       </p>
     );
   if (trace === null) return <p className="text-muted">Loading trace...</p>;
-  const scores = (trace.scores ?? []).filter((score) =>
-    selected === null ? score.span_id === undefined : score.span_id === selected.id,
+  const scores = (trace.scores ?? []).filter(
+    (score) => selected === null || score.span_id === selected.id,
   );
   return (
     <section aria-labelledby="trace-heading">
@@ -162,26 +163,31 @@ function DetailPanel({ scores, selected, tab, trace }: DetailPanelProps) {
       </div>
     );
   return (
-    <dl className="grid gap-4 text-sm sm:grid-cols-2">
-      <Info label="Status" value={selected?.status_code ?? trace.status} />
-      <Info label="Started" value={selected?.start_time ?? trace.start_time} />
-      <Info
-        label="Duration"
-        value={
-          selected === null
-            ? `${new Date(trace.end_time).getTime() - new Date(trace.start_time).getTime()} ms`
-            : `${selected.duration_ms} ms`
-        }
+    <>
+      <dl className="grid gap-4 text-sm sm:grid-cols-2">
+        <Info label="Status" value={selected?.status_code ?? trace.status} />
+        <Info label="Started" value={selected?.start_time ?? trace.start_time} />
+        <Info
+          label="Duration"
+          value={
+            selected === null
+              ? `${new Date(trace.end_time).getTime() - new Date(trace.start_time).getTime()} ms`
+              : `${selected.duration_ms} ms`
+          }
+        />
+        <Info
+          label="Tokens"
+          value={
+            selected === null
+              ? String(trace.total_tokens)
+              : String(selected.input_tokens + selected.output_tokens)
+          }
+        />
+      </dl>
+      <CapturedContent
+        spans={capturedSpans(selected === null ? (trace.spans ?? []) : [selected])}
       />
-      <Info
-        label="Tokens"
-        value={
-          selected === null
-            ? String(trace.total_tokens)
-            : String(selected.input_tokens + selected.output_tokens)
-        }
-      />
-    </dl>
+    </>
   );
 }
 

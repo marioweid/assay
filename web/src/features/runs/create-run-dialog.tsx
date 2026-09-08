@@ -143,6 +143,11 @@ function RunForm(props: RunFormProps) {
       </label>
       <fieldset className="mt-4">
         <legend className="text-sm font-medium">Scorers</legend>
+        <p className="mb-3 text-sm text-muted">
+          {props.mode === "score_existing"
+            ? "Every item needs a recorded answer. If your dataset only has questions and expected answers, select Generate then score."
+            : "Calls the application's configured target endpoint to generate an answer for each question."}
+        </p>
         {["groundedness", "correctness"].map((scorer) => (
           <label className="mr-5 mt-2 inline-flex items-center gap-2 text-sm" key={scorer}>
             <input

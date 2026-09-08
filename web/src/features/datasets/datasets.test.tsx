@@ -36,6 +36,50 @@ test("lists application datasets and navigates to a dataset", async () => {
   expect(screen.getByText("No dataset items yet.")).toBeInTheDocument();
 });
 
+test("creates a dataset in the selected application and opens it", async () => {
+  server.use(
+    applicationHandler(),
+    http.get("*/v1/datasets", () => HttpResponse.json({ items: [] })),
+    http.post("*/v1/datasets", async ({ request }) => {
+      expect(await request.json()).toEqual({
+        application_id: appID,
+        name: "Regression cases",
+        description: "Chat checks",
+      });
+      return HttpResponse.json(datasetFixture(), { status: 201 });
+    }),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+  );
+  renderApp(`/apps/${appID}/datasets`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Create dataset" }));
+  expect(screen.getByRole("button", { name: "Save dataset" })).toBeDisabled();
+  await user.type(screen.getByLabelText("Dataset name"), "  Regression cases  ");
+  await user.type(screen.getByLabelText("Description (optional)"), "Chat checks");
+  await user.click(screen.getByRole("button", { name: "Save dataset" }));
+  expect(await screen.findByRole("heading", { name: "Regression cases" })).toBeInTheDocument();
+});
+
+test("preserves dataset input after a server error and allows cancellation", async () => {
+  server.use(
+    applicationHandler(),
+    http.get("*/v1/datasets", () => HttpResponse.json({ items: [] })),
+    http.post("*/v1/datasets", () =>
+      HttpResponse.json({ title: "Storage unavailable" }, { status: 500 }),
+    ),
+  );
+  renderApp(`/apps/${appID}/datasets`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Create dataset" }));
+  await user.type(screen.getByLabelText("Dataset name"), "My cases");
+  await user.click(screen.getByRole("button", { name: "Save dataset" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Storage unavailable");
+  expect(screen.getByLabelText("Dataset name")).toHaveValue("My cases");
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByLabelText("Dataset name")).not.toBeInTheDocument();
+});
+
 test("browses item fields and stops on a repeated cursor", async () => {
   let page = 0;
   server.use(
@@ -67,6 +111,73 @@ test("browses item fields and stops on a repeated cursor", async () => {
   expect(await screen.findByText("case-two")).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("repeated cursor");
   expect(screen.queryByRole("button", { name: "Load more items" })).not.toBeInTheDocument();
+});
+
+test("adds an evaluation item and displays it without reloading", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({
+        items: [
+          {
+            input: { question: "Where are traces stored?" },
+            output: "Postgres",
+            expected_output: "Postgres",
+            context: [{ id: "context-1", text: "Assay stores traces in Postgres." }],
+          },
+        ],
+      });
+      return HttpResponse.json(
+        {
+          items: [{ ...itemFixture("new-case"), input: { question: "Where are traces stored?" } }],
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add item" }));
+  expect(screen.getByLabelText("Question")).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByLabelText("Question")).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Save item" })).toBeDisabled();
+  await user.type(screen.getByLabelText("Question"), "Where are traces stored?");
+  await user.type(screen.getByLabelText("Recorded answer (optional)"), "Postgres");
+  await user.type(screen.getByLabelText("Expected answer (optional)"), "Postgres");
+  await user.type(
+    screen.getByLabelText("Supporting context (optional)"),
+    "Assay stores traces in Postgres.",
+  );
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+  await user.click(await screen.findByText("new-case"));
+  expect(screen.getByText(/Where are traces stored/)).toBeInTheDocument();
+  expect(screen.queryByText("No dataset items yet.")).not.toBeInTheDocument();
+});
+
+test("keeps an unsaved item after an API failure", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({ items: [{ input: { question: "A question" } }] });
+      return HttpResponse.json({ title: "Unable to save" }, { status: 500 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add item" }));
+  await user.type(screen.getByLabelText("Question"), "A question");
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Unable to save");
+  expect(screen.getByLabelText("Question")).toHaveValue("A question");
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByLabelText("Question")).not.toBeInTheDocument();
 });
 
 test("rejects a dataset from a different application", async () => {

@@ -118,7 +118,7 @@ test("inspects nested spans, scores, and JSON as text", async () => {
   await user.keyboard("{End}");
   expect(screen.getByRole("tab", { name: "Scores" })).toHaveFocus();
   expect(screen.getByText("Whole trace score")).toBeInTheDocument();
-  expect(screen.queryByText("Supported by context")).not.toBeInTheDocument();
+  expect(screen.getByText("Supported by context")).toBeInTheDocument();
   const child = screen.getByRole("treeitem", { name: /child span/ });
   root.focus();
   await user.keyboard("{ArrowDown}");
@@ -138,6 +138,20 @@ test("inspects nested spans, scores, and JSON as text", async () => {
   expect(screen.getByText("Threshold 0.7")).toBeInTheDocument();
   expect(screen.getByText("openai / judge")).toBeInTheDocument();
   expect(screen.getByText(/"citations"/)).toBeInTheDocument();
+});
+
+test("shows captured child-span content in the trace overview", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/traces/${traceID}`, () => HttpResponse.json(traceDetailFixture())),
+  );
+  renderApp(`/apps/${appID}/traces/${traceID}`);
+  expect(await screen.findByText("Where are traces stored?")).toBeInTheDocument();
+  expect(screen.getByText("In Postgres.")).toBeInTheDocument();
+  expect(screen.getByText("Assay uses Postgres.")).toBeInTheDocument();
+  expect(screen.getByText("demo-model")).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("treeitem", { name: /child span/ }));
+  expect(screen.getByText("Where are traces stored?")).toBeInTheDocument();
 });
 
 test("rejects a trace from a different application", async () => {
@@ -232,7 +246,17 @@ function traceDetailFixture() {
             duration_ms: 500,
             status_code: "ok",
             is_scorable: true,
-            attributes: { unsafe: "<img src=x onerror=alert(1)>" },
+            attributes: {
+              unsafe: "<img src=x onerror=alert(1)>",
+              "gen_ai.input.messages": JSON.stringify([
+                { role: "user", content: "Where are traces stored?" },
+              ]),
+              "gen_ai.output.messages": [{ role: "assistant", content: "In Postgres." }],
+              "gen_ai.retrieval.documents": JSON.stringify([
+                { id: "storage", text: "Assay uses Postgres." },
+              ]),
+              "gen_ai.request.model": "demo-model",
+            },
             events: [
               {
                 name: "<script>unsafe event</script>",

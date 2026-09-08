@@ -12,6 +12,25 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+test("includes validation messages but excludes rejected values", async () => {
+  server.use(
+    http.get("*/v1/applications", () =>
+      HttpResponse.json(
+        {
+          title: "Unprocessable Entity",
+          detail: "Invalid request",
+          errors: [{ message: "1 items have no output", value: "secret-value" }],
+        },
+        { status: 422 },
+      ),
+    ),
+  );
+  configureClient(() => "token");
+  const error = await listApplications().catch((reason: unknown) => reason);
+  expect(error).toMatchObject({ detail: "Invalid request: 1 items have no output" });
+  expect(JSON.stringify(error)).not.toContain("secret-value");
+});
+
 test("uses the current bearer token on same-origin requests", async () => {
   let token = "first-token";
   let authorization: string | null = null;

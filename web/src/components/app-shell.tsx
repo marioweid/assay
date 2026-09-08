@@ -3,19 +3,23 @@ import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
+import { useApplicationCatalog } from "@/features/applications/application-catalog";
 
 const sections = ["traces", "datasets", "runs", "metrics"] as const;
 
 export function AppShell(): ReactNode {
   const { appId } = useParams();
-  const { applications, disconnect } = useAuth();
+  const { disconnect } = useAuth();
+  const { applications, loading } = useApplicationCatalog();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const openButton = useRef<HTMLButtonElement>(null);
   const application = applications.find((item) => item.id === appId);
 
   if (application === undefined) {
-    return <main className="p-8">Application not found.</main>;
+    return (
+      <main className="p-8">{loading ? "Loading application..." : "Application not found."}</main>
+    );
   }
 
   const navigation = (): ReactNode => (

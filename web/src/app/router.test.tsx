@@ -73,7 +73,7 @@ test("shows application loading and empty states", async () => {
   renderApp("/apps");
 
   expect(screen.getByRole("status")).toHaveTextContent("Connecting to Assay");
-  expect(await screen.findByText("No applications yet")).toBeInTheDocument();
+  expect(await screen.findByText("No applications yet", {}, { timeout: 3000 })).toBeInTheDocument();
   expect(screen.getByText(/CLI or API/)).toBeInTheDocument();
 });
 

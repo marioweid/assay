@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
+import { useApplicationCatalog } from "@/features/applications/application-catalog";
 
 export function ApplicationsPage(): ReactNode {
-  const { applications, disconnect } = useAuth();
+  const { disconnect } = useAuth();
+  const { applications, loading } = useApplicationCatalog();
   return (
     <main className="min-h-screen bg-canvas px-5 py-6 text-ink sm:px-8">
       <header className="flex items-center justify-between border-b border-line pb-4">
@@ -16,7 +18,9 @@ export function ApplicationsPage(): ReactNode {
           Disconnect
         </button>
       </header>
-      {applications.length === 0 ? (
+      {loading ? (
+        <p className="mt-12 text-sm text-muted">Loading applications...</p>
+      ) : applications.length === 0 ? (
         <section className="mt-12 border-y border-line py-10">
           <h2 className="font-medium">No applications yet</h2>
           <p className="mt-2 text-sm text-muted">Create an application with the CLI or API.</p>

@@ -4,7 +4,7 @@ import { client } from "@/api/generated/client.gen";
 let requestInterceptor: number | undefined;
 let errorInterceptor: number | undefined;
 
-export function configureClient(getToken: () => string | null): void {
+export function configureClient(getToken: () => string | null, onUnauthorized?: () => void): void {
   client.setConfig({
     baseUrl: window.location.origin,
     throwOnError: true,
@@ -25,6 +25,14 @@ export function configureClient(getToken: () => string | null): void {
     return new Request(request, { headers });
   });
   errorInterceptor = client.interceptors.error.use((error, response, request, options) => {
+    const current = getToken();
+    if (
+      response?.status === 401 &&
+      current !== null &&
+      request?.headers.get("Authorization") === `Bearer ${current}`
+    ) {
+      onUnauthorized?.();
+    }
     const operation = request === undefined ? options.url : `${request.method} ${options.url}`;
     return normalizeProblem(error, response, operation);
   });

@@ -2119,6 +2119,49 @@ export type CreateEvalRunResponses = {
 
 export type CreateEvalRunResponse = CreateEvalRunResponses[keyof CreateEvalRunResponses];
 
+export type DeleteEvalRunData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/runs/{id}";
+};
+
+export type DeleteEvalRunErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteEvalRunError = DeleteEvalRunErrors[keyof DeleteEvalRunErrors];
+
+export type DeleteEvalRunResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteEvalRunResponse = DeleteEvalRunResponses[keyof DeleteEvalRunResponses];
+
 export type GetEvalRunData = {
   body?: never;
   path: {
@@ -2422,6 +2465,49 @@ export type ScoreTracesResponses = {
 
 export type ScoreTracesResponse = ScoreTracesResponses[keyof ScoreTracesResponses];
 
+export type DeleteTraceData = {
+  body?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/traces/{id}";
+};
+
+export type DeleteTraceErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteTraceError = DeleteTraceErrors[keyof DeleteTraceErrors];
+
+export type DeleteTraceResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteTraceResponse = DeleteTraceResponses[keyof DeleteTraceResponses];
+
 export type GetTraceData = {
   body?: never;
   headers?: {
@@ -2467,7 +2553,13 @@ export type GetTraceResponse = GetTraceResponses[keyof GetTraceResponses];
 
 export type AttachTraceReferenceData = {
   body: AttachTraceReferenceInputBodyWritable;
-  path?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path: {
+    id: string;
+  };
   query?: never;
   url: "/v1/traces/{id}/reference";
 };

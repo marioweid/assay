@@ -42,8 +42,10 @@ type scoreTracesInput struct {
 }
 
 type attachTraceReferenceInput struct {
-	traceIDInput
-	Body struct {
+	Authorization string `header:"Authorization" required:"false"`
+	XAPIKey       string `header:"x-api-key" required:"false"`
+	ID            string `path:"id" format:"uuid"`
+	Body          struct {
 		ReferenceAnswer string `json:"reference_answer" minLength:"1"`
 	}
 }
@@ -121,16 +123,16 @@ type traceCursorJSON struct {
 }
 
 func (h *handler) registerTraceRoutes() {
-	score := h.projectOperation(
+	score := traceReadOperation(h.projectOperation(
 		http.MethodPost, "/v1/traces/score", "score-traces", "Queue trace scoring",
 		http.StatusNotFound,
-	)
+	))
 	score.DefaultStatus = http.StatusAccepted
 	huma.Register(h.api, score, h.scoreTraces)
-	huma.Register(h.api, h.projectOperation(
+	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodPatch, "/v1/traces/{id}/reference", "attach-trace-reference",
 		"Attach a trace reference", http.StatusNotFound,
-	), h.attachTraceReference)
+	)), h.attachTraceReference)
 	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodGet,
 		"/v1/traces",
@@ -145,16 +147,18 @@ func (h *handler) registerTraceRoutes() {
 		"Get a trace and its span tree",
 		http.StatusNotFound,
 	)), h.getTrace)
+	remove := h.operation(
+		http.MethodDelete, "/v1/traces/{id}", "delete-trace", "Delete a trace",
+		http.StatusNotFound,
+	)
+	remove.DefaultStatus = http.StatusNoContent
+	huma.Register(h.api, remove, h.deleteTrace)
 }
 
 func (h *handler) scoreTraces(
 	ctx context.Context,
 	input *scoreTracesInput,
 ) (*scoringTaskCollectionResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("score traces", err)
-	}
 	traceIDs := make([]uuid.UUID, 0, len(input.Body.TraceIDs))
 	for _, value := range input.Body.TraceIDs {
 		traceID, parseErr := parseID(value, "trace ID")
@@ -163,7 +167,7 @@ func (h *handler) scoreTraces(
 		}
 		traceIDs = append(traceIDs, traceID)
 	}
-	jobs, err := h.traces.QueueScores(ctx, projectID, traceIDs, input.Body.Scorers, true)
+	jobs, err := h.queueTraceScores(ctx, input, traceIDs)
 	if err != nil {
 		return nil, h.responseError("score traces", err)
 	}
@@ -175,25 +179,63 @@ func (h *handler) scoreTraces(
 	return result, nil
 }
 
+func (h *handler) queueTraceScores(
+	ctx context.Context,
+	input *scoreTracesInput,
+	traceIDs []uuid.UUID,
+) ([]domain.Job, error) {
+	if h.isAdmin(input.Authorization) {
+		return h.traces.QueueScoresAdmin(ctx, traceIDs, input.Body.Scorers)
+	}
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return nil, err
+	}
+	return h.traces.QueueScores(ctx, projectID, traceIDs, input.Body.Scorers, true)
+}
+
 func (h *handler) attachTraceReference(
 	ctx context.Context,
 	input *attachTraceReferenceInput,
 ) (*traceResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("attach trace reference", err)
-	}
 	traceID, err := parseID(input.ID, "trace ID")
 	if err != nil {
 		return nil, h.responseError("attach trace reference", err)
 	}
-	trace, err := h.traces.AttachReference(
-		ctx, projectID, traceID, input.Body.ReferenceAnswer,
-	)
+	trace, err := h.attachReference(ctx, input, traceID)
 	if err != nil {
 		return nil, h.responseError("attach trace reference", err)
 	}
 	return &traceResult{Body: traceOutput(trace, true)}, nil
+}
+
+func (h *handler) attachReference(
+	ctx context.Context,
+	input *attachTraceReferenceInput,
+	traceID uuid.UUID,
+) (domain.Trace, error) {
+	if h.isAdmin(input.Authorization) {
+		return h.traces.AttachReferenceAdmin(ctx, traceID, input.Body.ReferenceAnswer)
+	}
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return domain.Trace{}, err
+	}
+	return h.traces.AttachReference(ctx, projectID, traceID, input.Body.ReferenceAnswer)
+}
+
+func (h *handler) deleteTrace(
+	ctx context.Context,
+	input *traceIDInput,
+) (*emptyOutput, error) {
+	traceID, err := parseID(input.ID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("delete trace", err)
+	}
+	if err := h.traces.DeleteAdmin(ctx, traceID); err != nil {
+		return nil, h.responseError("delete trace", err)
+	}
+	return &emptyOutput{}, nil
 }
 
 func (h *handler) listTraces(

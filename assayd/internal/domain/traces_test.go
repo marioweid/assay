@@ -217,9 +217,13 @@ type traceRepositoryFake struct {
 	intents        []domain.AutoScoreIntent
 	trace          domain.Trace
 	traceID        uuid.UUID
+	details        map[uuid.UUID]domain.Trace
+	detailErr      error
+	applications   map[uuid.UUID]domain.Application
 	requests       []domain.TraceScoreRequest
 	refresh        bool
 	queueCalls     int
+	deletedTraceID uuid.UUID
 	reference      string
 	referenceJob   *domain.Job
 }
@@ -248,8 +252,11 @@ func (f *traceRepositoryFake) UpsertTraces(
 
 func (f *traceRepositoryFake) GetApplication(
 	_ context.Context,
-	_ uuid.UUID,
+	applicationID uuid.UUID,
 ) (domain.Application, error) {
+	if application, found := f.applications[applicationID]; found {
+		return application, nil
+	}
 	return f.application, f.applicationErr
 }
 
@@ -285,6 +292,12 @@ func (f *traceRepositoryFake) GetTraceDetailByID(
 	traceID uuid.UUID,
 ) (domain.Trace, error) {
 	f.traceID = traceID
+	if trace, found := f.details[traceID]; found {
+		return trace, nil
+	}
+	if f.detailErr != nil {
+		return domain.Trace{}, f.detailErr
+	}
 	return f.trace, nil
 }
 
@@ -307,13 +320,19 @@ func (f *traceRepositoryFake) QueueTraceScores(
 	return jobs, nil
 }
 
+func (f *traceRepositoryFake) DeleteTrace(_ context.Context, traceID uuid.UUID) error {
+	f.deletedTraceID = traceID
+	return nil
+}
+
 func (f *traceRepositoryFake) AttachTraceReference(
 	_ context.Context,
-	_ uuid.UUID,
+	projectID uuid.UUID,
 	_ uuid.UUID,
 	reference string,
 	job *domain.Job,
 ) (domain.Trace, error) {
+	f.projectID = projectID
 	f.reference = reference
 	f.referenceJob = job
 	f.trace.ReferenceAnswer = &reference

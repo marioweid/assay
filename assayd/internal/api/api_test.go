@@ -55,6 +55,8 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items/" + id},
 		{method: http.MethodPut, path: "/v1/datasets/" + id + "/items/" + id, body: `{}`},
 		{method: http.MethodDelete, path: "/v1/datasets/" + id + "/items/" + id},
+		{method: http.MethodDelete, path: "/v1/traces/" + id},
+		{method: http.MethodDelete, path: "/v1/runs/" + id},
 		{method: http.MethodGet, path: "/v1/applications/" + id + "/scorers"},
 		{
 			method: http.MethodPut,
@@ -158,10 +160,12 @@ func TestDomainAPIFlowRedactsSecretsAndReturnsKeyOnce(t *testing.T) {
 }
 
 type apiFixture struct {
-	t       *testing.T
-	handler http.Handler
-	service *domain.Service
-	traces  *domain.TraceService
+	t           *testing.T
+	handler     http.Handler
+	service     *domain.Service
+	traces      *domain.TraceService
+	evaluations *domain.EvaluationService
+	database    *store.Database
 }
 
 type requestSpec struct {
@@ -301,7 +305,10 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
-	return &apiFixture{t: t, handler: mux, service: service, traces: traceService}
+	return &apiFixture{
+		t: t, handler: mux, service: service, traces: traceService,
+		evaluations: evaluations, database: database,
+	}
 }
 
 func newDocumentationHandler(t *testing.T) http.Handler {

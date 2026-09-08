@@ -150,6 +150,12 @@ func (h *handler) registerEvalRunRoutes() {
 		http.MethodGet, "/v1/runs/{id}", "get-eval-run", "Get an evaluation run",
 		http.StatusNotFound,
 	), h.getEvalRun)
+	remove := h.operation(
+		http.MethodDelete, "/v1/runs/{id}", "delete-eval-run", "Delete an evaluation run",
+		http.StatusNotFound, http.StatusConflict,
+	)
+	remove.DefaultStatus = http.StatusNoContent
+	huma.Register(h.api, remove, h.deleteEvalRun)
 	huma.Register(h.api, h.operation(
 		http.MethodGet, "/v1/runs/{id}/items", "list-eval-run-items",
 		"List evaluation run items", http.StatusNotFound,
@@ -223,6 +229,20 @@ func (h *handler) getEvalRun(ctx context.Context, input *evalRunIDInput) (*evalR
 		return nil, h.responseError("get eval run", err)
 	}
 	return &evalRunResult{Body: evalRunOutput(run)}, nil
+}
+
+func (h *handler) deleteEvalRun(
+	ctx context.Context,
+	input *evalRunIDInput,
+) (*emptyOutput, error) {
+	id, err := parseID(input.ID, "eval run ID")
+	if err != nil {
+		return nil, h.responseError("delete eval run", err)
+	}
+	if err := h.evaluations.DeleteEvalRun(ctx, id); err != nil {
+		return nil, h.responseError("delete eval run", err)
+	}
+	return &emptyOutput{}, nil
 }
 
 func (h *handler) cancelEvalRun(

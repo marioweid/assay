@@ -143,6 +143,9 @@ ORDER BY spans.start_time, spans.id;
 -- name: GetTraceByID :one
 SELECT * FROM traces WHERE id = $1;
 
+-- name: DeleteTrace :one
+DELETE FROM traces WHERE id = $1 RETURNING id;
+
 -- name: ListTraceSpansForScoring :many
 SELECT * FROM spans WHERE trace_id = $1 ORDER BY start_time, id;
 

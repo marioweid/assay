@@ -368,6 +368,7 @@ type EvaluationRepository interface {
 	CreateEvalRun(context.Context, EvalRun, Job) (EvalRun, error)
 	ListEvalRuns(context.Context, EvalRunQuery) ([]EvalRun, error)
 	GetEvalRun(context.Context, uuid.UUID) (EvalRun, error)
+	DeleteEvalRun(context.Context, uuid.UUID) error
 	ListEvalRunItems(context.Context, uuid.UUID, PageQuery) ([]EvalRunItem, error)
 	ListEvalRunScores(context.Context, uuid.UUID, ScoreQuery) ([]Score, error)
 	CancelEvalRun(context.Context, uuid.UUID) (EvalRun, error)

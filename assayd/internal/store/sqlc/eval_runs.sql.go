@@ -275,6 +275,19 @@ func (q *Queries) DeleteEvalRunItemScores(ctx context.Context, arg DeleteEvalRun
 	return err
 }
 
+const deleteTerminalEvalRun = `-- name: DeleteTerminalEvalRun :one
+DELETE FROM eval_runs
+WHERE id = $1 AND status IN ('succeeded', 'failed', 'canceled')
+RETURNING id
+`
+
+func (q *Queries) DeleteTerminalEvalRun(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteTerminalEvalRun, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const failEvalRunItem = `-- name: FailEvalRunItem :one
 WITH owned_job AS MATERIALIZED (
     SELECT j.id, j.eval_run_id

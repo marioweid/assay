@@ -60,6 +60,11 @@ SELECT id, application_id, dataset_id, name, status, mode, params, scorers, aggr
 FROM eval_runs
 WHERE id = $1;
 
+-- name: DeleteTerminalEvalRun :one
+DELETE FROM eval_runs
+WHERE id = $1 AND status IN ('succeeded', 'failed', 'canceled')
+RETURNING id;
+
 -- name: ListEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
        ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,

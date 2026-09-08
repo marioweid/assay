@@ -75,6 +75,17 @@ func (q *Queries) DeleteOnlineScore(ctx context.Context, arg DeleteOnlineScorePa
 	return err
 }
 
+const deleteTrace = `-- name: DeleteTrace :one
+DELETE FROM traces WHERE id = $1 RETURNING id
+`
+
+func (q *Queries) DeleteTrace(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteTrace, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const getProjectTrace = `-- name: GetProjectTrace :one
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,

@@ -40,9 +40,15 @@ import type {
   DeleteDatasetItemErrors,
   DeleteDatasetItemResponses,
   DeleteDatasetResponses,
+  DeleteEvalRunData,
+  DeleteEvalRunErrors,
+  DeleteEvalRunResponses,
   DeleteProjectData,
   DeleteProjectErrors,
   DeleteProjectResponses,
+  DeleteTraceData,
+  DeleteTraceErrors,
+  DeleteTraceResponses,
   GetApplicationData,
   GetApplicationErrors,
   GetApplicationResponses,
@@ -747,6 +753,24 @@ export const createEvalRun = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Delete an evaluation run
+ */
+export const deleteEvalRun = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteEvalRunData, ThrowOnError>,
+): RequestResult<DeleteEvalRunResponses, DeleteEvalRunErrors, ThrowOnError> =>
+  (options.client ?? client).delete<DeleteEvalRunResponses, DeleteEvalRunErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/runs/{id}",
+    ...options,
+  });
+
+/**
  * Get an evaluation run
  */
 export const getEvalRun = <ThrowOnError extends boolean = false>(
@@ -880,6 +904,11 @@ export const scoreTraces = <ThrowOnError extends boolean = false>(
         type: "http",
       },
       { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
     ],
     url: "/v1/traces/score",
     ...options,
@@ -887,6 +916,24 @@ export const scoreTraces = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+  });
+
+/**
+ * Delete a trace
+ */
+export const deleteTrace = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteTraceData, ThrowOnError>,
+): RequestResult<DeleteTraceResponses, DeleteTraceErrors, ThrowOnError> =>
+  (options.client ?? client).delete<DeleteTraceResponses, DeleteTraceErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/traces/{id}",
+    ...options,
   });
 
 /**
@@ -931,6 +978,11 @@ export const attachTraceReference = <ThrowOnError extends boolean = false>(
         type: "http",
       },
       { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
     ],
     url: "/v1/traces/{id}/reference",
     ...options,

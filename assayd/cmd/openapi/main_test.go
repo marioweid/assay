@@ -77,6 +77,7 @@ func assertEvaluationPaths(t *testing.T, paths map[string]map[string]generatedOp
 		"/v1/datasets",
 		"/v1/datasets/{id}",
 		"/v1/datasets/{id}/items",
+		"/v1/datasets/{id}/items/{itemId}",
 		"/v1/applications/{application_id}/scorers",
 		"/v1/applications/{application_id}/scorers/{scorer}",
 		"/v1/runs",
@@ -105,5 +106,27 @@ func assertAdminTraceSecurity(t *testing.T, paths map[string]map[string]generate
 		if !found {
 			t.Errorf("generated OpenAPI GET %s is missing adminBearer security", path)
 		}
+	}
+	deleteOperation := paths["/v1/traces/{id}"]["delete"]
+	assertAdminOnlyOperation(t, "DELETE /v1/traces/{id}", deleteOperation)
+}
+
+func assertAdminOnlyOperation(
+	t *testing.T,
+	label string,
+	operation generatedOperation,
+) {
+	t.Helper()
+	adminOnly := false
+	for _, requirement := range operation.Security {
+		if _, found := requirement["adminBearer"]; found {
+			adminOnly = true
+		}
+		if _, found := requirement["projectBearer"]; found {
+			t.Errorf("generated OpenAPI %s exposes projectBearer", label)
+		}
+	}
+	if !adminOnly {
+		t.Errorf("generated OpenAPI %s is missing adminBearer security", label)
 	}
 }

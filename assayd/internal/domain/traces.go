@@ -27,6 +27,7 @@ type TraceRepository interface {
 	GetTraceDetailByID(context.Context, uuid.UUID) (Trace, error)
 	QueueTraceScores(context.Context, uuid.UUID, []TraceScoreRequest, bool) ([]Job, error)
 	AttachTraceReference(context.Context, uuid.UUID, uuid.UUID, string, *Job) (Trace, error)
+	DeleteTrace(context.Context, uuid.UUID) error
 }
 
 type applicationCreator interface {
@@ -173,12 +174,26 @@ func (s *TraceService) QueueScores(
 	if err := validateTraceScoreSelection(traceIDs, scorers); err != nil {
 		return nil, err
 	}
-	requests := make([]TraceScoreRequest, 0, len(traceIDs)*len(scorers))
+	traces := make([]Trace, 0, len(traceIDs))
 	for _, traceID := range traceIDs {
 		trace, err := s.repository.GetTrace(ctx, projectID, traceID)
 		if err != nil {
 			return nil, fmt.Errorf("queue trace scores: %w", err)
 		}
+		traces = append(traces, trace)
+	}
+	return s.queueScoresForTraces(ctx, projectID, traces, scorers, refresh)
+}
+
+func (s *TraceService) queueScoresForTraces(
+	ctx context.Context,
+	projectID uuid.UUID,
+	traces []Trace,
+	scorers []string,
+	refresh bool,
+) ([]Job, error) {
+	requests := make([]TraceScoreRequest, 0, len(traces)*len(scorers))
+	for _, trace := range traces {
 		if err := s.validateTraceScorers(ctx, trace, scorers); err != nil {
 			return nil, err
 		}
@@ -252,6 +267,15 @@ func (s *TraceService) AttachReference(
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
 	}
+	return s.attachReference(ctx, projectID, trace, reference)
+}
+
+func (s *TraceService) attachReference(
+	ctx context.Context,
+	projectID uuid.UUID,
+	trace Trace,
+	reference string,
+) (Trace, error) {
 	application, err := s.repository.GetApplication(ctx, trace.ApplicationID)
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
@@ -260,7 +284,7 @@ func (s *TraceService) AttachReference(
 	if err != nil {
 		return Trace{}, err
 	}
-	trace, err = s.repository.AttachTraceReference(ctx, projectID, traceID, reference, job)
+	trace, err = s.repository.AttachTraceReference(ctx, projectID, trace.ID, reference, job)
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
 	}

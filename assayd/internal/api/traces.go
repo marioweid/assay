@@ -419,27 +419,6 @@ func scoringTaskOutput(job domain.Job) scoringTaskResponse {
 	return response
 }
 
-func spanTree(spans []domain.Span) []*spanResponse {
-	nodes := make(map[string]*spanResponse, len(spans))
-	ordered := make([]*spanResponse, 0, len(spans))
-	for _, span := range spans {
-		node := spanOutput(span)
-		nodes[node.OTelSpanID] = node
-		ordered = append(ordered, node)
-	}
-	roots := make([]*spanResponse, 0)
-	for _, node := range ordered {
-		if node.ParentSpanID != nil {
-			if parent, found := nodes[*node.ParentSpanID]; found && parent != node {
-				parent.Children = append(parent.Children, node)
-				continue
-			}
-		}
-		roots = append(roots, node)
-	}
-	return roots
-}
-
 func spanOutput(span domain.Span) *spanResponse {
 	response := &spanResponse{
 		ID:              span.ID,

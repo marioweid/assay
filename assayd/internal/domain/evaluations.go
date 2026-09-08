@@ -130,34 +130,19 @@ func (s *EvaluationService) CreateDatasetItems(
 }
 
 func newDatasetItem(datasetID uuid.UUID, input CreateDatasetItemInput) (DatasetItem, error) {
-	question, ok := input.Input["question"].(string)
-	question = strings.TrimSpace(question)
-	if !ok || question == "" {
-		return DatasetItem{}, fmt.Errorf("question: %w: must be a non-blank string", ErrInvalid)
-	}
-	output := strings.TrimSpace(input.Output)
-	var storedOutput *string
-	if output != "" {
-		storedOutput = &output
-	}
-	context, err := normalizedChunks(input.Context)
+	item, err := normalizeDatasetItem(ReplaceDatasetItemInput{
+		ExternalID: input.ExternalID, Input: input.Input, Output: &input.Output,
+		ExpectedOutput: input.ExpectedOutput, Context: input.Context, Metadata: input.Metadata,
+	})
 	if err != nil {
 		return DatasetItem{}, err
 	}
-	itemID, err := id.New()
+	item.ID, err = id.New()
 	if err != nil {
 		return DatasetItem{}, fmt.Errorf("generate dataset item ID: %w", err)
 	}
-	input.Input["question"] = question
-	metadata := input.Metadata
-	if metadata == nil {
-		metadata = map[string]any{}
-	}
-	return DatasetItem{
-		ID: itemID, DatasetID: datasetID, ExternalID: trimmedOptional(input.ExternalID),
-		Input: input.Input, Output: storedOutput, ExpectedOutput: input.ExpectedOutput,
-		Context: context, Metadata: metadata,
-	}, nil
+	item.DatasetID = datasetID
+	return item, nil
 }
 
 // ListDatasetItems returns one cursor-paginated dataset item page.

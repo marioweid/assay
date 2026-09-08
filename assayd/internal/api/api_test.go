@@ -48,9 +48,13 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodPost, path: "/v1/datasets", body: `{}`},
 		{method: http.MethodGet, path: "/v1/datasets"},
 		{method: http.MethodGet, path: "/v1/datasets/" + id},
+		{method: http.MethodPatch, path: "/v1/datasets/" + id, body: `{}`},
 		{method: http.MethodDelete, path: "/v1/datasets/" + id},
 		{method: http.MethodPost, path: "/v1/datasets/" + id + "/items", body: `{}`},
 		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items"},
+		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items/" + id},
+		{method: http.MethodPut, path: "/v1/datasets/" + id + "/items/" + id, body: `{}`},
+		{method: http.MethodDelete, path: "/v1/datasets/" + id + "/items/" + id},
 		{method: http.MethodGet, path: "/v1/applications/" + id + "/scorers"},
 		{
 			method: http.MethodPut,
@@ -200,6 +204,10 @@ type openAPIDocument struct {
 			Type   string `json:"type"`
 			Scheme string `json:"scheme"`
 		} `json:"securitySchemes"`
+		Schemas map[string]struct {
+			Required   []string                   `json:"required"`
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"schemas"`
 	} `json:"components"`
 }
 
@@ -257,6 +265,7 @@ var managementPaths = []string{
 	"/v1/datasets",
 	"/v1/datasets/{id}",
 	"/v1/datasets/{id}/items",
+	"/v1/datasets/{id}/items/{itemId}",
 	"/v1/runs",
 	"/v1/runs/{id}",
 	"/v1/runs/{id}/items",

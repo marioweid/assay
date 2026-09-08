@@ -32,6 +32,15 @@ type datasetIDInput struct {
 	ID string `path:"id" format:"uuid"`
 }
 
+type updateDatasetInput struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		Name             *string `json:"name,omitempty"`
+		Description      *string `json:"description,omitempty"`
+		ClearDescription bool    `json:"clear_description,omitempty"`
+	}
+}
+
 type createDatasetItemsInput struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
@@ -109,6 +118,10 @@ func (h *handler) registerDatasetRoutes() {
 		http.MethodGet, "/v1/datasets/{id}", "get-dataset", "Get a dataset",
 		http.StatusNotFound,
 	), h.getDataset)
+	huma.Register(h.api, h.operation(
+		http.MethodPatch, "/v1/datasets/{id}", "update-dataset", "Update a dataset",
+		http.StatusNotFound, http.StatusConflict,
+	), h.updateDataset)
 	remove := h.operation(
 		http.MethodDelete, "/v1/datasets/{id}", "delete-dataset", "Delete a dataset",
 		http.StatusNotFound,
@@ -125,6 +138,7 @@ func (h *handler) registerDatasetRoutes() {
 		http.MethodGet, "/v1/datasets/{id}/items", "list-dataset-items",
 		"List dataset items", http.StatusNotFound,
 	), h.listDatasetItems)
+	h.registerDatasetItemRoutes()
 }
 
 func (h *handler) createDataset(
@@ -179,6 +193,24 @@ func (h *handler) getDataset(ctx context.Context, input *datasetIDInput) (*datas
 	dataset, err := h.evaluations.GetDataset(ctx, id)
 	if err != nil {
 		return nil, h.responseError("get dataset", err)
+	}
+	return &datasetResult{Body: datasetOutput(dataset)}, nil
+}
+
+func (h *handler) updateDataset(
+	ctx context.Context,
+	input *updateDatasetInput,
+) (*datasetResult, error) {
+	id, err := parseID(input.ID, "dataset ID")
+	if err != nil {
+		return nil, h.responseError("update dataset", err)
+	}
+	dataset, err := h.evaluations.UpdateDataset(ctx, id, domain.UpdateDatasetInput{
+		Name: input.Body.Name, Description: input.Body.Description,
+		ClearDescription: input.Body.ClearDescription,
+	})
+	if err != nil {
+		return nil, h.responseError("update dataset", err)
 	}
 	return &datasetResult{Body: datasetOutput(dataset)}, nil
 }

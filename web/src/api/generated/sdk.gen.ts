@@ -36,6 +36,9 @@ import type {
   DeleteApplicationResponses,
   DeleteDatasetData,
   DeleteDatasetErrors,
+  DeleteDatasetItemData,
+  DeleteDatasetItemErrors,
+  DeleteDatasetItemResponses,
   DeleteDatasetResponses,
   DeleteProjectData,
   DeleteProjectErrors,
@@ -45,6 +48,9 @@ import type {
   GetApplicationResponses,
   GetDatasetData,
   GetDatasetErrors,
+  GetDatasetItemData,
+  GetDatasetItemErrors,
+  GetDatasetItemResponses,
   GetDatasetResponses,
   GetEvalRunData,
   GetEvalRunErrors,
@@ -91,6 +97,9 @@ import type {
   PutScorerConfigData,
   PutScorerConfigErrors,
   PutScorerConfigResponses,
+  ReplaceDatasetItemData,
+  ReplaceDatasetItemErrors,
+  ReplaceDatasetItemResponses,
   RevokeApiKeyData,
   RevokeApiKeyErrors,
   RevokeApiKeyResponses,
@@ -103,6 +112,9 @@ import type {
   UpdateApplicationEndpointResponses,
   UpdateApplicationErrors,
   UpdateApplicationResponses,
+  UpdateDatasetData,
+  UpdateDatasetErrors,
+  UpdateDatasetResponses,
   UpdateProjectData,
   UpdateProjectErrors,
   UpdateProjectResponses,
@@ -407,6 +419,28 @@ export const getDataset = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Update a dataset
+ */
+export const updateDataset = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDatasetData, ThrowOnError>,
+): RequestResult<UpdateDatasetResponses, UpdateDatasetErrors, ThrowOnError> =>
+  (options.client ?? client).patch<UpdateDatasetResponses, UpdateDatasetErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
  * List dataset items
  */
 export const listDatasetItems = <ThrowOnError extends boolean = false>(
@@ -443,6 +477,72 @@ export const createDatasetItems = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/datasets/{id}/items",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Delete a dataset item
+ */
+export const deleteDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteDatasetItemData, ThrowOnError>,
+): RequestResult<DeleteDatasetItemResponses, DeleteDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).delete<
+    DeleteDatasetItemResponses,
+    DeleteDatasetItemErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
+    ...options,
+  });
+
+/**
+ * Get a dataset item
+ */
+export const getDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<GetDatasetItemData, ThrowOnError>,
+): RequestResult<GetDatasetItemResponses, GetDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).get<GetDatasetItemResponses, GetDatasetItemErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
+    ...options,
+  });
+
+/**
+ * Replace a dataset item
+ */
+export const replaceDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<ReplaceDatasetItemData, ThrowOnError>,
+): RequestResult<ReplaceDatasetItemResponses, ReplaceDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).put<
+    ReplaceDatasetItemResponses,
+    ReplaceDatasetItemErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
     ...options,
     headers: {
       "Content-Type": "application/json",

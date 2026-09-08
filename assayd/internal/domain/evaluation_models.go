@@ -76,11 +76,28 @@ type CreateDatasetInput struct {
 	Description   *string
 }
 
+// UpdateDatasetInput contains optional dataset metadata changes.
+type UpdateDatasetInput struct {
+	Name             *string
+	Description      *string
+	ClearDescription bool
+}
+
 // CreateDatasetItemInput contains one offline evaluation case.
 type CreateDatasetItemInput struct {
 	ExternalID     *string
 	Input          map[string]any
 	Output         string
+	ExpectedOutput *string
+	Context        []Chunk
+	Metadata       map[string]any
+}
+
+// ReplaceDatasetItemInput contains all editable fields for a dataset case.
+type ReplaceDatasetItemInput struct {
+	ExternalID     *string
+	Input          map[string]any
+	Output         *string
 	ExpectedOutput *string
 	Context        []Chunk
 	Metadata       map[string]any
@@ -335,9 +352,13 @@ type EvaluationRepository interface {
 	CreateDataset(context.Context, Dataset) (Dataset, error)
 	ListDatasets(context.Context, DatasetQuery) ([]Dataset, error)
 	GetDataset(context.Context, uuid.UUID) (Dataset, error)
+	UpdateDataset(context.Context, uuid.UUID, UpdateDatasetInput) (Dataset, error)
 	DeleteDataset(context.Context, uuid.UUID) error
 	CreateDatasetItems(context.Context, uuid.UUID, []DatasetItem) ([]DatasetItem, error)
 	ListDatasetItems(context.Context, uuid.UUID, PageQuery) ([]DatasetItem, error)
+	GetDatasetItem(context.Context, uuid.UUID, uuid.UUID) (DatasetItem, error)
+	ReplaceDatasetItem(context.Context, uuid.UUID, DatasetItem) (DatasetItem, error)
+	DeleteDatasetItem(context.Context, uuid.UUID, uuid.UUID) error
 	CountDatasetItems(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingOutput(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingReference(context.Context, uuid.UUID) (int, error)

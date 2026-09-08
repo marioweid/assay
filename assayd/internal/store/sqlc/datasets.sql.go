@@ -139,6 +139,24 @@ func (q *Queries) DeleteDataset(ctx context.Context, id uuid.UUID) (uuid.UUID, e
 	return id_2, err
 }
 
+const deleteDatasetItem = `-- name: DeleteDatasetItem :one
+DELETE FROM dataset_items
+WHERE dataset_id = $1 AND id = $2
+RETURNING id
+`
+
+type DeleteDatasetItemParams struct {
+	DatasetID uuid.UUID
+	ItemID    uuid.UUID
+}
+
+func (q *Queries) DeleteDatasetItem(ctx context.Context, arg DeleteDatasetItemParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteDatasetItem, arg.DatasetID, arg.ItemID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getDataset = `-- name: GetDataset :one
 SELECT id, application_id, name, description, created_at, updated_at
 FROM datasets
@@ -153,6 +171,36 @@ func (q *Queries) GetDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
 		&i.ApplicationID,
 		&i.Name,
 		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDatasetItem = `-- name: GetDatasetItem :one
+SELECT id, dataset_id, external_id, input, output, expected_output, context, metadata,
+       created_at, updated_at
+FROM dataset_items
+WHERE dataset_id = $1 AND id = $2
+`
+
+type GetDatasetItemParams struct {
+	DatasetID uuid.UUID
+	ItemID    uuid.UUID
+}
+
+func (q *Queries) GetDatasetItem(ctx context.Context, arg GetDatasetItemParams) (DatasetItem, error) {
+	row := q.db.QueryRow(ctx, getDatasetItem, arg.DatasetID, arg.ItemID)
+	var i DatasetItem
+	err := row.Scan(
+		&i.ID,
+		&i.DatasetID,
+		&i.ExternalID,
+		&i.Input,
+		&i.Output,
+		&i.ExpectedOutput,
+		&i.Context,
+		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -267,4 +315,104 @@ func (q *Queries) ListDatasets(ctx context.Context, arg ListDatasetsParams) ([]D
 		return nil, err
 	}
 	return items, nil
+}
+
+const replaceDatasetItem = `-- name: ReplaceDatasetItem :one
+UPDATE dataset_items
+SET external_id = $1, input = $2,
+    output = $3, expected_output = $4,
+    context = $5, metadata = $6, updated_at = now()
+WHERE dataset_id = $7 AND id = $8
+RETURNING id, dataset_id, external_id, input, output, expected_output, context, metadata,
+          created_at, updated_at
+`
+
+type ReplaceDatasetItemParams struct {
+	ExternalID     pgtype.Text
+	Input          json.RawMessage
+	Output         pgtype.Text
+	ExpectedOutput pgtype.Text
+	Context        []byte
+	Metadata       json.RawMessage
+	DatasetID      uuid.UUID
+	ItemID         uuid.UUID
+}
+
+func (q *Queries) ReplaceDatasetItem(ctx context.Context, arg ReplaceDatasetItemParams) (DatasetItem, error) {
+	row := q.db.QueryRow(ctx, replaceDatasetItem,
+		arg.ExternalID,
+		arg.Input,
+		arg.Output,
+		arg.ExpectedOutput,
+		arg.Context,
+		arg.Metadata,
+		arg.DatasetID,
+		arg.ItemID,
+	)
+	var i DatasetItem
+	err := row.Scan(
+		&i.ID,
+		&i.DatasetID,
+		&i.ExternalID,
+		&i.Input,
+		&i.Output,
+		&i.ExpectedOutput,
+		&i.Context,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const touchDataset = `-- name: TouchDataset :exec
+UPDATE datasets SET updated_at = now() WHERE id = $1
+`
+
+func (q *Queries) TouchDataset(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, touchDataset, id)
+	return err
+}
+
+const updateDataset = `-- name: UpdateDataset :one
+UPDATE datasets
+SET name = CASE WHEN $1::boolean THEN $2 ELSE name END,
+    description = CASE
+        WHEN $3::boolean THEN NULL
+        WHEN $4::boolean THEN $5
+        ELSE description
+    END,
+    updated_at = now()
+WHERE id = $6
+RETURNING id, application_id, name, description, created_at, updated_at
+`
+
+type UpdateDatasetParams struct {
+	SetName          bool
+	Name             string
+	ClearDescription bool
+	SetDescription   bool
+	Description      pgtype.Text
+	ID               uuid.UUID
+}
+
+func (q *Queries) UpdateDataset(ctx context.Context, arg UpdateDatasetParams) (Dataset, error) {
+	row := q.db.QueryRow(ctx, updateDataset,
+		arg.SetName,
+		arg.Name,
+		arg.ClearDescription,
+		arg.SetDescription,
+		arg.Description,
+		arg.ID,
+	)
+	var i Dataset
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

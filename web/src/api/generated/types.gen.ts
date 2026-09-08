@@ -175,6 +175,10 @@ export type DatasetItemInput = {
 };
 
 export type DatasetItemResponse = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
   context: Array<Chunk> | null;
   created_at: string;
   dataset_id: string;
@@ -376,6 +380,23 @@ export type PutScorerConfigInputBody = {
   judge_config?: JudgeConfigInput;
   prompt_template_id?: string;
   threshold?: number;
+};
+
+export type ReplaceDatasetItemInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  context: Array<Chunk>;
+  expected_output: string | null;
+  external_id: string | null;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output: string | null;
 };
 
 export type ResponseMappingInput = {
@@ -586,6 +607,16 @@ export type UpdateApplicationInputBody = {
   slug?: string;
 };
 
+export type UpdateDatasetInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  clear_description?: boolean;
+  description?: string;
+  name?: string;
+};
+
 export type UpdateProjectInputBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -680,8 +711,25 @@ export type DatasetCollectionResultBodyWritable = {
 };
 
 export type DatasetItemCollectionResultBodyWritable = {
-  items: Array<DatasetItemResponse> | null;
+  items: Array<DatasetItemResponseWritable> | null;
   next_cursor?: string;
+};
+
+export type DatasetItemResponseWritable = {
+  context: Array<Chunk> | null;
+  created_at: string;
+  dataset_id: string;
+  expected_output?: string;
+  external_id?: string;
+  id: string;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output?: string;
+  updated_at: string;
 };
 
 export type DatasetResponseWritable = {
@@ -789,6 +837,19 @@ export type PutScorerConfigInputBodyWritable = {
   threshold?: number;
 };
 
+export type ReplaceDatasetItemInputBodyWritable = {
+  context: Array<Chunk>;
+  expected_output: string | null;
+  external_id: string | null;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output: string | null;
+};
+
 export type ScoreCollectionResultBodyWritable = {
   items: Array<ScoreResponse> | null;
   next_cursor?: string;
@@ -866,6 +927,12 @@ export type UpdateApplicationInputBodyWritable = {
   };
   name?: string;
   slug?: string;
+};
+
+export type UpdateDatasetInputBodyWritable = {
+  clear_description?: boolean;
+  description?: string;
+  name?: string;
 };
 
 export type UpdateProjectInputBodyWritable = {
@@ -1395,6 +1462,49 @@ export type GetDatasetResponses = {
 
 export type GetDatasetResponse = GetDatasetResponses[keyof GetDatasetResponses];
 
+export type UpdateDatasetData = {
+  body: UpdateDatasetInputBodyWritable;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}";
+};
+
+export type UpdateDatasetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type UpdateDatasetError = UpdateDatasetErrors[keyof UpdateDatasetErrors];
+
+export type UpdateDatasetResponses = {
+  /**
+   * OK
+   */
+  200: DatasetResponse;
+};
+
+export type UpdateDatasetResponse = UpdateDatasetResponses[keyof UpdateDatasetResponses];
+
 export type ListDatasetItemsData = {
   body?: never;
   path: {
@@ -1480,6 +1590,132 @@ export type CreateDatasetItemsResponses = {
 
 export type CreateDatasetItemsResponse =
   CreateDatasetItemsResponses[keyof CreateDatasetItemsResponses];
+
+export type DeleteDatasetItemData = {
+  body?: never;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type DeleteDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteDatasetItemError = DeleteDatasetItemErrors[keyof DeleteDatasetItemErrors];
+
+export type DeleteDatasetItemResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteDatasetItemResponse =
+  DeleteDatasetItemResponses[keyof DeleteDatasetItemResponses];
+
+export type GetDatasetItemData = {
+  body?: never;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type GetDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type GetDatasetItemError = GetDatasetItemErrors[keyof GetDatasetItemErrors];
+
+export type GetDatasetItemResponses = {
+  /**
+   * OK
+   */
+  200: DatasetItemResponse;
+};
+
+export type GetDatasetItemResponse = GetDatasetItemResponses[keyof GetDatasetItemResponses];
+
+export type ReplaceDatasetItemData = {
+  body: ReplaceDatasetItemInputBodyWritable;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type ReplaceDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ReplaceDatasetItemError = ReplaceDatasetItemErrors[keyof ReplaceDatasetItemErrors];
+
+export type ReplaceDatasetItemResponses = {
+  /**
+   * OK
+   */
+  200: DatasetItemResponse;
+};
+
+export type ReplaceDatasetItemResponse =
+  ReplaceDatasetItemResponses[keyof ReplaceDatasetItemResponses];
 
 export type ListProjectsData = {
   body?: never;

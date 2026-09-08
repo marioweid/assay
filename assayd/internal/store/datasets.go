@@ -9,6 +9,7 @@ import (
 	db "github.com/marioweid/assay/assayd/internal/store/sqlc"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -62,6 +63,27 @@ func (d *Database) GetDataset(ctx context.Context, datasetID uuid.UUID) (domain.
 	return datasetFromRow(row), nil
 }
 
+// UpdateDataset applies selected metadata changes.
+func (d *Database) UpdateDataset(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	input domain.UpdateDatasetInput,
+) (domain.Dataset, error) {
+	params := db.UpdateDatasetParams{
+		ID: datasetID, SetName: input.Name != nil,
+		SetDescription: input.Description != nil, ClearDescription: input.ClearDescription,
+		Description: nullableText(input.Description),
+	}
+	if input.Name != nil {
+		params.Name = *input.Name
+	}
+	row, err := d.queries.UpdateDataset(ctx, params)
+	if err != nil {
+		return domain.Dataset{}, mapStoreError("update dataset", err)
+	}
+	return datasetFromRow(row), nil
+}
+
 // DeleteDataset removes a dataset and its dependent records.
 func (d *Database) DeleteDataset(ctx context.Context, datasetID uuid.UUID) error {
 	return d.deleteWithJobLock(ctx, "delete dataset", func(queries *db.Queries) error {
@@ -102,8 +124,10 @@ func (d *Database) CreateDatasetItems(
 		}
 		created = append(created, createdItem)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit dataset item transaction: %w", err)
+	if err := commitDatasetMutation(
+		ctx, tx, queries, datasetID, "dataset item creation",
+	); err != nil {
+		return nil, err
 	}
 	return created, nil
 }
@@ -168,6 +192,90 @@ func (d *Database) ListDatasetItems(
 	return items, nil
 }
 
+// GetDatasetItem returns one item only when it belongs to the supplied dataset.
+func (d *Database) GetDatasetItem(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	itemID uuid.UUID,
+) (domain.DatasetItem, error) {
+	row, err := d.queries.GetDatasetItem(ctx, db.GetDatasetItemParams{
+		DatasetID: datasetID, ItemID: itemID,
+	})
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("select dataset item", err)
+	}
+	item, err := datasetItemFromRow(row)
+	if err != nil {
+		return domain.DatasetItem{}, err
+	}
+	return item, nil
+}
+
+// ReplaceDatasetItem atomically replaces editable fields and touches its dataset.
+func (d *Database) ReplaceDatasetItem(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	item domain.DatasetItem,
+) (domain.DatasetItem, error) {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return domain.DatasetItem{}, fmt.Errorf("begin dataset item replacement: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := db.New(tx)
+	params, err := replaceDatasetItemParameters(datasetID, item)
+	if err != nil {
+		return domain.DatasetItem{}, err
+	}
+	row, err := queries.ReplaceDatasetItem(ctx, params)
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("replace dataset item", err)
+	}
+	if err := commitDatasetMutation(
+		ctx, tx, queries, datasetID, "dataset item replacement",
+	); err != nil {
+		return domain.DatasetItem{}, err
+	}
+	return datasetItemFromRow(row)
+}
+
+// DeleteDatasetItem atomically removes one scoped item and touches its dataset.
+func (d *Database) DeleteDatasetItem(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	itemID uuid.UUID,
+) error {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin dataset item deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := db.New(tx)
+	_, err = queries.DeleteDatasetItem(ctx, db.DeleteDatasetItemParams{
+		DatasetID: datasetID, ItemID: itemID,
+	})
+	if err != nil {
+		return mapStoreError("delete dataset item", err)
+	}
+	return commitDatasetMutation(ctx, tx, queries, datasetID, "dataset item deletion")
+}
+
+func commitDatasetMutation(
+	ctx context.Context,
+	tx pgx.Tx,
+	queries *db.Queries,
+	datasetID uuid.UUID,
+	operation string,
+) error {
+	if err := queries.TouchDataset(ctx, datasetID); err != nil {
+		return mapStoreError("touch dataset after "+operation, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit %s: %w", operation, err)
+	}
+	return nil
+}
+
 func datasetFromRow(row db.Dataset) domain.Dataset {
 	return domain.Dataset{
 		ID: row.ID, ApplicationID: row.ApplicationID, Name: row.Name,
@@ -194,6 +302,30 @@ func datasetItemParameters(item domain.DatasetItem) (db.CreateDatasetItemParams,
 		Input: input, Output: nullableText(item.Output),
 		ExpectedOutput: nullableText(item.ExpectedOutput),
 		Context:        contextPayload, Metadata: metadata,
+	}, nil
+}
+
+func replaceDatasetItemParameters(
+	datasetID uuid.UUID,
+	item domain.DatasetItem,
+) (db.ReplaceDatasetItemParams, error) {
+	input, err := encodeJSON("dataset item input", item.Input)
+	if err != nil {
+		return db.ReplaceDatasetItemParams{}, err
+	}
+	contextPayload, err := encodeJSON("dataset item context", item.Context)
+	if err != nil {
+		return db.ReplaceDatasetItemParams{}, err
+	}
+	metadata, err := encodeJSON("dataset item metadata", item.Metadata)
+	if err != nil {
+		return db.ReplaceDatasetItemParams{}, err
+	}
+	return db.ReplaceDatasetItemParams{
+		DatasetID: datasetID, ItemID: item.ID, ExternalID: nullableText(item.ExternalID),
+		Input: input, Output: nullableText(item.Output),
+		ExpectedOutput: nullableText(item.ExpectedOutput), Context: contextPayload,
+		Metadata: metadata,
 	}, nil
 }
 

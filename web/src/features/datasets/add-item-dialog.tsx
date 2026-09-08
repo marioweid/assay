@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Problem } from "@/api/errors";
 import { createDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemInput, DatasetItemResponse } from "@/api/generated/types.gen";
-import { Modal } from "@/components/modal";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { fieldControlClass } from "@/components/ui/field";
 
 type Props = { datasetID: string; onCreated: (items: DatasetItemResponse[]) => void };
 const fields = [
@@ -14,22 +16,24 @@ const fields = [
 ] as const;
 type Values = Record<(typeof fields)[number][0], string>;
 
-export function AddDatasetItem(props: Props) {
+export function AddDatasetItem(props: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        className="mt-4 bg-blue-700 px-4 py-2 text-sm text-white"
-        onClick={() => setOpen(true)}
-      >
+      <Button onClick={() => setOpen(true)} variant="primary">
         Add item
-      </button>
-      {open && <AddItemDialog {...props} onClose={() => setOpen(false)} />}
+      </Button>
+      <AddItemDialog {...props} onClose={() => setOpen(false)} open={open} />
     </>
   );
 }
 
-function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () => void }) {
+function AddItemDialog({
+  datasetID,
+  onCreated,
+  onClose,
+  open,
+}: Props & { onClose: () => void; open: boolean }) {
   const [values, setValues] = useState<Values>({
     question: "",
     output: "",
@@ -71,21 +75,23 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
   }
 
   return (
-    <Modal label="Add dataset item" onClose={onClose}>
-      <form
-        className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto border border-line bg-white p-6 shadow-xl"
-        onSubmit={(event) => void submit(event)}
-      >
-        <h2 className="text-xl font-semibold">Add dataset item</h2>
+    <Dialog
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      open={open}
+      title="Add dataset item"
+    >
+      <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
         <p className="text-sm text-muted">
           Record an answer to score it directly, or leave it blank to generate one during
           evaluation. Correctness uses the expected answer; groundedness uses supporting context.
         </p>
         {fields.map(([key, label]) => (
           <label className="block text-sm" key={key}>
-            {label}
+            <span className="font-medium text-ink">{label}</span>
             <textarea
-              className="mt-1 block w-full border border-line bg-white px-3 py-2"
+              className={fieldControlClass + " mt-1"}
               rows={2}
               required={key === "question"}
               disabled={submitting}
@@ -95,24 +101,22 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
           </label>
         ))}
         {error !== null && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <button type="button" className="border border-line px-4 py-2 text-sm" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="bg-blue-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
             disabled={submitting || values.question.trim() === ""}
+            type="submit"
+            variant="primary"
           >
             {submitting ? "Saving..." : "Save item"}
-          </button>
+          </Button>
         </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 

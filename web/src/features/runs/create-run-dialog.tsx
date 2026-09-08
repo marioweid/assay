@@ -4,7 +4,9 @@ import { useNavigate } from "react-router";
 import { Problem } from "@/api/errors";
 import { createEvalRun } from "@/api/generated/sdk.gen";
 import type { DatasetResponse } from "@/api/generated/types.gen";
-import { Modal } from "@/components/modal";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { fieldControlClass } from "@/components/ui/field";
 
 type CreateRunDialogProps = {
   appID: string;
@@ -58,119 +60,81 @@ export function CreateRunDialog({ appID, datasets, onClose }: CreateRunDialogPro
   }
 
   return (
-    <Modal label="New evaluation run" onClose={onClose}>
-      <RunForm
-        datasets={datasets}
-        datasetID={datasetID}
-        error={error}
-        mode={mode}
-        name={name}
-        onClose={onClose}
-        onDataset={setDatasetID}
-        onMode={setMode}
-        onName={setName}
-        onSubmit={submit}
-        onToggleScorer={toggleScorer}
-        scorers={scorers}
-        submitting={submitting}
-      />
-    </Modal>
-  );
-}
-
-type RunFormProps = {
-  datasetID: string;
-  datasets: DatasetResponse[];
-  error: string | null;
-  mode: "score_existing" | "generate_then_score";
-  name: string;
-  scorers: string[];
-  submitting: boolean;
-  onClose: () => void;
-  onDataset: (id: string) => void;
-  onMode: (mode: "score_existing" | "generate_then_score") => void;
-  onName: (name: string) => void;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
-  onToggleScorer: (scorer: string) => void;
-};
-
-function RunForm(props: RunFormProps) {
-  return (
-    <form
-      className="w-full max-w-lg border border-line bg-white p-6"
-      onSubmit={(event) => void props.onSubmit(event)}
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open
+      title="New evaluation run"
     >
-      <h2 className="text-xl font-semibold">New evaluation run</h2>
-      {props.error && (
-        <p className="mt-4 border border-red-300 bg-red-50 p-3 text-sm" role="alert">
-          {props.error}
-        </p>
-      )}
-      <label className="mt-5 block text-sm font-medium">
-        Run name
-        <input
-          autoFocus
-          className="mt-1 block w-full border border-line px-3 py-2"
-          onChange={(event) => props.onName(event.target.value)}
-          value={props.name}
-        />
-      </label>
-      <label className="mt-4 block text-sm font-medium">
-        Dataset
-        <select
-          className="mt-1 block w-full border border-line px-3 py-2"
-          onChange={(event) => props.onDataset(event.target.value)}
-          value={props.datasetID}
-        >
-          <option value="">Select a dataset</option>
-          {props.datasets.map((dataset) => (
-            <option key={dataset.id} value={dataset.id}>
-              {dataset.name}
-            </option>
+      <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
+        {error !== null && (
+          <p className="border border-danger/30 bg-danger/10 p-3 text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+        <label className="block text-sm">
+          <span className="font-medium text-ink">Run name</span>
+          <input
+            autoFocus
+            className={fieldControlClass + " mt-1"}
+            onChange={(event) => setName(event.target.value)}
+            value={name}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-ink">Dataset</span>
+          <select
+            className={fieldControlClass + " mt-1"}
+            onChange={(event) => setDatasetID(event.target.value)}
+            value={datasetID}
+          >
+            <option value="">Select a dataset</option>
+            {datasets.map((dataset) => (
+              <option key={dataset.id} value={dataset.id}>
+                {dataset.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-ink">Mode</span>
+          <select
+            className={fieldControlClass + " mt-1"}
+            onChange={(event) =>
+              setMode(event.target.value as "score_existing" | "generate_then_score")
+            }
+            value={mode}
+          >
+            <option value="score_existing">Score existing outputs</option>
+            <option value="generate_then_score">Generate then score</option>
+          </select>
+        </label>
+        <fieldset className="space-y-1">
+          <legend className="text-sm font-medium text-ink">Scorers</legend>
+          <p className="text-sm text-muted">
+            {mode === "score_existing"
+              ? "Every item needs a recorded answer. If your dataset only has questions and expected answers, select Generate then score."
+              : "Calls the application's configured target endpoint to generate an answer for each question."}
+          </p>
+          {["groundedness", "correctness"].map((scorer) => (
+            <label className="mt-2 inline-flex items-center gap-2 text-sm" key={scorer}>
+              <input
+                checked={scorers.includes(scorer)}
+                onChange={() => toggleScorer(scorer)}
+                type="checkbox"
+              />
+              {scorer}
+            </label>
           ))}
-        </select>
-      </label>
-      <label className="mt-4 block text-sm font-medium">
-        Mode
-        <select
-          className="mt-1 block w-full border border-line px-3 py-2"
-          onChange={(event) => props.onMode(event.target.value as RunFormProps["mode"])}
-          value={props.mode}
-        >
-          <option value="score_existing">Score existing outputs</option>
-          <option value="generate_then_score">Generate then score</option>
-        </select>
-      </label>
-      <fieldset className="mt-4">
-        <legend className="text-sm font-medium">Scorers</legend>
-        <p className="mb-3 text-sm text-muted">
-          {props.mode === "score_existing"
-            ? "Every item needs a recorded answer. If your dataset only has questions and expected answers, select Generate then score."
-            : "Calls the application's configured target endpoint to generate an answer for each question."}
-        </p>
-        {["groundedness", "correctness"].map((scorer) => (
-          <label className="mr-5 mt-2 inline-flex items-center gap-2 text-sm" key={scorer}>
-            <input
-              checked={props.scorers.includes(scorer)}
-              onChange={() => props.onToggleScorer(scorer)}
-              type="checkbox"
-            />
-            {scorer}
-          </label>
-        ))}
-      </fieldset>
-      <div className="mt-6 flex justify-end gap-3">
-        <button className="px-4 py-2 text-sm" onClick={props.onClose} type="button">
-          Close
-        </button>
-        <button
-          className="bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          disabled={props.submitting}
-          type="submit"
-        >
-          Create run
-        </button>
-      </div>
-    </form>
+        </fieldset>
+        <div className="flex justify-end gap-3">
+          <Button onClick={onClose}>Close</Button>
+          <Button disabled={submitting} type="submit" variant="primary">
+            Create run
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

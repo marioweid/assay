@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
+import { ThemeProvider } from "@/app/theme-provider";
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
 import "@/styles.css";
@@ -11,9 +12,11 @@ if (rootElement === null) {
 }
 
 createRoot(rootElement).render(
-  <BrowserRouter>
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
-  </BrowserRouter>,
+  <ThemeProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  </ThemeProvider>,
 );

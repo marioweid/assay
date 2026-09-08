@@ -3,7 +3,9 @@ import { useNavigate } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { createDataset } from "@/api/generated/sdk.gen";
-import { Modal } from "@/components/modal";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { fieldControlClass } from "@/components/ui/field";
 
 export function CreateDatasetDialog({ appID, onClose }: { appID: string; onClose: () => void }) {
   const navigate = useNavigate();
@@ -40,19 +42,22 @@ export function CreateDatasetDialog({ appID, onClose }: { appID: string; onClose
   }
 
   return (
-    <Modal label="Create dataset" onClose={onClose}>
-      <form
-        className="w-full max-w-lg space-y-4 border border-line bg-white p-6 shadow-xl"
-        onSubmit={(event) => void submit(event)}
-      >
-        <h2 className="text-xl font-semibold">Create dataset</h2>
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open
+      title="Create dataset"
+    >
+      <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
         <p className="text-sm text-muted">
           Create a collection of evaluation cases for this application.
         </p>
         <label className="block text-sm">
-          Dataset name
+          <span className="font-medium text-ink">Dataset name</span>
           <input
-            className="mt-1 block w-full border border-line bg-white px-3 py-2"
+            autoFocus
+            className={fieldControlClass + " mt-1"}
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -60,9 +65,9 @@ export function CreateDatasetDialog({ appID, onClose }: { appID: string; onClose
           />
         </label>
         <label className="block text-sm">
-          Description (optional)
+          <span className="font-medium text-ink">Description (optional)</span>
           <textarea
-            className="mt-1 block w-full border border-line bg-white px-3 py-2"
+            className={fieldControlClass + " mt-1"}
             rows={3}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
@@ -70,23 +75,17 @@ export function CreateDatasetDialog({ appID, onClose }: { appID: string; onClose
           />
         </label>
         {error !== null && (
-          <p className="text-sm text-red-700" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {error}
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <button className="border border-line px-4 py-2 text-sm" type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className="bg-blue-700 px-4 py-2 text-sm text-white disabled:opacity-50"
-            type="submit"
-            disabled={submitting || name.trim() === ""}
-          >
+          <Button onClick={onClose}>Cancel</Button>
+          <Button disabled={submitting || name.trim() === ""} type="submit" variant="primary">
             {submitting ? "Creating..." : "Save dataset"}
-          </button>
+          </Button>
         </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }

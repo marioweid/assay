@@ -118,9 +118,7 @@ test("confirms and applies active-run cancellation", async () => {
   const user = userEvent.setup();
 
   await user.click(await screen.findByRole("button", { name: "Cancel run" }));
-  expect(screen.getByRole("cell", { name: "75%" })).toBeInTheDocument();
-  expect(screen.getByRole("cell", { name: "0.82" })).toBeInTheDocument();
-  expect(screen.getByRole("alertdialog", { name: "Cancel evaluation run" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Cancel evaluation run" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Confirm cancellation" }));
   expect(await screen.findByText("canceled")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument();

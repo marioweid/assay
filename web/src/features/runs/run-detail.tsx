@@ -4,8 +4,9 @@ import { Link, useParams } from "react-router";
 import { Problem } from "@/api/errors";
 import { cancelEvalRun } from "@/api/generated/sdk.gen";
 import type { EvalRunResponse } from "@/api/generated/types.gen";
-import { Modal } from "@/components/modal";
 import { useRunPolling } from "@/features/runs/use-run-polling";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { isActiveRun } from "@/features/runs/run-status";
 
 export function RunDetail() {
@@ -119,24 +120,25 @@ function CancelDialog({
   onClose: () => void;
 }) {
   return (
-    <Modal label="Cancel evaluation run" onClose={onClose} role="alertdialog">
-      <div className="w-full max-w-md border border-line bg-white p-6">
-        <h2 className="text-lg font-semibold">Cancel evaluation run</h2>
-        <p className="mt-3 text-sm">
-          Pending work will be canceled. Completed scores remain available.
-        </p>
-        <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose}>Keep running</button>
-          <button
-            className="bg-red-700 px-4 py-2 text-white disabled:opacity-50"
-            disabled={canceling}
-            onClick={() => void onCancel()}
-          >
-            Confirm cancellation
-          </button>
-        </div>
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      open
+      title="Cancel evaluation run"
+    >
+      <p className="mt-3 text-sm">
+        Pending work will be canceled. Completed scores remain available.
+      </p>
+      <div className="mt-6 flex justify-end gap-3">
+        <Button autoFocus onClick={onClose}>
+          Keep running
+        </Button>
+        <Button disabled={canceling} onClick={() => void onCancel()} variant="danger">
+          Confirm cancellation
+        </Button>
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 

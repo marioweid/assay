@@ -5,16 +5,35 @@
 @theme {
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --color-canvas: #edf1f5;
-  --color-surface: #f8fafc;
-  --color-rail: #142033;
+  --color-canvas: #f3f5f8;
+  --color-surface: #ffffff;
+  --color-rail: #e9eef5;
   --color-ink: #172033;
-  --color-muted: #607087;
+  --color-muted: #52627a;
   --color-line: #cbd5e1;
-  --color-accent: #37658f;
-  --color-accent-strong: #244b70;
-  --color-success: #2f6b55;
-  --color-danger: #9a3f45;
+  --color-accent: #275f91;
+  --color-accent-strong: #194d79;
+  --color-on-accent: #ffffff;
+  --color-success: #216447;
+  --color-danger: #a32f40;
+  --color-on-danger: #ffffff;
+  --color-warning: #805900;
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #20252e;
+  --color-surface: #282f3a;
+  --color-rail: #171c24;
+  --color-ink: #edf2f8;
+  --color-muted: #acb9cb;
+  --color-line: #465368;
+  --color-accent: #91c8ed;
+  --color-accent-strong: #b5ddf7;
+  --color-on-accent: #172033;
+  --color-success: #8bd2ac;
+  --color-danger: #ffa6af;
+  --color-on-danger: #172033;
+  --color-warning: #efcb80;
 }
 
 :root {

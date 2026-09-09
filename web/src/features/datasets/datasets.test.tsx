@@ -142,6 +142,30 @@ test("updates dataset metadata without changing its cases", async () => {
   expect(screen.getByText("No description")).toBeInTheDocument();
 });
 
+test("deletes a dataset after explaining the cascading removal", async () => {
+  let deleted = false;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.delete(`*/v1/datasets/${datasetID}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("*/v1/datasets", () => HttpResponse.json({ items: [] })),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete dataset" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete dataset?" });
+  expect(dialog).toHaveTextContent("cases, and associated evaluation runs and scores");
+  await user.click(within(dialog).getByRole("button", { name: "Delete dataset" }));
+
+  expect(deleted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Datasets" })).toBeInTheDocument();
+});
+
 test("adds an evaluation item and displays it without reloading", async () => {
   server.use(
     applicationHandler(),

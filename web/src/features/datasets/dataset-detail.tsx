@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { getDataset, listDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemResponse, DatasetResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
+import { DatasetDelete } from "@/features/datasets/dataset-delete";
 import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
 import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
 import { DatasetMetadataDialog } from "@/features/datasets/dataset-metadata-dialog";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
+  const navigate = useNavigate();
   const requestNumber = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
@@ -111,6 +113,7 @@ export function DatasetDetail() {
       nextCursor={nextCursor}
       onLoadMore={loadMore}
       onCreated={(created) => setItems((current) => [...created, ...current])}
+      onDatasetDeleted={() => navigate(`/apps/${appId}/datasets`)}
       onDatasetUpdated={setDataset}
       onUpdated={(updated) =>
         setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
@@ -129,6 +132,7 @@ type DatasetViewProps = {
   nextCursor: string | null;
   onLoadMore: () => Promise<void>;
   onCreated: (items: DatasetItemResponse[]) => void;
+  onDatasetDeleted: () => void;
   onDatasetUpdated: (dataset: DatasetResponse) => void;
   onUpdated: (item: DatasetItemResponse) => void;
   onDeleted: (itemID: string) => void;
@@ -158,7 +162,10 @@ function DatasetView(props: DatasetViewProps) {
         {props.dataset.description?.trim() || "No description"}
       </p>
       <div className="mt-4">
-        <DatasetMetadataDialog dataset={props.dataset} onSaved={props.onDatasetUpdated} />
+        <div className="flex gap-3">
+          <DatasetMetadataDialog dataset={props.dataset} onSaved={props.onDatasetUpdated} />
+          <DatasetDelete datasetID={props.dataset.id} onDeleted={props.onDatasetDeleted} />
+        </div>
       </div>
       {!props.loading && (
         <AddDatasetItem

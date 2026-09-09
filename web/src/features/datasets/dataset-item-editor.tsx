@@ -19,12 +19,20 @@ export function DatasetItemEditor({
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState(questionOf(item));
   const [output, setOutput] = useState(item.output ?? "");
+  const [inputJSON, setInputJSON] = useState(JSON.stringify(withoutQuestion(item.input), null, 2));
+  const [metadataJSON, setMetadataJSON] = useState(JSON.stringify(item.metadata, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function save(): Promise<void> {
     if (question.trim() === "") {
       setError("Question is required.");
+      return;
+    }
+    const input = parseObject(inputJSON);
+    const metadata = parseObject(metadataJSON);
+    if (input === null || metadata === null) {
+      setError("Input JSON and Metadata JSON must each be a JSON object.");
       return;
     }
     setSaving(true);
@@ -35,8 +43,8 @@ export function DatasetItemEditor({
           context: item.context ?? [],
           expected_output: item.expected_output ?? null,
           external_id: item.external_id ?? null,
-          input: { ...item.input, question: question.trim() },
-          metadata: item.metadata,
+          input: { ...input, question: question.trim() },
+          metadata,
           output: output.trim() === "" ? null : output.trim(),
         },
         path: { id: datasetID, itemId: item.id },
@@ -74,6 +82,24 @@ export function DatasetItemEditor({
               />
             </label>
             <label className="block text-sm">
+              <span className="font-medium">Input JSON</span>
+              <textarea
+                aria-label="Input JSON"
+                className={`${fieldControlClass} mt-1 font-mono`}
+                onChange={(event) => setInputJSON(event.target.value)}
+                value={inputJSON}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium">Metadata JSON</span>
+              <textarea
+                aria-label="Metadata JSON"
+                className={`${fieldControlClass} mt-1 font-mono`}
+                onChange={(event) => setMetadataJSON(event.target.value)}
+                value={metadataJSON}
+              />
+            </label>
+            <label className="block text-sm">
               <span className="font-medium">Recorded answer (optional)</span>
               <textarea
                 aria-label="Recorded answer (optional)"
@@ -100,6 +126,22 @@ export function DatasetItemEditor({
       )}
     </>
   );
+}
+
+function withoutQuestion(input: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...input };
+  delete rest["question"];
+  return rest;
+}
+
+function parseObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function questionOf(item: DatasetItemResponse): string {

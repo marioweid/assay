@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -225,6 +225,32 @@ test("edits a case without losing its other editable fields", async () => {
     input: { language: "en", question: "Updated question" },
     metadata: { priority: 1 },
     output: "Recorded answer",
+  });
+});
+
+test("edits advanced input and metadata JSON without discarding question", async () => {
+  const item = { ...itemFixture("case-one"), input: { language: "en", question: "Question" } };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json(item);
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  fireEvent.change(screen.getByLabelText("Input JSON"), { target: { value: '{"language":"fr"}' } });
+  fireEvent.change(screen.getByLabelText("Metadata JSON"), { target: { value: '{"priority":2}' } });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({
+    input: { language: "fr", question: "Question" },
+    metadata: { priority: 2 },
   });
 });
 

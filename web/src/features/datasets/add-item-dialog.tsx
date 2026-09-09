@@ -13,6 +13,9 @@ const fields = [
   ["output", "Recorded answer (optional)"],
   ["expected", "Expected answer (optional)"],
   ["context", "Supporting context (optional)"],
+  ["externalID", "External ID (optional)"],
+  ["inputJSON", "Input JSON"],
+  ["metadataJSON", "Metadata JSON"],
 ] as const;
 type Values = Record<(typeof fields)[number][0], string>;
 
@@ -39,6 +42,9 @@ function AddItemDialog({
     output: "",
     expected: "",
     context: "",
+    externalID: "",
+    inputJSON: "{}",
+    metadataJSON: "{}",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +54,11 @@ function AddItemDialog({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (active.current !== null || values.question.trim() === "") return;
+    const item = toItem(values);
+    if (item === null) {
+      setError("Input JSON and Metadata JSON must each be a JSON object.");
+      return;
+    }
     const controller = new AbortController();
     active.current = controller;
     setSubmitting(true);
@@ -55,7 +66,7 @@ function AddItemDialog({
     try {
       const response = await createDatasetItems({
         path: { id: datasetID },
-        body: { items: [toItem(values)] },
+        body: { items: [item] },
         signal: controller.signal,
         throwOnError: true,
       });
@@ -120,11 +131,27 @@ function AddItemDialog({
   );
 }
 
-function toItem(values: Values): DatasetItemInput {
-  const item: DatasetItemInput = { input: { question: values.question.trim() } };
+function toItem(values: Values): DatasetItemInput | null {
+  const input = parseObject(values.inputJSON);
+  const metadata = parseObject(values.metadataJSON);
+  if (input === null || metadata === null) return null;
+  const item: DatasetItemInput = { input: { ...input, question: values.question.trim() } };
+  if (values.externalID.trim() !== "") item.external_id = values.externalID.trim();
+  if (Object.keys(metadata).length > 0) item.metadata = metadata;
   if (values.output.trim() !== "") item.output = values.output.trim();
   if (values.expected.trim() !== "") item.expected_output = values.expected.trim();
   if (values.context.trim() !== "")
     item.context = [{ id: "context-1", text: values.context.trim() }];
   return item;
+}
+
+function parseObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed !== null && !Array.isArray(parsed) && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }

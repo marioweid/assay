@@ -359,6 +359,35 @@ test("deletes a case only after explaining that run evidence remains", async () 
   expect(screen.queryByText("case-one")).not.toBeInTheDocument();
 });
 
+test("creates a case with an external ID, metadata, and custom input", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({
+        items: [
+          {
+            external_id: "case-1",
+            input: { language: "en", question: "Question" },
+            metadata: { priority: 2 },
+          },
+        ],
+      });
+      return HttpResponse.json({ items: [itemFixture("case-1")] }, { status: 201 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add item" }));
+  await user.type(screen.getByLabelText("Question"), "Question");
+  await user.type(screen.getByLabelText("External ID (optional)"), "case-1");
+  fireEvent.change(screen.getByLabelText("Input JSON"), { target: { value: '{"language":"en"}' } });
+  fireEvent.change(screen.getByLabelText("Metadata JSON"), { target: { value: '{"priority":2}' } });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+  expect(await screen.findByText("case-1")).toBeInTheDocument();
+});
+
 test("keeps an unsaved item after an API failure", async () => {
   server.use(
     applicationHandler(),

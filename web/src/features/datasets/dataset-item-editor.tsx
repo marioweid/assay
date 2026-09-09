@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Problem } from "@/api/errors";
 import { replaceDatasetItem } from "@/api/generated/sdk.gen";
-import type { DatasetItemResponse } from "@/api/generated/types.gen";
+import type { Chunk, DatasetItemResponse } from "@/api/generated/types.gen";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { fieldControlClass } from "@/components/ui/field";
@@ -21,6 +21,7 @@ export function DatasetItemEditor({
   const [output, setOutput] = useState(item.output ?? "");
   const [expectedOutput, setExpectedOutput] = useState(item.expected_output ?? "");
   const [externalID, setExternalID] = useState(item.external_id ?? "");
+  const [contextJSON, setContextJSON] = useState(JSON.stringify(item.context ?? [], null, 2));
   const [inputJSON, setInputJSON] = useState(JSON.stringify(withoutQuestion(item.input), null, 2));
   const [metadataJSON, setMetadataJSON] = useState(JSON.stringify(item.metadata, null, 2));
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +32,11 @@ export function DatasetItemEditor({
       setError("Question is required.");
       return;
     }
+    const context = parseChunks(contextJSON);
     const input = parseObject(inputJSON);
     const metadata = parseObject(metadataJSON);
-    if (input === null || metadata === null) {
-      setError("Input JSON and Metadata JSON must each be a JSON object.");
+    if (context === null || input === null || metadata === null) {
+      setError("Context must be chunks; Input JSON and Metadata JSON must each be JSON objects.");
       return;
     }
     setSaving(true);
@@ -42,7 +44,7 @@ export function DatasetItemEditor({
     try {
       const response = await replaceDatasetItem({
         body: {
-          context: item.context ?? [],
+          context,
           expected_output: expectedOutput.trim() === "" ? null : expectedOutput.trim(),
           external_id: externalID.trim() === "" ? null : externalID.trim(),
           input: { ...input, question: question.trim() },
@@ -81,6 +83,15 @@ export function DatasetItemEditor({
                 className={`${fieldControlClass} mt-1`}
                 onChange={(event) => setQuestion(event.target.value)}
                 value={question}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium">Context JSON</span>
+              <textarea
+                aria-label="Context JSON"
+                className={`${fieldControlClass} mt-1 font-mono`}
+                onChange={(event) => setContextJSON(event.target.value)}
+                value={contextJSON}
               />
             </label>
             <label className="block text-sm">
@@ -146,6 +157,23 @@ export function DatasetItemEditor({
       )}
     </>
   );
+}
+
+function parseChunks(value: string): Chunk[] | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    if (!parsed.every((chunk) => isChunk(chunk))) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function isChunk(value: unknown): value is Chunk {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const chunk = value as Record<string, unknown>;
+  return typeof chunk["id"] === "string" && typeof chunk["text"] === "string";
 }
 
 function withoutQuestion(input: Record<string, unknown>): Record<string, unknown> {

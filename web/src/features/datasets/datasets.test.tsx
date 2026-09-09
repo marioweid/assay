@@ -254,6 +254,37 @@ test("edits advanced input and metadata JSON without discarding question", async
   });
 });
 
+test("edits context chunks as a JSON array", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    context: [
+      { id: "one", text: "First context" },
+      { id: "two", text: "Second context" },
+    ],
+    input: { question: "Question" },
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json(item);
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  fireEvent.change(screen.getByLabelText("Context JSON"), {
+    target: { value: '[{"id":"one","text":"Updated context"}]' },
+  });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({ context: [{ id: "one", text: "Updated context" }] });
+});
+
 test("clears a recorded answer while preserving the rest of a case", async () => {
   const item = {
     ...itemFixture("case-one"),

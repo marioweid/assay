@@ -12,6 +12,7 @@ import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
 import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
 import { ImportDatasetDialog } from "@/features/datasets/import-dataset-dialog";
 import { DatasetMetadataDialog } from "@/features/datasets/dataset-metadata-dialog";
+import { ExportDatasetButton } from "@/features/datasets/export-dataset-button";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
@@ -176,6 +177,7 @@ function DatasetView(props: DatasetViewProps) {
             onCreated={props.onCreated}
           />
           <ImportDatasetDialog datasetID={props.dataset.id} onCreated={props.onCreated} />
+          <ExportDatasetButton datasetID={props.dataset.id} />
         </div>
       )}
       {props.error && (

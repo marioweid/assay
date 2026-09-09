@@ -1,4 +1,4 @@
-import { Activity, Database, FlaskConical, LineChart } from "lucide-react";
+import { Activity, Database, FlaskConical, LineChart, Settings } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
@@ -15,6 +15,7 @@ const sections = [
   { key: "datasets", label: "Datasets", icon: Database },
   { key: "runs", label: "Evaluations", icon: FlaskConical },
   { key: "metrics", label: "Score trends", icon: LineChart },
+  { key: "settings", label: "Settings", icon: Settings },
 ] as const;
 
 function sectionLabel(pathname: string): string {

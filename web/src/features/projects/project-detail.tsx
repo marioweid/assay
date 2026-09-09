@@ -13,6 +13,7 @@ import { ProblemState } from "@/components/problem-state";
 import { fieldControlClass } from "@/components/ui/field";
 import { useApplicationCatalog } from "@/features/applications/application-catalog";
 import { ApiKeysPanel } from "@/features/projects/api-keys-panel";
+import { JudgeConfigForm } from "@/features/projects/judge-config-form";
 import { ProjectForm } from "@/features/projects/project-form";
 
 export function ProjectDetail(): ReactNode {
@@ -145,6 +146,12 @@ export function ProjectDetail(): ReactNode {
           </div>
         )}
       </section>
+
+      <JudgeConfigForm
+        {...(project.judge_config === undefined ? {} : { judgeConfig: project.judge_config })}
+        onSaved={() => setRefresh((value) => value + 1)}
+        projectID={project.id}
+      />
 
       <div className="mt-8">
         <ApiKeysPanel projectID={project.id} />

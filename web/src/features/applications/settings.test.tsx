@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -82,6 +82,42 @@ test("preserves an endpoint secret when saving endpoint settings", async () => {
       url: "http://target:8090/answer",
     },
   });
+});
+
+test("rejects malformed endpoint JSON before sending it", async () => {
+  server.use(
+    http.get("*/v1/applications", () => HttpResponse.json({ items: [application] })),
+    http.get(`*/v1/applications/${applicationID}/scorers`, () =>
+      HttpResponse.json({ items: [scorer] }),
+    ),
+  );
+  renderApp();
+  const user = userEvent.setup();
+
+  const headers = await screen.findByLabelText("Headers JSON");
+  await user.clear(headers);
+  fireEvent.change(headers, { target: { value: "[" } });
+  await user.click(screen.getByRole("button", { name: "Save endpoint" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("must be JSON objects");
+});
+
+test("rejects a scorer threshold outside the valid range", async () => {
+  server.use(
+    http.get("*/v1/applications", () => HttpResponse.json({ items: [application] })),
+    http.get(`*/v1/applications/${applicationID}/scorers`, () =>
+      HttpResponse.json({ items: [scorer] }),
+    ),
+  );
+  renderApp();
+  const user = userEvent.setup();
+
+  const threshold = await screen.findByLabelText("Groundedness threshold");
+  await user.clear(threshold);
+  await user.type(threshold, "1.1");
+  await user.click(screen.getByRole("button", { name: "Save groundedness scorer" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Threshold must be between 0 and 1");
 });
 
 test("saves the full scorer override when changing a threshold", async () => {

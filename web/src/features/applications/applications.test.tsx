@@ -95,6 +95,27 @@ test("deletes an application only after confirming its name", async () => {
   expect(deleted).toBe(true);
 });
 
+test("keeps slug edits open after a conflict", async () => {
+  server.use(
+    http.get("*/v1/applications", () => HttpResponse.json({ items: [application] })),
+    http.patch(`*/v1/applications/${applicationID}`, () =>
+      HttpResponse.json({ title: "Conflict", detail: "Slug already exists" }, { status: 409 }),
+    ),
+  );
+  renderApp("/apps");
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: `Edit ${application.name}` }));
+  const dialog = screen.getByRole("dialog", { name: "Edit application" });
+  const slug = within(dialog).getByDisplayValue(application.slug);
+  await user.clear(slug);
+  await user.type(slug, "duplicate");
+  await user.click(within(dialog).getByRole("button", { name: "Save application" }));
+
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Slug already exists");
+  expect(slug).toHaveValue("duplicate");
+});
+
 test("keeps advanced configuration when editing an application", async () => {
   let requestBody: unknown;
   server.use(

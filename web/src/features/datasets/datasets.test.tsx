@@ -115,6 +115,33 @@ test("browses item fields and stops on a repeated cursor", async () => {
   expect(screen.queryByRole("button", { name: "Load more items" })).not.toBeInTheDocument();
 });
 
+test("updates dataset metadata without changing its cases", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.patch(`*/v1/datasets/${datasetID}`, async ({ request }) => {
+      expect(await request.json()).toEqual({ clear_description: true, name: "Updated cases" });
+      return HttpResponse.json({
+        ...datasetFixture(),
+        description: undefined,
+        name: "Updated cases",
+      });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit dataset" }));
+  await user.clear(screen.getByLabelText("Dataset name"));
+  await user.type(screen.getByLabelText("Dataset name"), "Updated cases");
+  await user.clear(screen.getByLabelText("Description (optional)"));
+  await user.click(screen.getByRole("button", { name: "Save dataset" }));
+
+  expect(await screen.findByRole("heading", { name: "Updated cases" })).toBeInTheDocument();
+  expect(screen.getByText("No description")).toBeInTheDocument();
+});
+
 test("adds an evaluation item and displays it without reloading", async () => {
   server.use(
     applicationHandler(),

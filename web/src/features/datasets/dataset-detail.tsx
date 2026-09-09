@@ -9,6 +9,7 @@ import { JsonView } from "@/components/json-view";
 import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
 import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
 import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
+import { DatasetMetadataDialog } from "@/features/datasets/dataset-metadata-dialog";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
@@ -110,6 +111,7 @@ export function DatasetDetail() {
       nextCursor={nextCursor}
       onLoadMore={loadMore}
       onCreated={(created) => setItems((current) => [...created, ...current])}
+      onDatasetUpdated={setDataset}
       onUpdated={(updated) =>
         setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
       }
@@ -127,6 +129,7 @@ type DatasetViewProps = {
   nextCursor: string | null;
   onLoadMore: () => Promise<void>;
   onCreated: (items: DatasetItemResponse[]) => void;
+  onDatasetUpdated: (dataset: DatasetResponse) => void;
   onUpdated: (item: DatasetItemResponse) => void;
   onDeleted: (itemID: string) => void;
 };
@@ -154,6 +157,9 @@ function DatasetView(props: DatasetViewProps) {
       <p className="mt-2 text-sm text-muted">
         {props.dataset.description?.trim() || "No description"}
       </p>
+      <div className="mt-4">
+        <DatasetMetadataDialog dataset={props.dataset} onSaved={props.onDatasetUpdated} />
+      </div>
       {!props.loading && (
         <AddDatasetItem
           key={props.dataset.id}

@@ -11,10 +11,20 @@ import { fieldControlClass } from "@/components/ui/field";
 type CreateRunDialogProps = {
   appID: string;
   datasets: DatasetResponse[];
+  loadingDatasets: boolean;
+  nextDatasetCursor: string | null;
   onClose: () => void;
+  onLoadMoreDatasets: () => Promise<void>;
 };
 
-export function CreateRunDialog({ appID, datasets, onClose }: CreateRunDialogProps) {
+export function CreateRunDialog({
+  appID,
+  datasets,
+  loadingDatasets,
+  nextDatasetCursor,
+  onClose,
+  onLoadMoreDatasets,
+}: CreateRunDialogProps) {
   const navigate = useNavigate();
   const activeRequest = useRef<AbortController | null>(null);
   const [name, setName] = useState("");
@@ -97,6 +107,11 @@ export function CreateRunDialog({ appID, datasets, onClose }: CreateRunDialogPro
             ))}
           </select>
         </label>
+        {nextDatasetCursor !== null && (
+          <Button disabled={loadingDatasets} onClick={() => void onLoadMoreDatasets()}>
+            {loadingDatasets ? "Loading datasets..." : "Load more datasets"}
+          </Button>
+        )}
         <label className="block text-sm">
           <span className="font-medium text-ink">Mode</span>
           <select

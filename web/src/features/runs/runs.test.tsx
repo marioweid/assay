@@ -35,6 +35,18 @@ test("lists runs with progress and aggregate summaries", async () => {
   expect(screen.getByText(/groundedness 0.82/)).toBeInTheDocument();
 });
 
+test("loads additional datasets before creating a run", async () => {
+  server.use(
+    ...baseHandlers(),
+    http.get("*/v1/runs", () => HttpResponse.json({ items: [] })),
+  );
+  renderApp(`/apps/${appID}/runs`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "New evaluation run" }));
+  await user.click(screen.getByRole("button", { name: "Load more datasets" }));
+  expect(await screen.findByRole("option", { name: "Later cases" })).toBeInTheDocument();
+});
+
 test.each([
   ["score_existing", "Score existing outputs"],
   ["generate_then_score", "Generate then score"],
@@ -169,8 +181,21 @@ function baseHandlers() {
         ],
       }),
     ),
-    http.get("*/v1/datasets", () =>
-      HttpResponse.json({
+    http.get("*/v1/datasets", ({ request }) => {
+      if (new URL(request.url).searchParams.get("cursor") === "next") {
+        return HttpResponse.json({
+          items: [
+            {
+              id: "019d11d2-cbd3-7a5e-ae83-9b791c932933",
+              application_id: appID,
+              name: "Later cases",
+              created_at: "2026-09-01T10:00:00Z",
+              updated_at: "2026-09-01T10:00:00Z",
+            },
+          ],
+        });
+      }
+      return HttpResponse.json({
         items: [
           {
             id: datasetID,
@@ -180,8 +205,9 @@ function baseHandlers() {
             updated_at: "2026-09-01T10:00:00Z",
           },
         ],
-      }),
-    ),
+        next_cursor: "next",
+      });
+    }),
   ];
 }
 

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -159,6 +159,46 @@ test("adds an evaluation item and displays it without reloading", async () => {
   await user.click(await screen.findByText("new-case"));
   expect(screen.getByText(/Where are traces stored/)).toBeInTheDocument();
   expect(screen.queryByText("No dataset items yet.")).not.toBeInTheDocument();
+});
+
+test("edits a case without losing its other editable fields", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    context: [{ id: "doc-1", text: "Supporting context" }],
+    expected_output: "Expected answer",
+    external_id: "case-one",
+    input: { language: "en", question: "Original question" },
+    metadata: { priority: 1 },
+    output: "Recorded answer",
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json({ ...item, input: { ...item.input, question: "Updated question" } });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit dataset case" });
+  const question = within(dialog).getByLabelText("Question");
+  await user.clear(question);
+  await user.type(question, "Updated question");
+  await user.click(within(dialog).getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toEqual({
+    context: [{ id: "doc-1", text: "Supporting context" }],
+    expected_output: "Expected answer",
+    external_id: "case-one",
+    input: { language: "en", question: "Updated question" },
+    metadata: { priority: 1 },
+    output: "Recorded answer",
+  });
 });
 
 test("keeps an unsaved item after an API failure", async () => {

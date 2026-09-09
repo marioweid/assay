@@ -7,6 +7,7 @@ import { getDataset, listDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemResponse, DatasetResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
+import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
@@ -108,6 +109,9 @@ export function DatasetDetail() {
       nextCursor={nextCursor}
       onLoadMore={loadMore}
       onCreated={(created) => setItems((current) => [...created, ...current])}
+      onUpdated={(updated) =>
+        setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      }
     />
   );
 }
@@ -121,6 +125,7 @@ type DatasetViewProps = {
   nextCursor: string | null;
   onLoadMore: () => Promise<void>;
   onCreated: (items: DatasetItemResponse[]) => void;
+  onUpdated: (item: DatasetItemResponse) => void;
 };
 
 function DatasetView(props: DatasetViewProps) {
@@ -134,6 +139,7 @@ function DatasetView(props: DatasetViewProps) {
       </p>
     );
   }
+  const datasetID = props.dataset.id;
   return (
     <section aria-labelledby="dataset-heading">
       <Link className="text-sm text-accent hover:underline" to={`/apps/${props.appId}/datasets`}>
@@ -159,7 +165,12 @@ function DatasetView(props: DatasetViewProps) {
       )}
       <div className="mt-6 space-y-3">
         {props.items.map((item) => (
-          <DatasetItem item={item} key={item.id} />
+          <DatasetItem
+            datasetID={datasetID}
+            item={item}
+            key={item.id}
+            onUpdated={props.onUpdated}
+          />
         ))}
       </div>
       {!props.loading && props.error === null && props.items.length === 0 && (
@@ -178,13 +189,24 @@ function DatasetView(props: DatasetViewProps) {
   );
 }
 
-function DatasetItem({ item }: { item: DatasetItemResponse }) {
+function DatasetItem({
+  datasetID,
+  item,
+  onUpdated,
+}: {
+  datasetID: string;
+  item: DatasetItemResponse;
+  onUpdated: (item: DatasetItemResponse) => void;
+}) {
   return (
     <details className="border border-line bg-surface">
       <summary className="cursor-pointer px-4 py-3 font-medium">
         {item.external_id ??
           (typeof item.input["question"] === "string" ? item.input["question"] : item.id)}
       </summary>
+      <div className="flex justify-end border-t border-line px-4 pt-3">
+        <DatasetItemEditor datasetID={datasetID} item={item} onSaved={onUpdated} />
+      </div>
       <div className="grid gap-5 border-t border-line p-4 lg:grid-cols-2">
         <ItemField label="Input">
           <JsonView value={item.input} />

@@ -18,6 +18,7 @@ export function DatasetItemEditor({
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState(questionOf(item));
+  const [output, setOutput] = useState(item.output ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +37,7 @@ export function DatasetItemEditor({
           external_id: item.external_id ?? null,
           input: { ...item.input, question: question.trim() },
           metadata: item.metadata,
-          output: item.output ?? null,
+          output: output.trim() === "" ? null : output.trim(),
         },
         path: { id: datasetID, itemId: item.id },
         throwOnError: true,
@@ -70,6 +71,15 @@ export function DatasetItemEditor({
                 className={`${fieldControlClass} mt-1`}
                 onChange={(event) => setQuestion(event.target.value)}
                 value={question}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium">Recorded answer (optional)</span>
+              <textarea
+                aria-label="Recorded answer (optional)"
+                className={`${fieldControlClass} mt-1`}
+                onChange={(event) => setOutput(event.target.value)}
+                value={output}
               />
             </label>
             {error !== null && (

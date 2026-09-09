@@ -228,6 +228,32 @@ test("edits a case without losing its other editable fields", async () => {
   });
 });
 
+test("clears a recorded answer while preserving the rest of a case", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    input: { question: "Question" },
+    output: "Recorded answer",
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json({ ...item, output: undefined });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  await user.clear(screen.getByLabelText("Recorded answer (optional)"));
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({ input: { question: "Question" }, output: null });
+});
+
 test("deletes a case only after explaining that run evidence remains", async () => {
   const item = itemFixture("case-one");
   let deleted = false;

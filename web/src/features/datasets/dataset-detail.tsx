@@ -7,6 +7,7 @@ import { getDataset, listDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemResponse, DatasetResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
+import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
 import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
 
 export function DatasetDetail() {
@@ -112,6 +113,7 @@ export function DatasetDetail() {
       onUpdated={(updated) =>
         setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
       }
+      onDeleted={(itemID) => setItems((current) => current.filter((item) => item.id !== itemID))}
     />
   );
 }
@@ -126,6 +128,7 @@ type DatasetViewProps = {
   onLoadMore: () => Promise<void>;
   onCreated: (items: DatasetItemResponse[]) => void;
   onUpdated: (item: DatasetItemResponse) => void;
+  onDeleted: (itemID: string) => void;
 };
 
 function DatasetView(props: DatasetViewProps) {
@@ -169,6 +172,7 @@ function DatasetView(props: DatasetViewProps) {
             datasetID={datasetID}
             item={item}
             key={item.id}
+            onDeleted={props.onDeleted}
             onUpdated={props.onUpdated}
           />
         ))}
@@ -192,10 +196,12 @@ function DatasetView(props: DatasetViewProps) {
 function DatasetItem({
   datasetID,
   item,
+  onDeleted,
   onUpdated,
 }: {
   datasetID: string;
   item: DatasetItemResponse;
+  onDeleted: (itemID: string) => void;
   onUpdated: (item: DatasetItemResponse) => void;
 }) {
   return (
@@ -206,6 +212,12 @@ function DatasetItem({
       </summary>
       <div className="flex justify-end border-t border-line px-4 pt-3">
         <DatasetItemEditor datasetID={datasetID} item={item} onSaved={onUpdated} />
+        <DatasetItemDelete
+          datasetID={datasetID}
+          itemID={item.id}
+          label={item.external_id ?? item.id}
+          onDeleted={() => onDeleted(item.id)}
+        />
       </div>
       <div className="grid gap-5 border-t border-line p-4 lg:grid-cols-2">
         <ItemField label="Input">

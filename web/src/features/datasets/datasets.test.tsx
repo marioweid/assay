@@ -201,6 +201,30 @@ test("edits a case without losing its other editable fields", async () => {
   });
 });
 
+test("deletes a case only after explaining that run evidence remains", async () => {
+  const item = itemFixture("case-one");
+  let deleted = false;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.delete(`*/v1/datasets/${datasetID}/items/${item.id}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete case-one" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete dataset case?" });
+  expect(dialog).toHaveTextContent("Historical evaluation evidence remains");
+  await user.click(within(dialog).getByRole("button", { name: "Delete item" }));
+
+  expect(deleted).toBe(true);
+  expect(screen.queryByText("case-one")).not.toBeInTheDocument();
+});
+
 test("keeps an unsaved item after an API failure", async () => {
   server.use(
     applicationHandler(),

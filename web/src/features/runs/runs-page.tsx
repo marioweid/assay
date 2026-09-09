@@ -98,9 +98,9 @@ function RunsTable({
 }) {
   const names = new Map(datasets.map((dataset) => [dataset.id, dataset.name]));
   return (
-    <div className="mt-6 overflow-x-auto border border-line bg-white">
+    <div className="mt-6 overflow-x-auto border border-line bg-surface">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-line bg-slate-50 text-xs uppercase tracking-wide text-muted">
+        <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-muted">
           <tr>
             {["Name", "Dataset", "Mode", "Status", "Progress", "Aggregates"].map((heading) => (
               <th className="px-4 py-3" key={heading}>
@@ -114,7 +114,7 @@ function RunsTable({
             <tr className="border-b border-line last:border-0" key={run.id}>
               <td className="px-4 py-3">
                 <Link
-                  className="font-medium text-blue-700 hover:underline"
+                  className="font-medium text-accent hover:underline"
                   to={`/apps/${appID}/runs/${run.id}`}
                 >
                   {run.name}

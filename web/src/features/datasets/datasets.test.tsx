@@ -31,6 +31,8 @@ test("lists application datasets and navigates to a dataset", async () => {
   const user = userEvent.setup();
 
   expect(await screen.findByText("No description")).toBeInTheDocument();
+  expect(screen.getByRole("table").parentElement).toHaveClass("bg-surface");
+  expect(screen.getByRole("link", { name: "Regression cases" })).toHaveClass("text-accent");
   await user.click(screen.getByRole("link", { name: "Regression cases" }));
   expect(await screen.findByRole("heading", { name: "Regression cases" })).toBeInTheDocument();
   expect(screen.getByText("No dataset items yet.")).toBeInTheDocument();

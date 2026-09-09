@@ -28,6 +28,8 @@ test("lists runs with progress and aggregate summaries", async () => {
   renderApp(`/apps/${appID}/runs`);
 
   expect(await screen.findByRole("link", { name: "Baseline run" })).toBeInTheDocument();
+  expect(screen.getByRole("table").parentElement).toHaveClass("bg-surface");
+  expect(screen.getByRole("link", { name: "Baseline run" })).toHaveClass("text-accent");
   expect(screen.getByText("Regression cases")).toBeInTheDocument();
   expect(screen.getByText("3 / 4")).toBeInTheDocument();
   expect(screen.getByText(/groundedness 0.82/)).toBeInTheDocument();
@@ -100,6 +102,7 @@ test("allows a pending run to be cancelled", async () => {
   renderApp(`/apps/${appID}/runs/${runID}`);
 
   expect(await screen.findByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+  expect(screen.getByText("Total").parentElement).toHaveClass("bg-surface");
 });
 
 test("confirms and applies active-run cancellation", async () => {

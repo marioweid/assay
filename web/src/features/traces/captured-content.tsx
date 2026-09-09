@@ -63,7 +63,7 @@ function ContentValue({ value }: { value: unknown }) {
     const content = record["content"] ?? record["text"];
     if (content !== undefined)
       return (
-        <div className="border border-line bg-white p-3">
+        <div className="border border-line bg-surface p-3">
           <p className="mb-1 text-xs text-muted">{String(record["role"] ?? record["id"] ?? "")}</p>
           <ContentValue value={content} />
         </div>

@@ -125,7 +125,7 @@ function TraceTable(props: TraceTableProps) {
         <label className="text-sm text-muted">
           Filter traces
           <input
-            className="ml-2 border border-line bg-white px-3 py-2 text-ink"
+            className="ml-2 border border-line bg-surface px-3 py-2 text-ink"
             onChange={(event) => props.onFilter(event.target.value)}
             value={props.filter}
           />
@@ -143,9 +143,9 @@ function TraceTable(props: TraceTableProps) {
         <p className="mt-8 text-muted">No traces found.</p>
       )}
       {props.items.length > 0 && (
-        <div className="mt-6 overflow-x-auto border border-line bg-white">
+        <div className="mt-6 overflow-x-auto border border-line bg-surface">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-line bg-slate-50 text-xs uppercase tracking-wide text-muted">
+            <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-muted">
               <tr>
                 {["Start", "Operation", "Status", "Duration", "Spans", "Tokens"].map((heading) => (
                   <th className="px-4 py-3" key={heading}>
@@ -160,7 +160,7 @@ function TraceTable(props: TraceTableProps) {
                   <td className="whitespace-nowrap px-4 py-3">{formatStart(trace.start_time)}</td>
                   <td className="px-4 py-3">
                     <Link
-                      className="font-medium text-blue-700 hover:underline"
+                      className="font-medium text-accent hover:underline"
                       to={`/apps/${props.appId}/traces/${trace.id}`}
                     >
                       {trace.root_name}
@@ -178,7 +178,7 @@ function TraceTable(props: TraceTableProps) {
       )}
       {props.nextCursor !== null && (
         <button
-          className="mt-4 border border-line bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="mt-4 border border-line bg-surface px-4 py-2 text-sm font-medium disabled:opacity-50"
           disabled={props.loading}
           onClick={() => void props.onLoadMore()}
         >

@@ -136,7 +136,7 @@ function DatasetView(props: DatasetViewProps) {
   }
   return (
     <section aria-labelledby="dataset-heading">
-      <Link className="text-sm text-blue-700 hover:underline" to={`/apps/${props.appId}/datasets`}>
+      <Link className="text-sm text-accent hover:underline" to={`/apps/${props.appId}/datasets`}>
         Back to datasets
       </Link>
       <h1 className="mt-4 text-2xl font-semibold" id="dataset-heading">
@@ -167,7 +167,7 @@ function DatasetView(props: DatasetViewProps) {
       )}
       {props.nextCursor !== null && (
         <button
-          className="mt-4 border border-line bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="mt-4 border border-line bg-surface px-4 py-2 text-sm font-medium disabled:opacity-50"
           disabled={props.loading}
           onClick={() => void props.onLoadMore()}
         >
@@ -180,7 +180,7 @@ function DatasetView(props: DatasetViewProps) {
 
 function DatasetItem({ item }: { item: DatasetItemResponse }) {
   return (
-    <details className="border border-line bg-white">
+    <details className="border border-line bg-surface">
       <summary className="cursor-pointer px-4 py-3 font-medium">
         {item.external_id ??
           (typeof item.input["question"] === "string" ? item.input["question"] : item.id)}

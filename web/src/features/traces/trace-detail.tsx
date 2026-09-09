@@ -43,7 +43,7 @@ export function TraceDetail() {
 
   if (error !== null)
     return (
-      <p className="border border-red-300 bg-red-50 p-4" role="alert">
+      <p className="border border-danger bg-danger/10 p-4" role="alert">
         {error}
       </p>
     );
@@ -53,7 +53,7 @@ export function TraceDetail() {
   );
   return (
     <section aria-labelledby="trace-heading">
-      <Link className="text-sm text-blue-700 hover:underline" to={`/apps/${appId}/traces`}>
+      <Link className="text-sm text-accent hover:underline" to={`/apps/${appId}/traces`}>
         Back to traces
       </Link>
       <div className="mt-4">
@@ -63,10 +63,10 @@ export function TraceDetail() {
         </h1>
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(16rem,0.75fr)_minmax(0,1.5fr)]">
-        <aside className="border border-line bg-white p-3">
+        <aside className="border border-line bg-surface p-3">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold">Span tree</h2>
-            <button className="text-xs text-blue-700" onClick={() => setSelected(null)}>
+            <button className="text-xs text-accent" onClick={() => setSelected(null)}>
               Trace summary
             </button>
           </div>
@@ -127,7 +127,7 @@ function TraceTabs({ onSelect, selected }: { onSelect: (tab: Tab) => void; selec
         <button
           aria-controls="trace-tabpanel"
           aria-selected={selected === name}
-          className={`px-4 py-3 text-sm ${selected === name ? "border-b-2 border-blue-700 text-blue-800" : "text-muted"}`}
+          className={`px-4 py-3 text-sm ${selected === name ? "border-b-2 border-accent text-accent" : "text-muted"}`}
           id={`trace-tab-${name.toLowerCase()}`}
           key={name}
           onClick={() => onSelect(name)}

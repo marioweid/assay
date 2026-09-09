@@ -113,6 +113,7 @@ test("inspects nested spans, scores, and JSON as text", async () => {
 
   const root = await screen.findByRole("treeitem", { name: /root span/ });
   expect(root).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("tree").parentElement).toHaveClass("bg-surface");
   const overview = screen.getByRole("tab", { name: "Overview" });
   overview.focus();
   await user.keyboard("{End}");

@@ -42,7 +42,7 @@ export function RunDetail() {
     return (
       <div>
         {polling.error && (
-          <p className="border border-red-300 bg-red-50 p-4" role="alert">
+          <p className="border border-danger bg-danger/10 p-4" role="alert">
             {polling.error}
           </p>
         )}
@@ -56,14 +56,14 @@ export function RunDetail() {
     );
   if (polling.run.application_id !== appId)
     return (
-      <p className="border border-red-300 bg-red-50 p-4" role="alert">
+      <p className="border border-danger bg-danger/10 p-4" role="alert">
         Run does not belong to this application
       </p>
     );
   const run = polling.run;
   return (
     <section aria-labelledby="run-heading">
-      <Link className="text-sm text-blue-700 hover:underline" to={`/apps/${appId}/runs`}>
+      <Link className="text-sm text-accent hover:underline" to={`/apps/${appId}/runs`}>
         Back to runs
       </Link>
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
@@ -76,7 +76,7 @@ export function RunDetail() {
         </div>
         {isActiveRun(run.status) && (
           <button
-            className="border border-red-300 px-4 py-2 text-sm text-red-800"
+            className="border border-danger px-4 py-2 text-sm text-danger"
             onClick={() => setConfirming(true)}
           >
             Cancel run
@@ -84,7 +84,7 @@ export function RunDetail() {
         )}
       </div>
       {polling.error && (
-        <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
+        <p className="mt-4 border border-warning bg-warning/10 p-3 text-sm" role="alert">
           {polling.error}
           {polling.stopped && (
             <button className="ml-3 underline" onClick={polling.retry}>
@@ -94,7 +94,7 @@ export function RunDetail() {
         </p>
       )}
       {cancelError && (
-        <p className="mt-4 border border-red-300 bg-red-50 p-3 text-sm" role="alert">
+        <p className="mt-4 border border-danger bg-danger/10 p-3 text-sm" role="alert">
           {cancelError}
         </p>
       )}
@@ -156,9 +156,9 @@ function RunSummary({ run }: { run: EvalRunResponse }) {
         {Object.keys(run.aggregates).length === 0 ? (
           <p className="mt-3 text-sm text-muted">No aggregate scores yet.</p>
         ) : (
-          <div className="mt-3 overflow-x-auto border border-line bg-white">
+          <div className="mt-3 overflow-x-auto border border-line bg-surface">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-canvas">
                 <tr>
                   <th className="px-4 py-3">Scorer</th>
                   <th className="px-4 py-3">Mean</th>
@@ -186,7 +186,7 @@ function RunSummary({ run }: { run: EvalRunResponse }) {
 
 function Count({ label, value }: { label: string; value: number }) {
   return (
-    <div className="border border-line bg-white p-4">
+    <div className="border border-line bg-surface p-4">
       <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
       <dd className="mt-1 text-xl font-semibold">{value}</dd>
     </div>

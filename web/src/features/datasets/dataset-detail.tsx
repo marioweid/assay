@@ -10,6 +10,7 @@ import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
 import { DatasetDelete } from "@/features/datasets/dataset-delete";
 import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
 import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
+import { ImportDatasetDialog } from "@/features/datasets/import-dataset-dialog";
 import { DatasetMetadataDialog } from "@/features/datasets/dataset-metadata-dialog";
 
 export function DatasetDetail() {
@@ -168,11 +169,14 @@ function DatasetView(props: DatasetViewProps) {
         </div>
       </div>
       {!props.loading && (
-        <AddDatasetItem
-          key={props.dataset.id}
-          datasetID={props.dataset.id}
-          onCreated={props.onCreated}
-        />
+        <div className="flex gap-3">
+          <AddDatasetItem
+            key={props.dataset.id}
+            datasetID={props.dataset.id}
+            onCreated={props.onCreated}
+          />
+          <ImportDatasetDialog datasetID={props.dataset.id} onCreated={props.onCreated} />
+        </div>
       )}
       {props.error && (
         <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">

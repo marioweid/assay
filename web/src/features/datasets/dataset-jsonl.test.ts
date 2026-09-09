@@ -7,6 +7,19 @@ test("reports the failing JSONL line without echoing content", () => {
   expect(() => parseDatasetJsonl(source)).toThrow("Line 2: invalid JSON");
 });
 
+test("accepts BOM, CRLF, and blank lines", () => {
+  expect(
+    parseDatasetJsonl('\uFEFF{"input":{"question":"one"}}\r\n\r\n{"input":{"question":"two"}}'),
+  ).toEqual([{ input: { question: "one" } }, { input: { question: "two" } }]);
+});
+
+test("rejects invalid records and duplicate external IDs", () => {
+  expect(() => parseDatasetJsonl('{"input":[]}')).toThrow("Line 1: invalid dataset item");
+  expect(() =>
+    parseDatasetJsonl('{"external_id":"same","input":{}}\n{"external_id":"same","input":{}}'),
+  ).toThrow("Line 2: duplicate external_id");
+});
+
 test("exports editable fields without database identifiers", () => {
   const text = serializeDatasetJsonl([
     {

@@ -2,6 +2,7 @@ import type { DatasetItemInput, DatasetItemResponse } from "@/api/generated/type
 
 export function parseDatasetJsonl(text: string): DatasetItemInput[] {
   const items: DatasetItemInput[] = [];
+  const externalIDs = new Set<string>();
   for (const [index, line] of text
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
@@ -14,6 +15,11 @@ export function parseDatasetJsonl(text: string): DatasetItemInput[] {
       throw new Error(`Line ${index + 1}: invalid JSON`);
     }
     if (!isDatasetItemInput(value)) throw new Error(`Line ${index + 1}: invalid dataset item`);
+    if (value.external_id !== undefined) {
+      if (externalIDs.has(value.external_id))
+        throw new Error(`Line ${index + 1}: duplicate external_id`);
+      externalIDs.add(value.external_id);
+    }
     items.push(value);
   }
   return items;
@@ -26,9 +32,26 @@ export function serializeDatasetJsonl(items: readonly DatasetItemResponse[]): st
 function isDatasetItemInput(value: unknown): value is DatasetItemInput {
   if (value === null || Array.isArray(value) || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
+  if (item["input"] === null || typeof item["input"] !== "object" || Array.isArray(item["input"])) {
+    return false;
+  }
+  if (item["external_id"] !== undefined && typeof item["external_id"] !== "string") return false;
+  if (item["context"] !== undefined && !isChunks(item["context"])) return false;
+  return item["metadata"] === undefined || isObject(item["metadata"]);
+}
+
+function isChunks(value: unknown): boolean {
   return (
-    item["input"] !== null && typeof item["input"] === "object" && !Array.isArray(item["input"])
+    Array.isArray(value) &&
+    value.every(
+      (chunk) =>
+        isObject(chunk) && typeof chunk["id"] === "string" && typeof chunk["text"] === "string",
+    )
   );
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && !Array.isArray(value) && typeof value === "object";
 }
 
 function writableFields(item: DatasetItemResponse): DatasetItemInput {

@@ -388,6 +388,28 @@ test("creates a case with an external ID, metadata, and custom input", async () 
   expect(await screen.findByText("case-1")).toBeInTheDocument();
 });
 
+test("imports parsed JSONL cases only after confirmation", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({ items: [{ input: { question: "Imported" } }] });
+      return HttpResponse.json({ items: [itemFixture("imported")] }, { status: 201 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Import JSONL" }));
+  await user.upload(
+    screen.getByLabelText("JSONL file"),
+    new File(['{"input":{"question":"Imported"}}'], "cases.jsonl", { type: "application/jsonl" }),
+  );
+  expect(await screen.findByText("1 case ready to import.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Import" }));
+  expect(await screen.findByText("imported")).toBeInTheDocument();
+});
+
 test("keeps an unsaved item after an API failure", async () => {
   server.use(
     applicationHandler(),

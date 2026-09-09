@@ -19,6 +19,8 @@ export function DatasetItemEditor({
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState(questionOf(item));
   const [output, setOutput] = useState(item.output ?? "");
+  const [expectedOutput, setExpectedOutput] = useState(item.expected_output ?? "");
+  const [externalID, setExternalID] = useState(item.external_id ?? "");
   const [inputJSON, setInputJSON] = useState(JSON.stringify(withoutQuestion(item.input), null, 2));
   const [metadataJSON, setMetadataJSON] = useState(JSON.stringify(item.metadata, null, 2));
   const [error, setError] = useState<string | null>(null);
@@ -41,8 +43,8 @@ export function DatasetItemEditor({
       const response = await replaceDatasetItem({
         body: {
           context: item.context ?? [],
-          expected_output: item.expected_output ?? null,
-          external_id: item.external_id ?? null,
+          expected_output: expectedOutput.trim() === "" ? null : expectedOutput.trim(),
+          external_id: externalID.trim() === "" ? null : externalID.trim(),
           input: { ...input, question: question.trim() },
           metadata,
           output: output.trim() === "" ? null : output.trim(),
@@ -79,6 +81,24 @@ export function DatasetItemEditor({
                 className={`${fieldControlClass} mt-1`}
                 onChange={(event) => setQuestion(event.target.value)}
                 value={question}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium">External ID (optional)</span>
+              <input
+                aria-label="External ID (optional)"
+                className={`${fieldControlClass} mt-1`}
+                onChange={(event) => setExternalID(event.target.value)}
+                value={externalID}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium">Expected answer (optional)</span>
+              <textarea
+                aria-label="Expected answer (optional)"
+                className={`${fieldControlClass} mt-1`}
+                onChange={(event) => setExpectedOutput(event.target.value)}
+                value={expectedOutput}
               />
             </label>
             <label className="block text-sm">

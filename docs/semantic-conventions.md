@@ -48,7 +48,13 @@ in-memory structured array after OTLP decoding or a string containing a JSON arr
 requires a `role` and either a non-blank string `content` or `parts` containing text objects with
 string `content` values. Assay joins text parts in order, uses the final `user` input message, and
 uses the first `assistant` output candidate. It does not read `assay.input` or `assay.output`
-fallback attributes.
+fallback attributes. The message-part mapping is pinned to the OpenTelemetry
+[GenAI input](https://github.com/open-telemetry/semantic-conventions-genai/blob/b5d8440f6f126738fd50f927752cd669772c517b/model/gen-ai/gen-ai-input-messages.json)
+and [output](https://github.com/open-telemetry/semantic-conventions-genai/blob/b5d8440f6f126738fd50f927752cd669772c517b/model/gen-ai/gen-ai-output-messages.json)
+schemas at commit `b5d8440f6f126738fd50f927752cd669772c517b`: text parts use
+`type: "text"` and `content`; tool requests use `type: "tool_call"`, `name`,
+optional `arguments`/`id`; tool results use `type: "tool_call_response"`,
+`response`, and optional `id`.
 
 Groundedness context uses flattened `assay.context.chunks.<i>.id` and `.text` fields when any
 flattened context field or `assay.context.chunk.count` is present. Indices must be contiguous from

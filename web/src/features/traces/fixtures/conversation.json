@@ -1,0 +1,30 @@
+{
+  "standard_text_parts": [
+    {
+      "role": "user",
+      "parts": [{ "type": "text", "content": "What is Assay?" }]
+    },
+    {
+      "role": "assistant",
+      "parts": [{ "type": "text", "content": "An evaluation workspace." }]
+    }
+  ],
+  "tool_parts": [
+    {
+      "role": "assistant",
+      "parts": [
+        { "type": "tool_call", "id": "call-1", "name": "lookup", "arguments": { "query": "Assay" } }
+      ]
+    },
+    {
+      "role": "tool",
+      "parts": [
+        {
+          "type": "tool_call_response",
+          "id": "call-1",
+          "response": { "answer": "An evaluation workspace." }
+        }
+      ]
+    }
+  ]
+}

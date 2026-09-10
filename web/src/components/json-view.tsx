@@ -18,19 +18,19 @@ export function JsonView({ value }: JsonViewProps) {
   }
 
   return (
-    <div className="border border-line bg-slate-950">
-      <div className="flex justify-end border-b border-slate-700 px-3 py-2">
-        <button className="text-xs text-slate-200" onClick={() => void copy()}>
+    <div className="border border-line bg-rail">
+      <div className="flex justify-end border-b border-line px-3 py-2">
+        <button className="text-xs text-ink" onClick={() => void copy()}>
           Copy JSON
         </button>
-        {copyStatus === "copied" && <span className="ml-3 text-xs text-emerald-300">Copied</span>}
+        {copyStatus === "copied" && <span className="ml-3 text-xs text-success">Copied</span>}
         {copyStatus === "failed" && (
-          <span className="ml-3 text-xs text-red-300" role="alert">
+          <span className="ml-3 text-xs text-danger" role="alert">
             Copy failed
           </span>
         )}
       </div>
-      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6 text-slate-100">
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6 text-ink">
         {formatted}
       </pre>
     </div>

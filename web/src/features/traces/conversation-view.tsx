@@ -55,7 +55,8 @@ function ConversationCallView({
       <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4">
         <strong>{call.span.name}</strong>
         <span className="text-xs text-muted">
-          {call.span.input_tokens} input · {call.span.output_tokens} output tokens
+          {String(call.span.attributes["gen_ai.request.model"] ?? "unknown model")} ·
+          {` ${call.span.input_tokens} input · ${call.span.output_tokens} output tokens`}
         </span>
       </summary>
       <div className="space-y-3 px-4 pb-4">

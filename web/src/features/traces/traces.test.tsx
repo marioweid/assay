@@ -149,10 +149,27 @@ test("shows captured child-span content in the trace overview", async () => {
   renderApp(`/apps/${appID}/traces/${traceID}`);
   expect(await screen.findByText("Where are traces stored?")).toBeInTheDocument();
   expect(screen.getByText("In Postgres.")).toBeInTheDocument();
-  expect(screen.getByText("Assay uses Postgres.")).toBeInTheDocument();
-  expect(screen.getByText("demo-model")).toBeInTheDocument();
+  expect(screen.getByText(/Assay uses Postgres/)).toBeInTheDocument();
+  expect(screen.getByText(/demo-model/)).toBeInTheDocument();
   await userEvent.setup().click(screen.getByRole("treeitem", { name: /child span/ }));
   expect(screen.getByText("Where are traces stored?")).toBeInTheDocument();
+});
+
+test("selects a conversation source and renders its timing row", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/traces/${traceID}`, () => HttpResponse.json(traceDetailFixture())),
+  );
+  renderApp(`/apps/${appID}/traces/${traceID}`);
+  const user = userEvent.setup();
+
+  await user.click(
+    await screen.findByRole("button", { name: "View source for assistant message" }),
+  );
+  expect(screen.getByRole("img", { name: "Timeline for child span" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Scores" }));
+  expect(screen.getByText("0.92")).toBeInTheDocument();
+  expect(screen.queryByText("Whole trace score")).not.toBeInTheDocument();
 });
 
 test("rejects a trace from a different application", async () => {

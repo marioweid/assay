@@ -8,7 +8,10 @@ import type { SpanResponse, TraceResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { ScoreResult } from "@/components/score-result";
 import { SpanTree } from "@/features/traces/span-tree";
-import { CapturedContent, capturedSpans } from "@/features/traces/captured-content";
+import { conversationCalls, spanKey, type SpanKey } from "@/features/traces/conversation-model";
+import { ConversationView } from "@/features/traces/conversation-view";
+import { RetrievalContext } from "@/features/traces/retrieval-context";
+import { SpanWaterfall } from "@/features/traces/span-waterfall";
 
 const tabs = ["Overview", "Attributes", "Events", "Scores"] as const;
 type Tab = (typeof tabs)[number];
@@ -90,7 +93,13 @@ export function TraceDetail() {
             id="trace-tabpanel"
             role="tabpanel"
           >
-            <DetailPanel scores={scores} selected={selected} tab={tab} trace={trace} />
+            <DetailPanel
+              onSelect={setSelected}
+              scores={scores}
+              selected={selected}
+              tab={tab}
+              trace={trace}
+            />
           </div>
         </div>
       </div>
@@ -143,13 +152,14 @@ function TraceTabs({ onSelect, selected }: { onSelect: (tab: Tab) => void; selec
 }
 
 type DetailPanelProps = {
+  onSelect: (span: SpanResponse | null) => void;
   scores: NonNullable<TraceResponse["scores"]>;
   selected: SpanResponse | null;
   tab: Tab;
   trace: TraceResponse;
 };
 
-function DetailPanel({ scores, selected, tab, trace }: DetailPanelProps) {
+function DetailPanel({ onSelect, scores, selected, tab, trace }: DetailPanelProps) {
   if (tab === "Attributes") return <JsonView value={selected?.attributes ?? trace.attributes} />;
   if (tab === "Events") return <JsonView value={selected?.events ?? []} />;
   if (tab === "Scores")
@@ -184,11 +194,31 @@ function DetailPanel({ scores, selected, tab, trace }: DetailPanelProps) {
           }
         />
       </dl>
-      <CapturedContent
-        spans={capturedSpans(selected === null ? (trace.spans ?? []) : [selected])}
-      />
+      <div className="mt-6 grid gap-5 xl:grid-cols-2">
+        <ConversationView
+          calls={conversationCalls(selected === null ? (trace.spans ?? []) : [selected])}
+          onSelectSpan={(key) => onSelect(key === null ? null : findSpan(trace.spans ?? [], key))}
+          selectedSpanKey={selected === null ? null : spanKey(selected)}
+        />
+        <SpanWaterfall
+          onSelect={(key) => onSelect(findSpan(trace.spans ?? [], key))}
+          spans={trace.spans ?? []}
+        />
+      </div>
+      <RetrievalContext spans={selected === null ? (trace.spans ?? []) : [selected]} />
     </>
   );
+}
+
+function findSpan(spans: readonly SpanResponse[], key: SpanKey): SpanResponse | null {
+  const pending = [...spans];
+  while (pending.length > 0) {
+    const span = pending.pop();
+    if (span === undefined) continue;
+    if (spanKey(span) === key) return span;
+    pending.push(...(span.children ?? []));
+  }
+  return null;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

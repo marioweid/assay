@@ -2,9 +2,10 @@ import type { SpanResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 
 export function RetrievalContext({ spans }: { spans: readonly SpanResponse[] }) {
-  const standardDocuments = spans.flatMap(documentsForSpan);
+  const allSpans = flattenedSpans(spans);
+  const standardDocuments = allSpans.flatMap(documentsForSpan);
   const documents =
-    standardDocuments.length > 0 ? standardDocuments : spans.flatMap(flattenedChunks);
+    standardDocuments.length > 0 ? standardDocuments : allSpans.flatMap(flattenedChunks);
   if (documents.length === 0) return null;
   return (
     <section aria-labelledby="retrieval-context-heading" className="space-y-2">
@@ -21,6 +22,18 @@ export function RetrievalContext({ spans }: { spans: readonly SpanResponse[] }) 
       ))}
     </section>
   );
+}
+
+function flattenedSpans(spans: readonly SpanResponse[]): SpanResponse[] {
+  const result: SpanResponse[] = [];
+  const pending = [...spans];
+  while (pending.length > 0) {
+    const span = pending.pop();
+    if (span === undefined) continue;
+    result.push(span);
+    pending.push(...(span.children ?? []));
+  }
+  return result;
 }
 
 function flattenedChunks(span: SpanResponse): unknown[] {

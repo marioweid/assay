@@ -40,3 +40,8 @@
 
 [OUTCOME] PR #9 merged to `main` as `132cba7` through the repository PR workflow.
 [VERIFY] Backend CI passed in 3m08s, including Docker-backed PostgreSQL integration tests and Go race detection. Web CI passed in 2m07s, and Python CI passed in 10s.
+
+## 2026-09-11T20:56Z — Reserved-name artifact removed
+
+[OUTCOME] Identified root `nul` as redirected `where.exe` stderr created by Windows-style `2>NUL` under Git Bash. Renamed and moved `nul` plus the empty `nul.txt` fallback artifact to a temporary directory, then sent both safely to the Windows Recycle Bin. Future Git Bash commands use `/dev/null`.
+[VERIFY] `git status` no longer reports either reserved-name artifact.

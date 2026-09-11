@@ -1,7 +1,6 @@
 ## Now
 
 - Post-merge findings are merged in PR #9 (`132cba7`), independently reviewed, and verified by all backend, web, and Python CI workflows; ready for the next milestone.
-- Preserve the user-owned untracked `Default.merchant-rules-v36.json` path.
 
 ## Next
 

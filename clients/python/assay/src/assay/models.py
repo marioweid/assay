@@ -193,6 +193,8 @@ class DatasetItemInput:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "input", _freeze_mapping(self.input))
+        if self.expected_output is not None and not self.expected_output.strip():
+            object.__setattr__(self, "expected_output", None)
         object.__setattr__(self, "context", tuple(self.context))
         object.__setattr__(self, "metadata", _freeze_mapping(self.metadata))
 

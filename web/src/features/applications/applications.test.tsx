@@ -73,6 +73,35 @@ test("creates an application for a selected project", async () => {
   expect(await screen.findByRole("link", { name: application.name })).toBeInTheDocument();
 });
 
+test("shows catalog errors after an application refresh fails", async () => {
+  let failRefresh = false;
+  server.use(
+    http.get("*/v1/applications", () =>
+      failRefresh
+        ? HttpResponse.json({ title: "Unavailable" }, { status: 503 })
+        : HttpResponse.json({ items: [] }),
+    ),
+    http.get("*/v1/projects", () => HttpResponse.json({ items: [project] })),
+    http.post("*/v1/applications", () => {
+      failRefresh = true;
+      return HttpResponse.json(application, { status: 201 });
+    }),
+  );
+  renderApp("/apps");
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "New application" }));
+  const dialog = screen.getByRole("dialog", { name: "New application" });
+  await user.type(within(dialog).getByLabelText("Application name"), application.name);
+  await user.type(within(dialog).getByLabelText("Slug"), application.slug);
+  await user.selectOptions(within(dialog).getByLabelText("Project"), projectID);
+  await user.click(within(dialog).getByRole("button", { name: "Create application" }));
+
+  expect(await screen.findByText("Applications unavailable")).toBeInTheDocument();
+  expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+});
+
 test("deletes an application only after confirming its name", async () => {
   let deleted = false;
   server.use(

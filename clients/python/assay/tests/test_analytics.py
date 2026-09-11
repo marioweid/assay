@@ -111,5 +111,7 @@ def test_regression_import_delegates_to_the_trace_evidence_endpoint() -> None:
     assert requests[0].method == "POST"
     assert requests[0].url.path == "/v1/datasets/dataset-1/from-trace"
     assert json.loads(requests[0].content) == {
-        "expected_output": "corrected", "scorer": "groundedness", "trace_id": "trace-1"
+        "expected_output": "corrected",
+        "scorer": "groundedness",
+        "trace_id": "trace-1",
     }

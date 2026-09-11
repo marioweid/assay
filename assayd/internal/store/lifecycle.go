@@ -14,10 +14,11 @@ import (
 
 // DeleteTrace removes a trace after fencing concurrent job writers.
 func (d *Database) DeleteTrace(ctx context.Context, traceID uuid.UUID) error {
-	return d.deleteWithJobLock(ctx, "delete trace", func(queries *db.Queries) error {
-		_, err := queries.DeleteTrace(ctx, traceID)
-		return err
-	})
+	return d.deleteWithJobLock(
+		ctx, "delete trace", lockTraceJobs(traceID), func(queries *db.Queries) error {
+			_, err := queries.DeleteTrace(ctx, traceID)
+			return err
+		})
 }
 
 // DeleteEvalRun removes a terminal run after fencing concurrent job writers.
@@ -28,7 +29,7 @@ func (d *Database) DeleteEvalRun(ctx context.Context, runID uuid.UUID) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := db.New(tx)
-	if err := queries.LockJobTableForDelete(ctx); err != nil {
+	if err := lockEvalRunJobs(runID)(ctx, queries); err != nil {
 		return mapStoreError("lock jobs for run deletion", err)
 	}
 	if _, err := queries.DeleteTerminalEvalRun(ctx, runID); err != nil {

@@ -4,12 +4,14 @@ import type { ReactNode } from "react";
 import { configureClient } from "@/api/client";
 import { Problem } from "@/api/errors";
 import { listApplications } from "@/api/generated/sdk.gen";
+import type { ApplicationResponse } from "@/api/generated/types.gen";
 
 const storageKey = "assay.admin-token.v1";
 
 type AuthStatus = "checking" | "connected" | "disconnected";
 
 type AuthValue = {
+  applications: ApplicationResponse[];
   connect: (token: string) => Promise<void>;
   disconnect: () => void;
   error: string | null;
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     storedToken.current === null ? "disconnected" : "checking",
   );
   const [error, setError] = useState<string | null>(null);
+  const [applications, setApplications] = useState<ApplicationResponse[]>([]);
 
   function disconnect(): void {
     generation.current++;
@@ -34,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     connectRequest.current = null;
     token.current = null;
     localStorage.removeItem(storageKey);
+    setApplications([]);
     setError(null);
     setStatus("disconnected");
   }
@@ -47,13 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     setStatus("checking");
     setError(null);
     try {
-      await listApplications({ signal: controller.signal, throwOnError: true });
+      const response = await listApplications({ signal: controller.signal, throwOnError: true });
       if (controller.signal.aborted || generation.current !== currentGeneration) return;
       localStorage.setItem(storageKey, candidate);
+      setApplications(response.data.items ?? []);
       setStatus("connected");
     } catch (reason) {
       if (controller.signal.aborted || generation.current !== currentGeneration) return;
       token.current = null;
+      setApplications([]);
       if (reason instanceof Problem && reason.status === 401) localStorage.removeItem(storageKey);
       setStatus("disconnected");
       setError(reason instanceof Problem ? reason.title : "Unable to connect to Assay");
@@ -71,7 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     };
   }, []);
 
-  return <AuthContext value={{ connect, disconnect, error, status }}>{children}</AuthContext>;
+  return (
+    <AuthContext value={{ applications, connect, disconnect, error, status }}>
+      {children}
+    </AuthContext>
+  );
 }
 
 export function useAuth(): AuthValue {

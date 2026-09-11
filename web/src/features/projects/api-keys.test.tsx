@@ -117,6 +117,11 @@ test("creates a key, shows it once, and clears it on dismiss", async () => {
   expect(await screen.findByText("Key copied to clipboard.")).toBeInTheDocument();
   expect(writeText).toHaveBeenCalledWith(secret);
 
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("dialog", { name: "Copy your key" })).toBeInTheDocument();
+  await user.click(screen.getByTestId("dialog-overlay"));
+  expect(screen.getByRole("dialog", { name: "Copy your key" })).toBeInTheDocument();
+
   await user.click(within(copyDialog).getByRole("button", { name: "Done" }));
   await waitFor(() =>
     expect(screen.queryByRole("dialog", { name: "Copy your key" })).not.toBeInTheDocument(),

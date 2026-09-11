@@ -25,7 +25,7 @@ function sectionLabel(pathname: string): string {
 
 export function AppShell(): ReactNode {
   const { appId = "" } = useParams();
-  const { applications, loading } = useApplicationCatalog();
+  const { applications, error, loading, refresh } = useApplicationCatalog();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -36,13 +36,19 @@ export function AppShell(): ReactNode {
       <main className="grid min-h-screen place-items-center bg-canvas px-6 text-ink">
         {loading ? (
           <LoadingState label="Loading application" />
+        ) : error !== null ? (
+          <ProblemState
+            detail={error}
+            onRetry={() => void refresh()}
+            title="Applications unavailable"
+          />
         ) : (
           <ProblemState
             detail="This application is missing or no longer available."
             title="Application not found"
           />
         )}
-        {!loading && (
+        {!loading && error === null && (
           <Link className="mt-4 text-sm font-medium text-accent hover:underline" to="/apps">
             Back to applications
           </Link>

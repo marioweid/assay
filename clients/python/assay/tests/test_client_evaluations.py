@@ -142,6 +142,28 @@ def test_evaluation_resource_contracts() -> None:
     http_client.close()
 
 
+def test_blank_expected_output_is_omitted_from_dataset_item_request() -> None:
+    request_body: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request_body.update(json.loads(request.read()))
+        return httpx.Response(200, json={"items": [DATASET_ITEM]})
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = Client("https://assay.test", admin_token="admin", _http_client=http_client)
+
+    client.datasets.create_items(
+        "dataset-1",
+        (DatasetItemInput(input={"question": "What?"}, expected_output=""),),
+    )
+
+    items = request_body["items"]
+    assert isinstance(items, list)
+    assert isinstance(items[0], dict)
+    assert "expected_output" not in items[0]
+    http_client.close()
+
+
 @pytest.mark.parametrize(
     "call",
     [

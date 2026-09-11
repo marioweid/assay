@@ -88,10 +88,11 @@ func (d *Database) UpdateDataset(
 
 // DeleteDataset removes a dataset and its dependent records.
 func (d *Database) DeleteDataset(ctx context.Context, datasetID uuid.UUID) error {
-	return d.deleteWithJobLock(ctx, "delete dataset", func(queries *db.Queries) error {
-		_, err := queries.DeleteDataset(ctx, datasetID)
-		return err
-	})
+	return d.deleteWithJobLock(
+		ctx, "delete dataset", lockDatasetJobs(datasetID), func(queries *db.Queries) error {
+			_, err := queries.DeleteDataset(ctx, datasetID)
+			return err
+		})
 }
 
 // CreateDatasetItems atomically persists dataset items.

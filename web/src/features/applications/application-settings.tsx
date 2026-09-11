@@ -17,6 +17,7 @@ export function ApplicationSettings(): ReactNode {
   const { appId = "" } = useParams();
   const {
     applications,
+    error: catalogError,
     loading: loadingApplications,
     refresh: refreshCatalog,
   } = useApplicationCatalog();
@@ -51,11 +52,17 @@ export function ApplicationSettings(): ReactNode {
   }, [application, refreshKey]);
 
   if (application === undefined) {
-    return loadingApplications ? (
-      <LoadingState label="Loading application settings" />
-    ) : (
-      <ProblemState title="Application not found" />
-    );
+    if (loadingApplications) return <LoadingState label="Loading application settings" />;
+    if (catalogError !== null) {
+      return (
+        <ProblemState
+          detail={catalogError}
+          onRetry={() => void refreshCatalog()}
+          title="Applications unavailable"
+        />
+      );
+    }
+    return <ProblemState title="Application not found" />;
   }
   if (loadingConfigs) return <LoadingState label="Loading application settings" />;
   if (error !== null)

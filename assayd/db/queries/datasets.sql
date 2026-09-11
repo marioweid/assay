@@ -77,6 +77,13 @@ DELETE FROM dataset_items
 WHERE dataset_id = sqlc.arg(dataset_id) AND id = sqlc.arg(item_id)
 RETURNING id;
 
+-- name: LatestTraceScoreEvidence :one
+SELECT id, judged_input, judged_output, judged_context, judged_reference
+FROM scores
+WHERE trace_id = sqlc.arg(trace_id) AND scorer = sqlc.arg(scorer)
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: CountDatasetItems :one
 SELECT count(*)::integer FROM dataset_items WHERE dataset_id = $1;
 

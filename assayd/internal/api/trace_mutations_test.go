@@ -64,6 +64,41 @@ func TestAdminTraceMutationsRemainProjectIsolated(t *testing.T) {
 	})
 }
 
+func TestTraceScoringEligibilityIsAdminOnlyAndMatchesQueueing(t *testing.T) {
+	fixture := newAPIFixture(t)
+	project := fixture.createProjectNamed("Primary", "primary-secret")
+	application := fixture.createApplication(project.ID)
+	trace := fixture.ingestScorableTrace(project.ID, application.ID, 1)
+	path := "/v1/traces/" + trace.ID.String() + "/scoring-eligibility"
+
+	assertStatus(
+		t, fixture.perform(requestSpec{method: http.MethodGet, path: path}), http.StatusUnauthorized,
+	)
+	response := fixture.perform(requestSpec{method: http.MethodGet, path: path, token: adminToken})
+	assertStatus(t, response, http.StatusOK)
+	var result struct {
+		Items []struct {
+			Scorer   string `json:"scorer"`
+			Eligible bool   `json:"eligible"`
+			Reasons  []struct {
+				Code string `json:"code"`
+			} `json:"reasons"`
+		} `json:"items"`
+	}
+	decodeResponse(t, response, &result)
+	if len(result.Items) != 2 || result.Items[0].Scorer != domain.ScorerGroundedness ||
+		!result.Items[0].Eligible || result.Items[1].Scorer != domain.ScorerCorrectness ||
+		result.Items[1].Eligible || len(result.Items[1].Reasons) != 1 ||
+		result.Items[1].Reasons[0].Code != "missing_reference" {
+		t.Fatalf("eligibility = %#v", result)
+	}
+	response = fixture.perform(requestSpec{
+		method: http.MethodPost, path: "/v1/traces/score", token: adminToken,
+		body: `{"trace_ids":["` + trace.ID.String() + `"],"scorers":["correctness"]}`,
+	})
+	assertStatus(t, response, http.StatusUnprocessableEntity)
+}
+
 func TestAdminMixedProjectScoreBatchIsAtomic(t *testing.T) {
 	fixture := newAPIFixture(t)
 	primary := fixture.createProjectNamed("Primary", "primary-secret")

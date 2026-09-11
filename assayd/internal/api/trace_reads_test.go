@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,46 @@ func (f *apiFixture) ingestTrace(
 		f.t.Fatalf("ingest trace: %v", err)
 	}
 	return trace
+}
+
+func TestTraceListValidatesDiscoveryFilters(t *testing.T) {
+	fixture := newAPIFixture(t)
+	project := fixture.createProjectNamed("Primary", "primary-secret")
+	application := fixture.createApplication(project.ID)
+	fixture.ingestTrace(project.ID, application.ID, 1)
+	base := "/v1/traces?application_id=" + application.ID
+	for _, path := range []string{
+		base + "&q=" + strings.Repeat("x", 201),
+		base + "&passed=false",
+	} {
+		response := fixture.perform(requestSpec{method: http.MethodGet, path: path, token: adminToken})
+		assertStatus(t, response, http.StatusUnprocessableEntity)
+	}
+	response := fixture.perform(requestSpec{method: http.MethodGet, path: base, token: adminToken})
+	assertStatus(t, response, http.StatusOK)
+	var listed struct {
+		Items []struct {
+			ScoreSummaries []any `json:"score_summaries"`
+		} `json:"items"`
+	}
+	decodeResponse(t, response, &listed)
+	if len(listed.Items) != 1 || listed.Items[0].ScoreSummaries == nil {
+		t.Fatalf("trace score summaries = %#v, want non-null list", listed.Items)
+	}
+	response = fixture.perform(requestSpec{
+		method: http.MethodGet, path: base + "&q=ANSWER&scorer=groundedness&passed=false",
+		token: adminToken,
+	})
+	assertStatus(t, response, http.StatusOK)
+	var result struct {
+		Items []struct {
+			ScoreSummaries []any `json:"score_summaries"`
+		} `json:"items"`
+	}
+	decodeResponse(t, response, &result)
+	if len(result.Items) != 0 {
+		t.Fatalf("filtered trace list = %#v, want no unscored traces", result.Items)
+	}
 }
 
 func TestTraceReadsKeepCyclicSpansVisible(t *testing.T) {

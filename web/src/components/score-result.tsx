@@ -40,6 +40,22 @@ export function ScoreResult({ score }: ScoreResultProps) {
           <JsonView value={score.details} />
         </div>
       )}
+      {(score.judged_input !== undefined ||
+        score.judged_output !== undefined ||
+        score.judged_context !== undefined ||
+        score.judged_reference !== undefined) && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium">Captured evidence</h4>
+          <JsonView
+            value={{
+              context: score.judged_context,
+              input: score.judged_input,
+              output: score.judged_output,
+              reference: score.judged_reference,
+            }}
+          />
+        </div>
+      )}
     </article>
   );
 }

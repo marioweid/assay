@@ -111,6 +111,28 @@ WHERE applications.project_id = sqlc.arg(project_id)
   AND (NOT sqlc.arg(filter_start)::boolean OR traces.start_time >= sqlc.arg(start_time))
   AND (NOT sqlc.arg(filter_end)::boolean OR traces.start_time < sqlc.arg(end_time))
   AND (NOT sqlc.arg(filter_status)::boolean OR traces.status = sqlc.arg(status))
+  AND (
+      NOT sqlc.arg(filter_q)::boolean
+      OR position(lower(sqlc.arg(q)::text) IN lower(traces.root_name)) > 0
+      OR lower(traces.id::text) = lower(sqlc.arg(q)::text)
+      OR encode(traces.otel_trace_id, 'hex') = lower(sqlc.arg(q)::text)
+  )
+  AND (
+      NOT sqlc.arg(filter_scorer)::boolean
+      OR EXISTS (
+          SELECT 1
+          FROM (
+              SELECT scores.passed
+              FROM scores
+              WHERE scores.trace_id = traces.id
+                AND scores.scorer = sqlc.arg(scorer)::text
+              ORDER BY scores.created_at DESC, scores.id DESC
+              LIMIT 1
+          ) AS latest_score
+          WHERE NOT sqlc.arg(filter_passed)::boolean
+             OR latest_score.passed = sqlc.arg(passed)::boolean
+      )
+  )
   AND (NOT sqlc.arg(has_cursor)::boolean
        OR (traces.start_time, traces.id) < (
            sqlc.arg(cursor_time)::timestamptz,
@@ -118,6 +140,13 @@ WHERE applications.project_id = sqlc.arg(project_id)
        ))
 ORDER BY traces.start_time DESC, traces.id DESC
 LIMIT sqlc.arg(page_size);
+
+-- name: ListTraceScoreSummaries :many
+SELECT DISTINCT ON (scores.trace_id, scores.scorer)
+       scores.trace_id, scores.scorer, scores.value, scores.threshold, scores.passed, scores.created_at
+FROM scores
+WHERE scores.trace_id = ANY(sqlc.arg(trace_ids)::uuid[])
+ORDER BY scores.trace_id, scores.scorer, scores.created_at DESC, scores.id DESC;
 
 -- name: GetProjectTrace :one
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,

@@ -154,6 +154,7 @@ type Trace struct {
 	Attributes      map[string]any
 	Spans           []Span
 	Scores          []Score
+	ScoreSummaries  []TraceScoreSummary
 	ScoringTasks    []Job
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -192,6 +193,15 @@ type SpanEvent struct {
 	DroppedAttributesCount uint32         `json:"dropped_attributes_count"`
 }
 
+// TraceScoreSummary is the latest online result for one trace scorer.
+type TraceScoreSummary struct {
+	Scorer    string
+	Value     float64
+	Threshold float64
+	Passed    bool
+	CreatedAt time.Time
+}
+
 // TraceCursor identifies the last item returned by a trace page.
 type TraceCursor struct {
 	StartTime time.Time
@@ -204,6 +214,9 @@ type TraceQuery struct {
 	Start         *time.Time
 	End           *time.Time
 	Status        string
+	Q             string
+	Scorer        string
+	Passed        *bool
 	Limit         int
 	Cursor        *TraceCursor
 }

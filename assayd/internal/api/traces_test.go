@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -57,6 +58,31 @@ func TestTraceOutputBuildsTreeAndKeepsOrphansAsRoots(t *testing.T) {
 	output := traceOutput(trace, true)
 	assertTraceTree(t, output, traceID)
 	assertExtractedChildFields(t, output.Spans[0].Children[0])
+}
+
+func TestTraceScoreSummariesAreListOnly(t *testing.T) {
+	trace := domain.Trace{ScoreSummaries: []domain.TraceScoreSummary{{Scorer: "correctness"}}}
+	listJSON, err := json.Marshal(traceListOutput(trace))
+	if err != nil {
+		t.Fatalf("marshal trace list output: %v", err)
+	}
+	detailJSON, err := json.Marshal(traceOutput(trace, true))
+	if err != nil {
+		t.Fatalf("marshal trace detail output: %v", err)
+	}
+	var list, detail map[string]any
+	if err := json.Unmarshal(listJSON, &list); err != nil {
+		t.Fatalf("decode trace list output: %v", err)
+	}
+	if err := json.Unmarshal(detailJSON, &detail); err != nil {
+		t.Fatalf("decode trace detail output: %v", err)
+	}
+	if _, found := list["score_summaries"]; !found {
+		t.Fatalf("trace list output = %#v, want score summaries", list)
+	}
+	if _, found := detail["score_summaries"]; found {
+		t.Fatalf("trace detail output = %#v, do not want score summaries", detail)
+	}
 }
 
 func TestScoreOutputIncludesOnlineAuditFields(t *testing.T) {

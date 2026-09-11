@@ -22,8 +22,14 @@ type listTracesInput struct {
 	Start         time.Time `query:"start" required:"false"`
 	End           time.Time `query:"end" required:"false"`
 	Status        string    `query:"status" required:"false"`
-	Limit         int       `query:"limit" minimum:"0" maximum:"200" required:"false"`
-	Cursor        string    `query:"cursor" required:"false"`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Q string `query:"q" required:"false" doc:"Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming."`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Scorer string `query:"scorer" required:"false" enum:"groundedness,correctness" doc:"Filter by the latest online score for this scorer."`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Passed string `query:"passed" required:"false" enum:"true,false" doc:"Filter score pass state; requires scorer."`
+	Limit  int    `query:"limit" minimum:"0" maximum:"200" required:"false"`
+	Cursor string `query:"cursor" required:"false"`
 }
 
 type traceIDInput struct {
@@ -41,6 +47,10 @@ type scoreTracesInput struct {
 	}
 }
 
+type scoringEligibilityInput struct {
+	ID string `path:"id" format:"uuid"`
+}
+
 type attachTraceReferenceInput struct {
 	Authorization string `header:"Authorization" required:"false"`
 	XAPIKey       string `header:"x-api-key" required:"false"`
@@ -50,10 +60,27 @@ type attachTraceReferenceInput struct {
 	}
 }
 
+type scoringEligibilityReasonResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type scoringEligibilityResponse struct {
+	Scorer   string                             `json:"scorer"`
+	Eligible bool                               `json:"eligible"`
+	Reasons  []scoringEligibilityReasonResponse `json:"reasons" nullable:"false"`
+}
+
+type scoringEligibilityResult struct {
+	Body struct {
+		Items []scoringEligibilityResponse `json:"items" nullable:"false"`
+	}
+}
+
 type traceCollectionResult struct {
 	Body struct {
-		Items      []traceResponse `json:"items"`
-		NextCursor string          `json:"next_cursor,omitempty"`
+		Items      []traceListResponse `json:"items"`
+		NextCursor string              `json:"next_cursor,omitempty"`
 	}
 }
 
@@ -75,6 +102,14 @@ type scoringTaskResponse struct {
 	Error   *string `json:"error,omitempty"`
 }
 
+type traceScoreSummaryResponse struct {
+	Scorer    string    `json:"scorer"`
+	Value     float64   `json:"value"`
+	Threshold float64   `json:"threshold"`
+	Passed    bool      `json:"passed"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type traceResponse struct {
 	ID              string                `json:"id" format:"uuid"`
 	ApplicationID   string                `json:"application_id" format:"uuid"`
@@ -93,6 +128,24 @@ type traceResponse struct {
 	ScoringTasks    []scoringTaskResponse `json:"scoring_tasks,omitempty"`
 	CreatedAt       time.Time             `json:"created_at"`
 	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
+type traceListResponse struct {
+	ID              string                      `json:"id" format:"uuid"`
+	ApplicationID   string                      `json:"application_id" format:"uuid"`
+	OTelTraceID     string                      `json:"otel_trace_id"`
+	RootName        string                      `json:"root_name"`
+	StartTime       time.Time                   `json:"start_time"`
+	EndTime         time.Time                   `json:"end_time"`
+	Status          string                      `json:"status"`
+	SpanCount       int                         `json:"span_count"`
+	TotalTokens     int64                       `json:"total_tokens"`
+	TotalCost       *string                     `json:"total_cost,omitempty"`
+	ReferenceAnswer *string                     `json:"reference_answer,omitempty"`
+	Attributes      map[string]any              `json:"attributes"`
+	ScoreSummaries  []traceScoreSummaryResponse `json:"score_summaries" nullable:"false"`
+	CreatedAt       time.Time                   `json:"created_at"`
+	UpdatedAt       time.Time                   `json:"updated_at"`
 }
 
 type spanResponse struct {
@@ -129,6 +182,10 @@ func (h *handler) registerTraceRoutes() {
 	))
 	score.DefaultStatus = http.StatusAccepted
 	huma.Register(h.api, score, h.scoreTraces)
+	huma.Register(h.api, h.operation(
+		http.MethodGet, "/v1/traces/{id}/scoring-eligibility", "get-trace-scoring-eligibility",
+		"Get trace scoring eligibility", http.StatusNotFound,
+	), h.scoringEligibility)
 	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodPatch, "/v1/traces/{id}/reference", "attach-trace-reference",
 		"Attach a trace reference", http.StatusNotFound,
@@ -153,6 +210,35 @@ func (h *handler) registerTraceRoutes() {
 	)
 	remove.DefaultStatus = http.StatusNoContent
 	huma.Register(h.api, remove, h.deleteTrace)
+}
+
+func (h *handler) scoringEligibility(
+	ctx context.Context,
+	input *scoringEligibilityInput,
+) (*scoringEligibilityResult, error) {
+	traceID, err := parseID(input.ID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("get trace scoring eligibility", err)
+	}
+	items, err := h.traces.ScoringEligibility(ctx, traceID)
+	if err != nil {
+		return nil, h.responseError("get trace scoring eligibility", err)
+	}
+	result := &scoringEligibilityResult{}
+	result.Body.Items = make([]scoringEligibilityResponse, 0, len(items))
+	for _, item := range items {
+		output := scoringEligibilityResponse{
+			Scorer: item.Scorer, Eligible: item.Eligible,
+			Reasons: make([]scoringEligibilityReasonResponse, 0, len(item.Reasons)),
+		}
+		for _, reason := range item.Reasons {
+			output.Reasons = append(output.Reasons, scoringEligibilityReasonResponse{
+				Code: reason.Code, Message: reason.Message,
+			})
+		}
+		result.Body.Items = append(result.Body.Items, output)
+	}
+	return result, nil
 }
 
 func (h *handler) scoreTraces(
@@ -255,9 +341,9 @@ func (h *handler) listTraces(
 		return nil, h.responseError("list traces", err)
 	}
 	result := &traceCollectionResult{}
-	result.Body.Items = make([]traceResponse, 0, len(page.Items))
+	result.Body.Items = make([]traceListResponse, 0, len(page.Items))
 	for _, trace := range page.Items {
-		result.Body.Items = append(result.Body.Items, traceOutput(trace, false))
+		result.Body.Items = append(result.Body.Items, traceListOutput(trace))
 	}
 	result.Body.NextCursor, err = encodeTraceCursor(page.NextCursor)
 	if err != nil {
@@ -322,7 +408,13 @@ func (h *handler) getTrace(
 func traceQuery(input *listTracesInput) (domain.TraceQuery, error) {
 	query := domain.TraceQuery{
 		Status: input.Status,
+		Q:      input.Q,
+		Scorer: input.Scorer,
 		Limit:  input.Limit,
+	}
+	if input.Passed != "" {
+		passed := input.Passed == "true"
+		query.Passed = &passed
 	}
 	if !input.Start.IsZero() {
 		query.Start = &input.Start
@@ -405,6 +497,33 @@ func traceOutput(trace domain.Trace, includeSpans bool) traceResponse {
 		for _, job := range trace.ScoringTasks {
 			response.ScoringTasks = append(response.ScoringTasks, scoringTaskOutput(job))
 		}
+	}
+	return response
+}
+
+func traceListOutput(trace domain.Trace) traceListResponse {
+	response := traceListResponse{
+		ID:              trace.ID.String(),
+		ApplicationID:   trace.ApplicationID.String(),
+		OTelTraceID:     hex.EncodeToString(trace.OTelTraceID[:]),
+		RootName:        trace.RootName,
+		StartTime:       trace.StartTime,
+		EndTime:         trace.EndTime,
+		Status:          trace.Status,
+		SpanCount:       trace.SpanCount,
+		TotalTokens:     trace.TotalTokens,
+		TotalCost:       trace.TotalCost,
+		ReferenceAnswer: trace.ReferenceAnswer,
+		Attributes:      trace.Attributes,
+		ScoreSummaries:  make([]traceScoreSummaryResponse, 0, len(trace.ScoreSummaries)),
+		CreatedAt:       trace.CreatedAt,
+		UpdatedAt:       trace.UpdatedAt,
+	}
+	for _, summary := range trace.ScoreSummaries {
+		response.ScoreSummaries = append(response.ScoreSummaries, traceScoreSummaryResponse{
+			Scorer: summary.Scorer, Value: summary.Value, Threshold: summary.Threshold,
+			Passed: summary.Passed, CreatedAt: summary.CreatedAt,
+		})
 	}
 	return response
 }

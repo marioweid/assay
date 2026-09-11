@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/marioweid/assay/assayd/internal/domain"
@@ -130,6 +132,97 @@ func (d *Database) CreateDatasetItems(
 		return nil, err
 	}
 	return created, nil
+}
+
+// CreateDatasetItemFromTrace imports the latest retained online score evidence transactionally.
+//
+//nolint:cyclop // The transaction checks every persistence boundary before committing.
+func (d *Database) CreateDatasetItemFromTrace(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	input domain.DatasetItemFromTraceInput,
+) (domain.DatasetItem, error) {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return domain.DatasetItem{}, fmt.Errorf("begin trace score import transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := db.New(tx)
+	dataset, err := queries.GetDataset(ctx, datasetID)
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("select import dataset", err)
+	}
+	trace, err := queries.GetTraceByID(ctx, input.TraceID)
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("select import trace", err)
+	}
+	if dataset.ApplicationID != trace.ApplicationID {
+		return domain.DatasetItem{}, fmt.Errorf(
+			"import trace score: %w: application mismatch", domain.ErrInvalid,
+		)
+	}
+	evidence, err := queries.LatestTraceScoreEvidence(ctx, db.LatestTraceScoreEvidenceParams{
+		TraceID: nullableUUID(&input.TraceID), Scorer: input.Scorer,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DatasetItem{}, fmt.Errorf(
+			"select trace score evidence: %w", domain.ErrInvalid,
+		)
+	}
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("select trace score evidence", err)
+	}
+	item, err := traceScoreDatasetItem(datasetID, input, evidence)
+	if err != nil {
+		return domain.DatasetItem{}, err
+	}
+	params, err := datasetItemParameters(item)
+	if err != nil {
+		return domain.DatasetItem{}, err
+	}
+	row, err := queries.CreateDatasetItem(ctx, params)
+	if err != nil {
+		return domain.DatasetItem{}, mapStoreError("insert trace score dataset item", err)
+	}
+	if err := commitDatasetMutation(ctx, tx, queries, datasetID, "trace score import"); err != nil {
+		return domain.DatasetItem{}, err
+	}
+	return datasetItemFromRow(row)
+}
+
+func traceScoreDatasetItem(
+	datasetID uuid.UUID,
+	input domain.DatasetItemFromTraceInput,
+	evidence db.LatestTraceScoreEvidenceRow,
+) (domain.DatasetItem, error) {
+	if !evidence.JudgedInput.Valid || !evidence.JudgedOutput.Valid ||
+		strings.TrimSpace(evidence.JudgedOutput.String) == "" {
+		return domain.DatasetItem{}, fmt.Errorf(
+			"import trace score: %w: score evidence is incomplete", domain.ErrInvalid,
+		)
+	}
+	var context []domain.Chunk
+	if err := decodeStoredJSON(evidence.JudgedContext, &context); err != nil {
+		return domain.DatasetItem{}, fmt.Errorf(
+			"decode trace score context: %w", errors.Join(domain.ErrInvalid, err),
+		)
+	}
+	expected := optionalText(evidence.JudgedReference)
+	if input.ExpectedOutput != nil {
+		expected = input.ExpectedOutput
+	}
+	externalID := fmt.Sprintf("trace:%s:%s", input.TraceID, input.Scorer)
+	item, err := domain.NewDatasetItem(datasetID, domain.CreateDatasetItemInput{
+		ExternalID: &externalID, Input: map[string]any{"question": evidence.JudgedInput.String},
+		Output: evidence.JudgedOutput.String, ExpectedOutput: expected, Context: context,
+		Metadata: map[string]any{
+			"trace_id": input.TraceID.String(), "score_id": evidence.ID, "scorer": input.Scorer,
+		},
+	})
+	if err != nil {
+		return domain.DatasetItem{}, fmt.Errorf("normalize trace score dataset item: %w", err)
+	}
+	return item, nil
 }
 
 // CountDatasetItems returns the number of cases currently in a dataset.

@@ -95,6 +95,16 @@ export type CreateDatasetInputBody = {
   name: string;
 };
 
+export type CreateDatasetItemFromTraceInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  expected_output?: string;
+  scorer: "groundedness" | "correctness";
+  trace_id: string;
+};
+
 export type CreateDatasetItemsInputBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -485,6 +495,25 @@ export type ScorerConfigResponse = {
   threshold: number;
 };
 
+export type ScoringEligibilityReasonResponse = {
+  code: string;
+  message: string;
+};
+
+export type ScoringEligibilityResponse = {
+  eligible: boolean;
+  reasons: Array<ScoringEligibilityReasonResponse>;
+  scorer: string;
+};
+
+export type ScoringEligibilityResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  items: Array<ScoringEligibilityResponse>;
+};
+
 export type ScoringTaskCollectionResultBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -566,8 +595,28 @@ export type TraceCollectionResultBody = {
    * A URL to the JSON Schema for this object.
    */
   readonly $schema?: string;
-  items: Array<TraceResponse> | null;
+  items: Array<TraceListResponse> | null;
   next_cursor?: string;
+};
+
+export type TraceListResponse = {
+  application_id: string;
+  attributes: {
+    [key: string]: unknown;
+  };
+  created_at: string;
+  end_time: string;
+  id: string;
+  otel_trace_id: string;
+  reference_answer?: string;
+  root_name: string;
+  score_summaries: Array<TraceScoreSummaryResponse>;
+  span_count: number;
+  start_time: string;
+  status: string;
+  total_cost?: string;
+  total_tokens: number;
+  updated_at: string;
 };
 
 export type TraceResponse = {
@@ -594,6 +643,14 @@ export type TraceResponse = {
   total_cost?: string;
   total_tokens: number;
   updated_at: string;
+};
+
+export type TraceScoreSummaryResponse = {
+  created_at: string;
+  passed: boolean;
+  scorer: string;
+  threshold: number;
+  value: number;
 };
 
 export type UpdateApplicationInputBody = {
@@ -673,6 +730,12 @@ export type CreateDatasetInputBodyWritable = {
   application_id: string;
   description?: string;
   name: string;
+};
+
+export type CreateDatasetItemFromTraceInputBodyWritable = {
+  expected_output?: string;
+  scorer: "groundedness" | "correctness";
+  trace_id: string;
 };
 
 export type CreateDatasetItemsInputBodyWritable = {
@@ -893,6 +956,10 @@ export type ScorerConfigResponseWritable = {
   threshold: number;
 };
 
+export type ScoringEligibilityResultBodyWritable = {
+  items: Array<ScoringEligibilityResponse>;
+};
+
 export type ScoringTaskCollectionResultBodyWritable = {
   items: Array<ScoringTaskResponse> | null;
 };
@@ -912,7 +979,7 @@ export type TargetEndpointInputWritable = {
 };
 
 export type TraceCollectionResultBodyWritable = {
-  items: Array<TraceResponseWritable> | null;
+  items: Array<TraceListResponse> | null;
   next_cursor?: string;
 };
 
@@ -1522,6 +1589,51 @@ export type UpdateDatasetResponses = {
 };
 
 export type UpdateDatasetResponse = UpdateDatasetResponses[keyof UpdateDatasetResponses];
+
+export type CreateDatasetItemFromTraceData = {
+  body: CreateDatasetItemFromTraceInputBodyWritable;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/from-trace";
+};
+
+export type CreateDatasetItemFromTraceErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type CreateDatasetItemFromTraceError =
+  CreateDatasetItemFromTraceErrors[keyof CreateDatasetItemFromTraceErrors];
+
+export type CreateDatasetItemFromTraceResponses = {
+  /**
+   * Created
+   */
+  201: DatasetItemResponse;
+};
+
+export type CreateDatasetItemFromTraceResponse =
+  CreateDatasetItemFromTraceResponses[keyof CreateDatasetItemFromTraceResponses];
 
 export type ListDatasetItemsData = {
   body?: never;
@@ -2388,6 +2500,18 @@ export type ListTracesData = {
     start?: string;
     end?: string;
     status?: string;
+    /**
+     * Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming.
+     */
+    q?: string;
+    /**
+     * Filter by the latest online score for this scorer.
+     */
+    scorer?: "groundedness" | "correctness";
+    /**
+     * Filter score pass state; requires scorer.
+     */
+    passed?: "true" | "false";
     limit?: number;
     cursor?: string;
   };
@@ -2595,3 +2719,44 @@ export type AttachTraceReferenceResponses = {
 
 export type AttachTraceReferenceResponse =
   AttachTraceReferenceResponses[keyof AttachTraceReferenceResponses];
+
+export type GetTraceScoringEligibilityData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/traces/{id}/scoring-eligibility";
+};
+
+export type GetTraceScoringEligibilityErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type GetTraceScoringEligibilityError =
+  GetTraceScoringEligibilityErrors[keyof GetTraceScoringEligibilityErrors];
+
+export type GetTraceScoringEligibilityResponses = {
+  /**
+   * OK
+   */
+  200: ScoringEligibilityResultBody;
+};
+
+export type GetTraceScoringEligibilityResponse =
+  GetTraceScoringEligibilityResponses[keyof GetTraceScoringEligibilityResponses];

@@ -93,6 +93,13 @@ type CreateDatasetItemInput struct {
 	Metadata       map[string]any
 }
 
+// DatasetItemFromTraceInput identifies score evidence to import as one dataset item.
+type DatasetItemFromTraceInput struct {
+	TraceID        uuid.UUID
+	Scorer         string
+	ExpectedOutput *string
+}
+
 // ReplaceDatasetItemInput contains all editable fields for a dataset case.
 type ReplaceDatasetItemInput struct {
 	ExternalID     *string
@@ -360,6 +367,9 @@ type EvaluationRepository interface {
 	GetDatasetItem(context.Context, uuid.UUID, uuid.UUID) (DatasetItem, error)
 	ReplaceDatasetItem(context.Context, uuid.UUID, DatasetItem) (DatasetItem, error)
 	DeleteDatasetItem(context.Context, uuid.UUID, uuid.UUID) error
+	CreateDatasetItemFromTrace(
+		context.Context, uuid.UUID, DatasetItemFromTraceInput,
+	) (DatasetItem, error)
 	CountDatasetItems(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingOutput(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingReference(context.Context, uuid.UUID) (int, error)

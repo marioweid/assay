@@ -5,7 +5,6 @@ import pytest
 
 from assay.cli import main
 from assay.client import Client
-from assay.exceptions import AssayConfigurationError
 
 STAMP = "2026-09-01T00:00:00Z"
 SCORE = {
@@ -80,57 +79,23 @@ def test_metrics_returns_typed_daily_results() -> None:
     assert points[0].n == 2
 
 
-@pytest.mark.parametrize("other_application", [False, True])
-def test_regression_uses_retained_score_evidence_and_checks_application(
-    other_application: bool,
-) -> None:
-    written: list[dict[str, object]] = []
+def test_regression_import_delegates_to_the_trace_evidence_endpoint() -> None:
+    requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/v1/datasets/dataset-1":
-            return httpx.Response(
-                200,
-                json={
-                    "id": "dataset-1",
-                    "application_id": "other" if other_application else "app-1",
-                    "name": "regressions",
-                    "created_at": STAMP,
-                    "updated_at": STAMP,
-                },
-            )
-        if request.url.path == "/v1/traces/trace-1":
-            return httpx.Response(
-                200,
-                json={
-                    "id": "trace-1",
-                    "application_id": "app-1",
-                    "otel_trace_id": "abc",
-                    "root_name": "answer",
-                    "start_time": STAMP,
-                    "end_time": STAMP,
-                    "status": "ok",
-                    "span_count": 1,
-                    "total_tokens": 0,
-                    "attributes": {},
-                    "created_at": STAMP,
-                    "updated_at": STAMP,
-                    "scores": [SCORE],
-                },
-            )
-        body = json.loads(request.content)
-        written.extend(body["items"])
+        requests.append(request)
         return httpx.Response(
-            200,
+            201,
             json={
-                "items": [
-                    {
-                        **body["items"][0],
-                        "id": "item-1",
-                        "dataset_id": "dataset-1",
-                        "created_at": STAMP,
-                        "updated_at": STAMP,
-                    }
-                ]
+                "id": "item-1",
+                "dataset_id": "dataset-1",
+                "input": {"question": "question"},
+                "output": "answer",
+                "expected_output": "corrected",
+                "context": [{"id": "k0", "text": "evidence"}],
+                "metadata": {"trace_id": "trace-1"},
+                "created_at": STAMP,
+                "updated_at": STAMP,
             },
         )
 
@@ -138,19 +103,13 @@ def test_regression_uses_retained_score_evidence_and_checks_application(
         httpx.Client(transport=httpx.MockTransport(handler)) as transport,
         Client("https://assay.test", admin_token="admin", _http_client=transport) as client,
     ):
-        if other_application:
-            with pytest.raises(AssayConfigurationError, match="same application"):
-                client.datasets.from_trace("dataset-1", "trace-1", scorer="groundedness")
-            assert written == []
-            return
         item = client.datasets.from_trace(
-            "dataset-1",
-            "trace-1",
-            scorer="groundedness",
-            expected_output="corrected",
+            "dataset-1", "trace-1", scorer="groundedness", expected_output="corrected"
         )
     assert item.output == "answer"
-    assert item.input == {"question": "question"}
-    assert item.expected_output == "corrected"
-    assert item.context[0].text == "evidence"
-    assert item.metadata["trace_id"] == "trace-1"
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/v1/datasets/dataset-1/from-trace"
+    assert json.loads(requests[0].content) == {
+        "expected_output": "corrected", "scorer": "groundedness", "trace_id": "trace-1"
+    }

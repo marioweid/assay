@@ -207,6 +207,40 @@ func (q *Queries) GetDatasetItem(ctx context.Context, arg GetDatasetItemParams) 
 	return i, err
 }
 
+const latestTraceScoreEvidence = `-- name: LatestTraceScoreEvidence :one
+SELECT id, judged_input, judged_output, judged_context, judged_reference
+FROM scores
+WHERE trace_id = $1 AND scorer = $2
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type LatestTraceScoreEvidenceParams struct {
+	TraceID pgtype.UUID
+	Scorer  string
+}
+
+type LatestTraceScoreEvidenceRow struct {
+	ID              int64
+	JudgedInput     pgtype.Text
+	JudgedOutput    pgtype.Text
+	JudgedContext   []byte
+	JudgedReference pgtype.Text
+}
+
+func (q *Queries) LatestTraceScoreEvidence(ctx context.Context, arg LatestTraceScoreEvidenceParams) (LatestTraceScoreEvidenceRow, error) {
+	row := q.db.QueryRow(ctx, latestTraceScoreEvidence, arg.TraceID, arg.Scorer)
+	var i LatestTraceScoreEvidenceRow
+	err := row.Scan(
+		&i.ID,
+		&i.JudgedInput,
+		&i.JudgedOutput,
+		&i.JudgedContext,
+		&i.JudgedReference,
+	)
+	return i, err
+}
+
 const listDatasetItems = `-- name: ListDatasetItems :many
 SELECT id, dataset_id, external_id, input, output, expected_output, context, metadata,
        created_at, updated_at

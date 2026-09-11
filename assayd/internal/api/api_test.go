@@ -51,6 +51,7 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodPatch, path: "/v1/datasets/" + id, body: `{}`},
 		{method: http.MethodDelete, path: "/v1/datasets/" + id},
 		{method: http.MethodPost, path: "/v1/datasets/" + id + "/items", body: `{}`},
+		{method: http.MethodPost, path: "/v1/datasets/" + id + "/from-trace", body: `{}`},
 		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items"},
 		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items/" + id},
 		{method: http.MethodPut, path: "/v1/datasets/" + id + "/items/" + id, body: `{}`},
@@ -269,6 +270,7 @@ var managementPaths = []string{
 	"/v1/datasets",
 	"/v1/datasets/{id}",
 	"/v1/datasets/{id}/items",
+	"/v1/datasets/{id}/from-trace",
 	"/v1/datasets/{id}/items/{itemId}",
 	"/v1/runs",
 	"/v1/runs/{id}",
@@ -297,8 +299,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatalf("create secret cipher: %v", err)
 	}
 	service := domain.NewService(database, cipher)
-	traceService := domain.NewTraceService(database, service, 3)
 	evaluations := domain.NewEvaluationService(database, cipher, 3)
+	traceService := domain.NewTraceServiceWithScorerResolver(
+		database, service, evaluations,
+		domain.JudgeDefaults{BaseURL: "http://judge.test", Model: "test"}, 3,
+	)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(database),
@@ -315,8 +320,11 @@ func newDocumentationHandler(t *testing.T) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := domain.NewService(nil, nil)
-	traceService := domain.NewTraceService(nil, service, 3)
 	evaluations := domain.NewEvaluationService(nil, nil, 3)
+	traceService := domain.NewTraceServiceWithScorerResolver(
+		nil, service, evaluations,
+		domain.JudgeDefaults{BaseURL: "http://judge.test", Model: "test"}, 3,
+	)
 	mux := http.NewServeMux()
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(nil),

@@ -171,8 +171,17 @@ func (d *Database) ListTraces(
 	projectID uuid.UUID,
 	query domain.TraceQuery,
 ) ([]domain.Trace, error) {
+	transaction, err := d.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("begin trace list transaction: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+
+	queries := d.queries.WithTx(transaction)
 	parameters := traceListParameters(projectID, query)
-	rows, err := d.queries.ListProjectTraces(ctx, parameters)
+	rows, err := queries.ListProjectTraces(ctx, parameters)
 	if err != nil {
 		return nil, mapStoreError("list project traces", err)
 	}
@@ -184,6 +193,12 @@ func (d *Database) ListTraces(
 		}
 		traces = append(traces, trace)
 	}
+	if err := loadTraceScoreSummaries(ctx, queries, traces); err != nil {
+		return nil, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit trace list transaction: %w", err)
+	}
 	return traces, nil
 }
 
@@ -192,6 +207,10 @@ func traceListParameters(projectID uuid.UUID, query domain.TraceQuery) db.ListPr
 		ProjectID:    projectID,
 		FilterStatus: query.Status != "",
 		Status:       query.Status,
+		FilterQ:      query.Q != "",
+		Q:            query.Q,
+		FilterScorer: query.Scorer != "",
+		Scorer:       query.Scorer,
 		PageSize:     int32(query.Limit),
 	}
 	if query.ApplicationID != nil {
@@ -206,12 +225,57 @@ func traceListParameters(projectID uuid.UUID, query domain.TraceQuery) db.ListPr
 		parameters.FilterEnd = true
 		parameters.EndTime = timestamp(*query.End)
 	}
+	if query.Passed != nil {
+		parameters.FilterPassed = true
+		parameters.Passed = *query.Passed
+	}
 	if query.Cursor != nil {
 		parameters.HasCursor = true
 		parameters.CursorTime = timestamp(query.Cursor.StartTime)
 		parameters.CursorID = query.Cursor.ID
 	}
 	return parameters
+}
+
+func loadTraceScoreSummaries(
+	ctx context.Context,
+	queries *db.Queries,
+	traces []domain.Trace,
+) error {
+	if len(traces) == 0 {
+		return nil
+	}
+	traceIDs := make([]uuid.UUID, len(traces))
+	indexes := make(map[uuid.UUID]int, len(traces))
+	for index := range traces {
+		traceIDs[index] = traces[index].ID
+		indexes[traces[index].ID] = index
+		traces[index].ScoreSummaries = make([]domain.TraceScoreSummary, 0)
+	}
+	rows, err := queries.ListTraceScoreSummaries(ctx, traceIDs)
+	if err != nil {
+		return mapStoreError("select trace score summaries", err)
+	}
+	for _, row := range rows {
+		value, convertErr := numericFloat(row.Value)
+		if convertErr != nil {
+			return fmt.Errorf("decode trace score summary value: %w", convertErr)
+		}
+		threshold, convertErr := numericFloat(row.Threshold)
+		if convertErr != nil {
+			return fmt.Errorf("decode trace score summary threshold: %w", convertErr)
+		}
+		traceID := uuid.UUID(row.TraceID.Bytes)
+		index, found := indexes[traceID]
+		if !found {
+			return fmt.Errorf("decode trace score summary: unknown trace %s", traceID)
+		}
+		traces[index].ScoreSummaries = append(traces[index].ScoreSummaries, domain.TraceScoreSummary{
+			Scorer: row.Scorer, Value: value, Threshold: threshold, Passed: row.Passed,
+			CreatedAt: row.CreatedAt.Time,
+		})
+	}
+	return nil
 }
 
 // GetTrace returns one project-owned trace with all of its spans.

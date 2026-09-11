@@ -8,6 +8,174 @@ import (
 	"testing"
 )
 
+//nolint:cyclop // The route regression test verifies persisted evidence ordering and conflicts.
+func TestDatasetItemFromTraceImportsLatestEvidenceOnce(t *testing.T) {
+	fixture := newAPIFixture(t)
+	project := fixture.createProject("synthetic-judge-secret")
+	application := fixture.createApplication(project.ID)
+	trace := fixture.ingestScorableTrace(project.ID, application.ID, 1)
+	datasetID := createDatasetForMutation(t, fixture, application.ID, "regressions")
+	stored, err := fixture.traces.GetAdmin(t.Context(), trace.ID)
+	if err != nil {
+		t.Fatalf("load trace evidence: %v", err)
+	}
+	if _, err := fixture.database.MigrationDB().ExecContext(t.Context(), `
+INSERT INTO scores (
+    scorer, value, threshold, passed, rationale, prompt_template_id, judge_model, judge_provider,
+    trace_id, span_id, span_start_time, judged_input, judged_output,
+    judged_context, judged_reference, created_at
+) VALUES
+    ('groundedness', 0.9, 0.7, true, 'test', 'test', 'test', 'test', $1, $2, $3,
+     'first question', 'first answer', '[{"id":"k0","text":"evidence"}]'::jsonb,
+     'first reference', '2026-09-01T12:00:00Z'),
+    ('groundedness', 0.9, 0.7, true, 'test', 'test', 'test', 'test', $1, $2, $3,
+     'latest question', 'latest answer', '[{"id":"k1","text":"latest evidence"}]'::jsonb,
+     'latest reference', '2026-09-01T12:00:00Z')`,
+		trace.ID, stored.Spans[0].ID, stored.Spans[0].StartTime,
+	); err != nil {
+		t.Fatalf("insert trace evidence: %v", err)
+	}
+	var latestScoreID int64
+	if err := fixture.database.MigrationDB().QueryRowContext(
+		t.Context(), `SELECT max(id) FROM scores WHERE trace_id = $1`, trace.ID,
+	).Scan(&latestScoreID); err != nil {
+		t.Fatalf("select latest score ID: %v", err)
+	}
+	path := "/v1/datasets/" + datasetID + "/from-trace"
+	response := fixture.perform(requestSpec{
+		method: http.MethodPost, path: path, token: adminToken,
+		body: `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness",` +
+			`"expected_output":" corrected "}`,
+	})
+	assertStatus(t, response, http.StatusCreated)
+	var item struct {
+		ExternalID     string         `json:"external_id"`
+		ExpectedOutput string         `json:"expected_output"`
+		Input          map[string]any `json:"input"`
+		Output         string         `json:"output"`
+		Metadata       map[string]any `json:"metadata"`
+	}
+	decodeResponse(t, response, &item)
+	if item.ExternalID != "trace:"+trace.ID.String()+":groundedness" ||
+		item.ExpectedOutput != "corrected" || item.Input["question"] != "latest question" ||
+		item.Output != "latest answer" || item.Metadata["trace_id"] != trace.ID.String() ||
+		item.Metadata["score_id"] != float64(latestScoreID) ||
+		item.Metadata["scorer"] != "groundedness" {
+		t.Fatalf("imported item = %#v", item)
+	}
+	assertStatus(t, fixture.perform(requestSpec{
+		method: http.MethodPost, path: path, token: adminToken,
+		body: `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness"}`,
+	}), http.StatusConflict)
+	unchanged := fixture.perform(requestSpec{
+		method: http.MethodGet, path: "/v1/datasets/" + datasetID + "/items", token: adminToken,
+	})
+	assertStatus(t, unchanged, http.StatusOK)
+	var page struct {
+		Items []struct {
+			Input          map[string]any `json:"input"`
+			ExpectedOutput string         `json:"expected_output"`
+		} `json:"items"`
+	}
+	decodeResponse(t, unchanged, &page)
+	if len(page.Items) != 1 || page.Items[0].Input["question"] != "latest question" ||
+		page.Items[0].ExpectedOutput != "corrected" {
+		t.Fatalf("duplicate import changed items: %#v", page.Items)
+	}
+	otherProject := fixture.createProjectNamed("Other", "other-judge-secret")
+	other := fixture.createApplication(otherProject.ID)
+	foreignDataset := createDatasetForMutation(t, fixture, other.ID, "foreign")
+	assertStatus(t, fixture.perform(requestSpec{
+		method: http.MethodPost, path: "/v1/datasets/" + foreignDataset + "/from-trace",
+		token: adminToken,
+		body:  `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness"}`,
+	}), http.StatusUnprocessableEntity)
+}
+
+func TestDatasetItemFromTraceRejectsMissingAndMalformedEvidence(t *testing.T) {
+	t.Run("missing evidence", func(t *testing.T) {
+		fixture := newAPIFixture(t)
+		project := fixture.createProject("synthetic-judge-secret")
+		application := fixture.createApplication(project.ID)
+		trace := fixture.ingestScorableTrace(project.ID, application.ID, 1)
+		datasetID := createDatasetForMutation(t, fixture, application.ID, "regressions")
+		response := fixture.perform(requestSpec{
+			method: http.MethodPost, path: "/v1/datasets/" + datasetID + "/from-trace",
+			token: adminToken,
+			body:  `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness"}`,
+		})
+		assertStatus(t, response, http.StatusUnprocessableEntity)
+	})
+	t.Run("malformed retained context", func(t *testing.T) {
+		fixture := newAPIFixture(t)
+		project := fixture.createProject("synthetic-judge-secret")
+		application := fixture.createApplication(project.ID)
+		trace := fixture.ingestScorableTrace(project.ID, application.ID, 2)
+		datasetID := createDatasetForMutation(t, fixture, application.ID, "regressions")
+		stored, err := fixture.traces.GetAdmin(t.Context(), trace.ID)
+		if err != nil {
+			t.Fatalf("load trace evidence: %v", err)
+		}
+		if _, err := fixture.database.MigrationDB().ExecContext(t.Context(), `
+INSERT INTO scores (
+    scorer, value, threshold, passed, rationale, prompt_template_id, judge_model, judge_provider,
+    trace_id, span_id, span_start_time, judged_input, judged_output, judged_context
+) VALUES (
+    'groundedness', 0.9, 0.7, true, 'test', 'test', 'test', 'test', $1, $2, $3,
+    'question', 'answer', '[{"id":"k0","text":1}]'::jsonb
+)`, trace.ID, stored.Spans[0].ID, stored.Spans[0].StartTime); err != nil {
+			t.Fatalf("insert malformed trace evidence: %v", err)
+		}
+		response := fixture.perform(requestSpec{
+			method: http.MethodPost, path: "/v1/datasets/" + datasetID + "/from-trace",
+			token: adminToken,
+			body:  `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness"}`,
+		})
+		assertStatus(t, response, http.StatusUnprocessableEntity)
+	})
+}
+
+func TestDatasetItemFromTraceUsesEvidenceAfterSpanDeletion(t *testing.T) {
+	fixture := newAPIFixture(t)
+	project := fixture.createProject("synthetic-judge-secret")
+	application := fixture.createApplication(project.ID)
+	trace := fixture.ingestScorableTrace(project.ID, application.ID, 3)
+	datasetID := createDatasetForMutation(t, fixture, application.ID, "regressions")
+	stored, err := fixture.traces.GetAdmin(t.Context(), trace.ID)
+	if err != nil {
+		t.Fatalf("load trace evidence: %v", err)
+	}
+	if _, err := fixture.database.MigrationDB().ExecContext(t.Context(), `
+INSERT INTO scores (
+    scorer, value, threshold, passed, rationale, prompt_template_id, judge_model, judge_provider,
+    trace_id, span_id, span_start_time, judged_input, judged_output, judged_context,
+    judged_reference
+) VALUES (
+    'groundedness', 0.9, 0.7, true, 'test', 'test', 'test', 'test', $1, $2, $3,
+    'question', 'answer', '[{"id":"k0","text":"evidence"}]'::jsonb, 'reference'
+)`, trace.ID, stored.Spans[0].ID, stored.Spans[0].StartTime); err != nil {
+		t.Fatalf("insert trace evidence: %v", err)
+	}
+	if _, err := fixture.database.MigrationDB().ExecContext(
+		t.Context(), `DELETE FROM spans WHERE id = $1`, stored.Spans[0].ID,
+	); err != nil {
+		t.Fatalf("delete scored span: %v", err)
+	}
+	response := fixture.perform(requestSpec{
+		method: http.MethodPost, path: "/v1/datasets/" + datasetID + "/from-trace",
+		token: adminToken,
+		body:  `{"trace_id":"` + trace.ID.String() + `","scorer":"groundedness"}`,
+	})
+	assertStatus(t, response, http.StatusCreated)
+	var item struct {
+		ExpectedOutput string `json:"expected_output"`
+	}
+	decodeResponse(t, response, &item)
+	if item.ExpectedOutput != "reference" {
+		t.Fatalf("default expected output = %q, want reference", item.ExpectedOutput)
+	}
+}
+
 func TestDatasetRename(t *testing.T) {
 	fixture := newAPIFixture(t)
 	project := fixture.createProject("synthetic-judge-secret")

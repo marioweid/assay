@@ -41,6 +41,15 @@ type updateDatasetInput struct {
 	}
 }
 
+type createDatasetItemFromTraceInput struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		TraceID        string  `json:"trace_id" format:"uuid"`
+		Scorer         string  `json:"scorer" enum:"groundedness,correctness"`
+		ExpectedOutput *string `json:"expected_output,omitempty"`
+	}
+}
+
 type createDatasetItemsInput struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
@@ -134,6 +143,12 @@ func (h *handler) registerDatasetRoutes() {
 	)
 	addItems.DefaultStatus = http.StatusCreated
 	huma.Register(h.api, addItems, h.createDatasetItems)
+	fromTrace := h.operation(
+		http.MethodPost, "/v1/datasets/{id}/from-trace", "create-dataset-item-from-trace",
+		"Import trace score evidence into a dataset", http.StatusNotFound, http.StatusConflict,
+	)
+	fromTrace.DefaultStatus = http.StatusCreated
+	huma.Register(h.api, fromTrace, h.createDatasetItemFromTrace)
 	huma.Register(h.api, h.operation(
 		http.MethodGet, "/v1/datasets/{id}/items", "list-dataset-items",
 		"List dataset items", http.StatusNotFound,
@@ -224,6 +239,29 @@ func (h *handler) deleteDataset(ctx context.Context, input *datasetIDInput) (*em
 		return nil, h.responseError("delete dataset", err)
 	}
 	return &emptyOutput{}, nil
+}
+
+func (h *handler) createDatasetItemFromTrace(
+	ctx context.Context,
+	input *createDatasetItemFromTraceInput,
+) (*datasetItemResult, error) {
+	datasetID, err := parseID(input.ID, "dataset ID")
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	traceID, err := parseID(input.Body.TraceID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	item, err := h.evaluations.CreateDatasetItemFromTrace(
+		ctx, datasetID, domain.DatasetItemFromTraceInput{
+			TraceID: traceID, Scorer: input.Body.Scorer, ExpectedOutput: input.Body.ExpectedOutput,
+		},
+	)
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	return &datasetItemResult{Body: datasetItemOutput(item)}, nil
 }
 
 func (h *handler) createDatasetItems(

@@ -272,22 +272,6 @@ class ScoresResource:
         )
 
 
-def _regression_item(score: Score, trace_id: str, expected_output: str | None) -> DatasetItemInput:
-    if score.judged_input is None or score.judged_output is None:
-        raise AssayConfigurationError("score has no captured input/output evidence")
-    reference = score.judged_reference if expected_output is None else expected_output
-    if reference is not None and not reference.strip():
-        raise AssayConfigurationError("expected output must not be blank")
-    return DatasetItemInput(
-        input={"question": score.judged_input},
-        output=score.judged_output,
-        expected_output=reference,
-        context=score.judged_context,
-        external_id=f"trace:{trace_id}:{score.scorer}",
-        metadata={"trace_id": trace_id, "score_id": score.id, "scorer": score.scorer},
-    )
-
-
 def _analytics_params(
     start: datetime | None,
     end: datetime | None,
@@ -590,25 +574,26 @@ class DatasetsResource:
             same trace and scorer again returns an API conflict without changing the item.
 
         Raises:
-            AssayConfigurationError: Applications differ or captured score evidence is absent.
+            AssayAPIError: The service rejects missing evidence, mismatched applications,
+                or duplicates.
+            AssayConfigurationError: The caller provides blank IDs, an invalid scorer,
+                or a blank override.
         """
-        dataset = self.get(dataset_id)
-        operation = "read regression trace"
+        body: dict[str, object] = {
+            "trace_id": _segment(trace_id, "trace ID"),
+            "scorer": _scorer(scorer),
+        }
+        if expected_output is not None:
+            body["expected_output"] = _required_text(expected_output, "expected output")
+        operation = "import trace score"
         payload = self._transport.request(
             operation,
-            "GET",
-            f"/v1/traces/{_segment(trace_id, 'trace ID')}",
+            "POST",
+            f"/v1/datasets/{_segment(dataset_id, 'dataset ID')}/from-trace",
             auth="admin",
+            json=body,
         )
-        trace = parse_trace(operation, _payload(operation, payload))
-        if trace.application_id != dataset.application_id:
-            raise AssayConfigurationError("trace and dataset must belong to the same application")
-        candidates = [score for score in trace.scores if score.scorer == scorer]
-        if not candidates:
-            raise AssayConfigurationError("trace has no score for this scorer; score it first")
-        score = max(candidates, key=lambda score: (score.created_at, score.id))
-        item = _regression_item(score, trace_id, expected_output)
-        return self.create_items(dataset_id, (item,))[0]
+        return parse_dataset_item(operation, _payload(operation, payload))
 
     def create_items(
         self,

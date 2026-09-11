@@ -21,6 +21,9 @@ import type {
   CreateApplicationResponses,
   CreateDatasetData,
   CreateDatasetErrors,
+  CreateDatasetItemFromTraceData,
+  CreateDatasetItemFromTraceErrors,
+  CreateDatasetItemFromTraceResponses,
   CreateDatasetItemsData,
   CreateDatasetItemsErrors,
   CreateDatasetItemsResponses,
@@ -67,6 +70,9 @@ import type {
   GetTraceData,
   GetTraceErrors,
   GetTraceResponses,
+  GetTraceScoringEligibilityData,
+  GetTraceScoringEligibilityErrors,
+  GetTraceScoringEligibilityResponses,
   ListApiKeysData,
   ListApiKeysErrors,
   ListApiKeysResponses,
@@ -439,6 +445,36 @@ export const updateDataset = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/datasets/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Import trace score evidence into a dataset
+ */
+export const createDatasetItemFromTrace = <ThrowOnError extends boolean = false>(
+  options: Options<CreateDatasetItemFromTraceData, ThrowOnError>,
+): RequestResult<
+  CreateDatasetItemFromTraceResponses,
+  CreateDatasetItemFromTraceErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateDatasetItemFromTraceResponses,
+    CreateDatasetItemFromTraceErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/from-trace",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -990,4 +1026,30 @@ export const attachTraceReference = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+  });
+
+/**
+ * Get trace scoring eligibility
+ */
+export const getTraceScoringEligibility = <ThrowOnError extends boolean = false>(
+  options: Options<GetTraceScoringEligibilityData, ThrowOnError>,
+): RequestResult<
+  GetTraceScoringEligibilityResponses,
+  GetTraceScoringEligibilityErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetTraceScoringEligibilityResponses,
+    GetTraceScoringEligibilityErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/traces/{id}/scoring-eligibility",
+    ...options,
   });

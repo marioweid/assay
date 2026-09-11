@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -31,6 +31,8 @@ test("lists application datasets and navigates to a dataset", async () => {
   const user = userEvent.setup();
 
   expect(await screen.findByText("No description")).toBeInTheDocument();
+  expect(screen.getByRole("table").parentElement).toHaveClass("bg-surface");
+  expect(screen.getByRole("link", { name: "Regression cases" })).toHaveClass("text-accent");
   await user.click(screen.getByRole("link", { name: "Regression cases" }));
   expect(await screen.findByRole("heading", { name: "Regression cases" })).toBeInTheDocument();
   expect(screen.getByText("No dataset items yet.")).toBeInTheDocument();
@@ -113,6 +115,57 @@ test("browses item fields and stops on a repeated cursor", async () => {
   expect(screen.queryByRole("button", { name: "Load more items" })).not.toBeInTheDocument();
 });
 
+test("updates dataset metadata without changing its cases", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.patch(`*/v1/datasets/${datasetID}`, async ({ request }) => {
+      expect(await request.json()).toEqual({ clear_description: true, name: "Updated cases" });
+      return HttpResponse.json({
+        ...datasetFixture(),
+        description: undefined,
+        name: "Updated cases",
+      });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit dataset" }));
+  await user.clear(screen.getByLabelText("Dataset name"));
+  await user.type(screen.getByLabelText("Dataset name"), "Updated cases");
+  await user.clear(screen.getByLabelText("Description (optional)"));
+  await user.click(screen.getByRole("button", { name: "Save dataset" }));
+
+  expect(await screen.findByRole("heading", { name: "Updated cases" })).toBeInTheDocument();
+  expect(screen.getByText("No description")).toBeInTheDocument();
+});
+
+test("deletes a dataset after explaining the cascading removal", async () => {
+  let deleted = false;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.delete(`*/v1/datasets/${datasetID}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("*/v1/datasets", () => HttpResponse.json({ items: [] })),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete dataset" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete dataset?" });
+  expect(dialog).toHaveTextContent("cases, and associated evaluation runs and scores");
+  await user.click(within(dialog).getByRole("button", { name: "Delete dataset" }));
+
+  expect(deleted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Datasets" })).toBeInTheDocument();
+});
+
 test("adds an evaluation item and displays it without reloading", async () => {
   server.use(
     applicationHandler(),
@@ -157,6 +210,204 @@ test("adds an evaluation item and displays it without reloading", async () => {
   await user.click(await screen.findByText("new-case"));
   expect(screen.getByText(/Where are traces stored/)).toBeInTheDocument();
   expect(screen.queryByText("No dataset items yet.")).not.toBeInTheDocument();
+});
+
+test("edits a case without losing its other editable fields", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    context: [{ id: "doc-1", text: "Supporting context" }],
+    expected_output: "Expected answer",
+    external_id: "case-one",
+    input: { language: "en", question: "Original question" },
+    metadata: { priority: 1 },
+    output: "Recorded answer",
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json({ ...item, input: { ...item.input, question: "Updated question" } });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit dataset case" });
+  const question = within(dialog).getByLabelText("Question");
+  await user.clear(question);
+  await user.type(question, "Updated question");
+  await user.click(within(dialog).getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toEqual({
+    context: [{ id: "doc-1", text: "Supporting context" }],
+    expected_output: "Expected answer",
+    external_id: "case-one",
+    input: { language: "en", question: "Updated question" },
+    metadata: { priority: 1 },
+    output: "Recorded answer",
+  });
+});
+
+test("edits advanced input and metadata JSON without discarding question", async () => {
+  const item = { ...itemFixture("case-one"), input: { language: "en", question: "Question" } };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json(item);
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  fireEvent.change(screen.getByLabelText("Input JSON"), { target: { value: '{"language":"fr"}' } });
+  fireEvent.change(screen.getByLabelText("Metadata JSON"), { target: { value: '{"priority":2}' } });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({
+    input: { language: "fr", question: "Question" },
+    metadata: { priority: 2 },
+  });
+});
+
+test("edits context chunks as a JSON array", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    context: [
+      { id: "one", text: "First context" },
+      { id: "two", text: "Second context" },
+    ],
+    input: { question: "Question" },
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json(item);
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  fireEvent.change(screen.getByLabelText("Context JSON"), {
+    target: { value: '[{"id":"one","text":"Updated context"}]' },
+  });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({ context: [{ id: "one", text: "Updated context" }] });
+});
+
+test("clears a recorded answer while preserving the rest of a case", async () => {
+  const item = {
+    ...itemFixture("case-one"),
+    input: { question: "Question" },
+    output: "Recorded answer",
+  };
+  let requestBody: unknown;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.put(`*/v1/datasets/${datasetID}/items/${item.id}`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json({ ...item, output: undefined });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Edit case-one" }));
+  await user.clear(screen.getByLabelText("Recorded answer (optional)"));
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+
+  expect(requestBody).toMatchObject({ input: { question: "Question" }, output: null });
+});
+
+test("deletes a case only after explaining that run evidence remains", async () => {
+  const item = itemFixture("case-one");
+  let deleted = false;
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [item] })),
+    http.delete(`*/v1/datasets/${datasetID}/items/${item.id}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete case-one" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete dataset case?" });
+  expect(dialog).toHaveTextContent("Historical evaluation evidence remains");
+  await user.click(within(dialog).getByRole("button", { name: "Delete item" }));
+
+  expect(deleted).toBe(true);
+  expect(screen.queryByText("case-one")).not.toBeInTheDocument();
+});
+
+test("creates a case with an external ID, metadata, and custom input", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({
+        items: [
+          {
+            external_id: "case-1",
+            input: { language: "en", question: "Question" },
+            metadata: { priority: 2 },
+          },
+        ],
+      });
+      return HttpResponse.json({ items: [itemFixture("case-1")] }, { status: 201 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add item" }));
+  await user.type(screen.getByLabelText("Question"), "Question");
+  await user.type(screen.getByLabelText("External ID (optional)"), "case-1");
+  fireEvent.change(screen.getByLabelText("Input JSON"), { target: { value: '{"language":"en"}' } });
+  fireEvent.change(screen.getByLabelText("Metadata JSON"), { target: { value: '{"priority":2}' } });
+  await user.click(screen.getByRole("button", { name: "Save item" }));
+  expect(await screen.findByText("case-1")).toBeInTheDocument();
+});
+
+test("imports parsed JSONL cases only after confirmation", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/datasets/${datasetID}`, () => HttpResponse.json(datasetFixture())),
+    http.get(`*/v1/datasets/${datasetID}/items`, () => HttpResponse.json({ items: [] })),
+    http.post(`*/v1/datasets/${datasetID}/items`, async ({ request }) => {
+      expect(await request.json()).toEqual({ items: [{ input: { question: "Imported" } }] });
+      return HttpResponse.json({ items: [itemFixture("imported")] }, { status: 201 });
+    }),
+  );
+  renderApp(`/apps/${appID}/datasets/${datasetID}`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Import JSONL" }));
+  await user.upload(
+    screen.getByLabelText("JSONL file"),
+    new File(['{"input":{"question":"Imported"}}'], "cases.jsonl", { type: "application/jsonl" }),
+  );
+  expect(await screen.findByText("1 case ready to import.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Import" }));
+  expect(await screen.findByText("imported")).toBeInTheDocument();
 });
 
 test("keeps an unsaved item after an API failure", async () => {

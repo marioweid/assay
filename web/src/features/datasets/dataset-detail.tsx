@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { getDataset, listDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemResponse, DatasetResponse } from "@/api/generated/types.gen";
 import { JsonView } from "@/components/json-view";
 import { AddDatasetItem } from "@/features/datasets/add-item-dialog";
+import { DatasetDelete } from "@/features/datasets/dataset-delete";
+import { DatasetItemDelete } from "@/features/datasets/dataset-item-delete";
+import { DatasetItemEditor } from "@/features/datasets/dataset-item-editor";
+import { ImportDatasetDialog } from "@/features/datasets/import-dataset-dialog";
+import { DatasetMetadataDialog } from "@/features/datasets/dataset-metadata-dialog";
+import { ExportDatasetButton } from "@/features/datasets/export-dataset-button";
 
 export function DatasetDetail() {
   const { appId = "", datasetId = "" } = useParams();
+  const navigate = useNavigate();
   const requestNumber = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
@@ -108,6 +115,12 @@ export function DatasetDetail() {
       nextCursor={nextCursor}
       onLoadMore={loadMore}
       onCreated={(created) => setItems((current) => [...created, ...current])}
+      onDatasetDeleted={() => navigate(`/apps/${appId}/datasets`)}
+      onDatasetUpdated={setDataset}
+      onUpdated={(updated) =>
+        setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      }
+      onDeleted={(itemID) => setItems((current) => current.filter((item) => item.id !== itemID))}
     />
   );
 }
@@ -121,6 +134,10 @@ type DatasetViewProps = {
   nextCursor: string | null;
   onLoadMore: () => Promise<void>;
   onCreated: (items: DatasetItemResponse[]) => void;
+  onDatasetDeleted: () => void;
+  onDatasetUpdated: (dataset: DatasetResponse) => void;
+  onUpdated: (item: DatasetItemResponse) => void;
+  onDeleted: (itemID: string) => void;
 };
 
 function DatasetView(props: DatasetViewProps) {
@@ -134,9 +151,10 @@ function DatasetView(props: DatasetViewProps) {
       </p>
     );
   }
+  const datasetID = props.dataset.id;
   return (
     <section aria-labelledby="dataset-heading">
-      <Link className="text-sm text-blue-700 hover:underline" to={`/apps/${props.appId}/datasets`}>
+      <Link className="text-sm text-accent hover:underline" to={`/apps/${props.appId}/datasets`}>
         Back to datasets
       </Link>
       <h1 className="mt-4 text-2xl font-semibold" id="dataset-heading">
@@ -145,12 +163,22 @@ function DatasetView(props: DatasetViewProps) {
       <p className="mt-2 text-sm text-muted">
         {props.dataset.description?.trim() || "No description"}
       </p>
+      <div className="mt-4">
+        <div className="flex gap-3">
+          <DatasetMetadataDialog dataset={props.dataset} onSaved={props.onDatasetUpdated} />
+          <DatasetDelete datasetID={props.dataset.id} onDeleted={props.onDatasetDeleted} />
+        </div>
+      </div>
       {!props.loading && (
-        <AddDatasetItem
-          key={props.dataset.id}
-          datasetID={props.dataset.id}
-          onCreated={props.onCreated}
-        />
+        <div className="flex gap-3">
+          <AddDatasetItem
+            key={props.dataset.id}
+            datasetID={props.dataset.id}
+            onCreated={props.onCreated}
+          />
+          <ImportDatasetDialog datasetID={props.dataset.id} onCreated={props.onCreated} />
+          <ExportDatasetButton datasetID={props.dataset.id} />
+        </div>
       )}
       {props.error && (
         <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
@@ -159,7 +187,13 @@ function DatasetView(props: DatasetViewProps) {
       )}
       <div className="mt-6 space-y-3">
         {props.items.map((item) => (
-          <DatasetItem item={item} key={item.id} />
+          <DatasetItem
+            datasetID={datasetID}
+            item={item}
+            key={item.id}
+            onDeleted={props.onDeleted}
+            onUpdated={props.onUpdated}
+          />
         ))}
       </div>
       {!props.loading && props.error === null && props.items.length === 0 && (
@@ -167,7 +201,7 @@ function DatasetView(props: DatasetViewProps) {
       )}
       {props.nextCursor !== null && (
         <button
-          className="mt-4 border border-line bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="mt-4 border border-line bg-surface px-4 py-2 text-sm font-medium disabled:opacity-50"
           disabled={props.loading}
           onClick={() => void props.onLoadMore()}
         >
@@ -178,13 +212,32 @@ function DatasetView(props: DatasetViewProps) {
   );
 }
 
-function DatasetItem({ item }: { item: DatasetItemResponse }) {
+function DatasetItem({
+  datasetID,
+  item,
+  onDeleted,
+  onUpdated,
+}: {
+  datasetID: string;
+  item: DatasetItemResponse;
+  onDeleted: (itemID: string) => void;
+  onUpdated: (item: DatasetItemResponse) => void;
+}) {
   return (
-    <details className="border border-line bg-white">
+    <details className="border border-line bg-surface">
       <summary className="cursor-pointer px-4 py-3 font-medium">
         {item.external_id ??
           (typeof item.input["question"] === "string" ? item.input["question"] : item.id)}
       </summary>
+      <div className="flex justify-end border-t border-line px-4 pt-3">
+        <DatasetItemEditor datasetID={datasetID} item={item} onSaved={onUpdated} />
+        <DatasetItemDelete
+          datasetID={datasetID}
+          itemID={item.id}
+          label={item.external_id ?? item.id}
+          onDeleted={() => onDeleted(item.id)}
+        />
+      </div>
       <div className="grid gap-5 border-t border-line p-4 lg:grid-cols-2">
         <ItemField label="Input">
           <JsonView value={item.input} />

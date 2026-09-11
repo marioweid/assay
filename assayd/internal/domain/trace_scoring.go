@@ -13,6 +13,19 @@ import (
 
 const contextChunkPrefix = "assay.context.chunks."
 
+// TraceScoringReason explains why a scorer cannot be queued for a trace.
+type TraceScoringReason struct {
+	Code    string
+	Message string
+}
+
+// TraceScoringEligibility reports deterministic scorer readiness for a trace.
+type TraceScoringEligibility struct {
+	Scorer   string
+	Eligible bool
+	Reasons  []TraceScoringReason
+}
+
 // TraceScoreInput contains the captured content for one online score.
 type TraceScoreInput struct {
 	Span      Span
@@ -24,76 +37,137 @@ type TraceScoreInput struct {
 
 // BuildTraceScoreInput validates and extracts scorer content from one scorable span.
 func BuildTraceScoreInput(trace Trace, scorer string) (TraceScoreInput, error) {
-	input, err := extractTraceScoreInput(trace, scorer)
-	if err != nil {
-		return TraceScoreInput{}, err
-	}
-	if err := validateTraceScoreRequirements(input, trace, scorer); err != nil {
-		return TraceScoreInput{}, err
+	input, reasons := evaluateTraceScoreInput(trace, scorer)
+	if len(reasons) > 0 {
+		return TraceScoreInput{}, scoreInputError(trace, scorer, reasons[0].Code, errorsRequired())
 	}
 	return input, nil
 }
 
-func extractTraceScoreInput(trace Trace, scorer string) (TraceScoreInput, error) {
-	span, err := oneScorableSpan(trace)
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "scorable span", err)
-	}
-	inputMessages, err := messageList(span.Attributes["gen_ai.input.messages"])
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "gen_ai.input.messages", err)
-	}
-	outputMessages, err := messageList(span.Attributes["gen_ai.output.messages"])
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "gen_ai.output.messages", err)
-	}
-	input, err := selectedMessage(inputMessages, "user", true)
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "gen_ai.input.messages", err)
-	}
-	output, err := selectedMessage(outputMessages, "assistant", false)
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "gen_ai.output.messages", err)
-	}
-	context, err := traceContext(trace)
-	if err != nil {
-		return TraceScoreInput{}, scoreInputError(trace, scorer, "context", err)
-	}
-	return TraceScoreInput{
-		Span: span, Input: input, Output: output, Context: context,
-		Reference: selectedReference(span.ReferenceAnswer, trace.ReferenceAnswer),
-	}, nil
+// EvaluateTraceScoreInput returns all stable content eligibility failures in fixed order.
+func EvaluateTraceScoreInput(trace Trace, scorer string) (TraceScoreInput, []TraceScoringReason) {
+	return evaluateTraceScoreInput(trace, scorer)
 }
 
-func validateTraceScoreRequirements(input TraceScoreInput, trace Trace, scorer string) error {
-	switch scorer {
-	case ScorerGroundedness:
-		if len(input.Context) == 0 {
-			return scoreInputError(trace, scorer, "context", errorsRequired())
-		}
-	case ScorerCorrectness:
-		if input.Reference == "" {
-			return scoreInputError(trace, scorer, "reference", errorsRequired())
-		}
-	default:
-		return scoreInputError(trace, scorer, "scorer", errorsRequired())
+func evaluateTraceScoreInput(trace Trace, scorer string) (TraceScoreInput, []TraceScoringReason) {
+	span, spanReason := singleScorableSpan(trace)
+	if spanReason != "" {
+		return TraceScoreInput{}, []TraceScoringReason{eligibilityReason(spanReason)}
 	}
-	return nil
+	input, inputReason := scorerMessage(
+		span.Attributes, "gen_ai.input.messages", "user", true, "missing_input",
+	)
+	output, outputReason := scorerMessage(
+		span.Attributes, "gen_ai.output.messages", "assistant", false, "missing_output",
+	)
+	context, contextReason := scorerContext(trace)
+	reference := selectedReference(span.ReferenceAnswer, trace.ReferenceAnswer)
+	result := TraceScoreInput{
+		Span: span, Input: input, Output: output, Context: context, Reference: reference,
+	}
+	return result, traceScoreContentReasons(
+		scorer, inputReason, outputReason, contextReason, reference,
+	)
 }
 
-func oneScorableSpan(trace Trace) (Span, error) {
+func singleScorableSpan(trace Trace) (Span, string) {
 	var selected Span
 	count := 0
-	for _, span := range trace.Spans {
-		if span.IsScorable {
-			selected = span
+	for _, candidate := range trace.Spans {
+		if candidate.IsScorable {
 			count++
+			selected = candidate
 		}
 	}
-	if count != 1 {
-		return Span{}, fmt.Errorf("expected exactly one, found %d", count)
+	if count == 0 {
+		return Span{}, "missing_scorable_span"
 	}
-	return selected, nil
+	if count > 1 {
+		return Span{}, "multiple_scorable_spans"
+	}
+	return selected, ""
+}
+
+func traceScoreContentReasons(
+	scorer string,
+	inputReason string,
+	outputReason string,
+	contextReason string,
+	reference string,
+) []TraceScoringReason {
+	codes := []string{inputReason, outputReason}
+	if scorer == ScorerGroundedness {
+		codes = append(codes, contextReason)
+	}
+	if scorer == ScorerCorrectness && reference == "" {
+		codes = append(codes, "missing_reference")
+	}
+	if scorer != ScorerGroundedness && scorer != ScorerCorrectness {
+		codes = append(codes, "malformed_content")
+	}
+	reasons := make([]TraceScoringReason, 0, len(codes))
+	for _, code := range codes {
+		if code != "" {
+			reasons = append(reasons, eligibilityReason(code))
+		}
+	}
+	return reasons
+}
+
+func scorerMessage(
+	attributes map[string]any,
+	key string,
+	role string,
+	last bool,
+	missing string,
+) (string, string) {
+	value, found := attributes[key]
+	if !found || (isBlankString(value)) {
+		return "", missing
+	}
+	messages, err := messageList(value)
+	if err != nil {
+		return "", "malformed_content"
+	}
+	result, err := selectedMessage(messages, role, last)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") {
+			return "", missing
+		}
+		return "", "malformed_content"
+	}
+	return result, ""
+}
+
+func scorerContext(trace Trace) ([]Chunk, string) {
+	context, err := traceContext(trace)
+	if err != nil {
+		return nil, "malformed_content"
+	}
+	if len(context) == 0 {
+		return []Chunk{}, "missing_context"
+	}
+	return context, ""
+}
+
+func isBlankString(value any) bool {
+	text, ok := value.(string)
+	return ok && strings.TrimSpace(text) == ""
+}
+
+func eligibilityReason(code string) TraceScoringReason {
+	messages := map[string]string{
+		"missing_scorable_span":   "Trace has no scorable span.",
+		"multiple_scorable_spans": "Trace has multiple scorable spans.",
+		"missing_input":           "Trace is missing scorer input.",
+		"missing_output":          "Trace is missing scorer output.",
+		"missing_context":         "Trace is missing retrieval context.",
+		"missing_reference":       "Trace is missing a reference answer.",
+		"malformed_content":       "Trace scorer content is malformed.",
+		"scorer_disabled":         "Scorer is disabled.",
+		"missing_judge":           "Scorer judge is not configured.",
+	}
+	return TraceScoringReason{Code: code, Message: messages[code]}
 }
 
 func messageList(value any) ([]any, error) {

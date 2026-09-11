@@ -1,17 +1,18 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter, Route, Routes } from "react-router";
 
-import { MetricsPage } from "@/features/metrics/metrics-page";
 import { configureClient } from "@/api/client";
+import { MetricsPage } from "@/features/metrics/metrics-page";
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function showMetrics() {
+function showMetrics(): void {
   configureClient(() => "admin");
   render(
     <MemoryRouter initialEntries={["/apps/app-1/metrics"]}>
@@ -44,16 +45,33 @@ test("shows daily score averages and recorded pass rates", async () => {
   expect(screen.getByRole("table")).toHaveAccessibleName("Daily score trends");
 });
 
-test("shows an empty state", async () => {
+test("shows an empty state without zero-filled missing days", async () => {
   server.use(http.get("*/v1/applications/app-1/metrics", () => HttpResponse.json({ items: [] })));
   showMetrics();
-  expect(await screen.findByText("No scores in this period.")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "No scores in this period" }),
+  ).toBeInTheDocument();
 });
 
-test("shows request failures", async () => {
+test("shows request failures and recovers with the retry action", async () => {
+  let failed = true;
   server.use(
-    http.get("*/v1/applications/app-1/metrics", () => new HttpResponse(null, { status: 500 })),
+    http.get("*/v1/applications/app-1/metrics", () => {
+      if (failed) {
+        return new HttpResponse(null, { status: 500 });
+      }
+      return HttpResponse.json({ items: [] });
+    }),
   );
   showMetrics();
-  expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load metrics");
+  const user = userEvent.setup();
+
+  expect(await screen.findByRole("heading", { name: "Metrics unavailable" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Score trends" })).toBeInTheDocument();
+  failed = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "No scores in this period" }),
+  ).toBeInTheDocument();
 });

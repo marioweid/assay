@@ -75,6 +75,17 @@ func (q *Queries) DeleteOnlineScore(ctx context.Context, arg DeleteOnlineScorePa
 	return err
 }
 
+const deleteTrace = `-- name: DeleteTrace :one
+DELETE FROM traces WHERE id = $1 RETURNING id
+`
+
+func (q *Queries) DeleteTrace(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteTrace, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const getProjectTrace = `-- name: GetProjectTrace :one
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
@@ -365,13 +376,35 @@ WHERE applications.project_id = $1
   AND (NOT $4::boolean OR traces.start_time >= $5)
   AND (NOT $6::boolean OR traces.start_time < $7)
   AND (NOT $8::boolean OR traces.status = $9)
-  AND (NOT $10::boolean
+  AND (
+      NOT $10::boolean
+      OR position(lower($11::text) IN lower(traces.root_name)) > 0
+      OR lower(traces.id::text) = lower($11::text)
+      OR encode(traces.otel_trace_id, 'hex') = lower($11::text)
+  )
+  AND (
+      NOT $12::boolean
+      OR EXISTS (
+          SELECT 1
+          FROM (
+              SELECT scores.passed
+              FROM scores
+              WHERE scores.trace_id = traces.id
+                AND scores.scorer = $13::text
+              ORDER BY scores.created_at DESC, scores.id DESC
+              LIMIT 1
+          ) AS latest_score
+          WHERE NOT $14::boolean
+             OR latest_score.passed = $15::boolean
+      )
+  )
+  AND (NOT $16::boolean
        OR (traces.start_time, traces.id) < (
-           $11::timestamptz,
-           $12::uuid
+           $17::timestamptz,
+           $18::uuid
        ))
 ORDER BY traces.start_time DESC, traces.id DESC
-LIMIT $13
+LIMIT $19
 `
 
 type ListProjectTracesParams struct {
@@ -384,6 +417,12 @@ type ListProjectTracesParams struct {
 	EndTime           pgtype.Timestamptz
 	FilterStatus      bool
 	Status            string
+	FilterQ           bool
+	Q                 string
+	FilterScorer      bool
+	Scorer            string
+	FilterPassed      bool
+	Passed            bool
 	HasCursor         bool
 	CursorTime        pgtype.Timestamptz
 	CursorID          uuid.UUID
@@ -401,6 +440,12 @@ func (q *Queries) ListProjectTraces(ctx context.Context, arg ListProjectTracesPa
 		arg.EndTime,
 		arg.FilterStatus,
 		arg.Status,
+		arg.FilterQ,
+		arg.Q,
+		arg.FilterScorer,
+		arg.Scorer,
+		arg.FilterPassed,
+		arg.Passed,
 		arg.HasCursor,
 		arg.CursorTime,
 		arg.CursorID,
@@ -428,6 +473,50 @@ func (q *Queries) ListProjectTraces(ctx context.Context, arg ListProjectTracesPa
 			&i.Attributes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTraceScoreSummaries = `-- name: ListTraceScoreSummaries :many
+SELECT DISTINCT ON (scores.trace_id, scores.scorer)
+       scores.trace_id, scores.scorer, scores.value, scores.threshold, scores.passed, scores.created_at
+FROM scores
+WHERE scores.trace_id = ANY($1::uuid[])
+ORDER BY scores.trace_id, scores.scorer, scores.created_at DESC, scores.id DESC
+`
+
+type ListTraceScoreSummariesRow struct {
+	TraceID   pgtype.UUID
+	Scorer    string
+	Value     pgtype.Numeric
+	Threshold pgtype.Numeric
+	Passed    bool
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListTraceScoreSummaries(ctx context.Context, traceIds []uuid.UUID) ([]ListTraceScoreSummariesRow, error) {
+	rows, err := q.db.Query(ctx, listTraceScoreSummaries, traceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTraceScoreSummariesRow
+	for rows.Next() {
+		var i ListTraceScoreSummariesRow
+		if err := rows.Scan(
+			&i.TraceID,
+			&i.Scorer,
+			&i.Value,
+			&i.Threshold,
+			&i.Passed,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

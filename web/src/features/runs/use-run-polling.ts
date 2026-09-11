@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import { Problem } from "@/api/errors";
 import { getEvalRun } from "@/api/generated/sdk.gen";
 import type { EvalRunResponse } from "@/api/generated/types.gen";
-
-const activeStatuses = new Set(["queued", "running"]);
+import { isActiveRun } from "@/features/runs/run-status";
 
 type RunPolling = {
   error: string | null;
@@ -45,7 +44,7 @@ export function useRunPolling(runID: string): RunPolling {
         failures = 0;
         setError(null);
         setRun(response.data);
-        shouldPoll = activeStatuses.has(response.data.status);
+        shouldPoll = isActiveRun(response.data.status);
         if (shouldPoll) schedule();
       } catch (reason) {
         if (disposed || controller.signal.aborted) return;
@@ -66,6 +65,7 @@ export function useRunPolling(runID: string): RunPolling {
       } else schedule();
     }
 
+    setRun(null);
     setError(null);
     setStopped(false);
     document.addEventListener("visibilitychange", handleVisibility);

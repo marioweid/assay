@@ -97,7 +97,7 @@ function SpanNode({
         aria-label={span.name}
         aria-owns={children.length > 0 ? `span-group-${span.id}` : undefined}
         aria-selected={selectedID === span.id}
-        className={`w-full border-l-2 px-3 py-2 text-left text-sm ${selectedID === span.id ? "border-blue-600 bg-blue-50" : "border-transparent hover:bg-slate-50"}`}
+        className={`w-full border-l-2 px-3 py-2 text-left text-sm ${selectedID === span.id ? "border-accent bg-accent/10" : "border-transparent hover:bg-canvas"}`}
         data-parent-id={parentID ?? undefined}
         data-span-id={span.id}
         onClick={activate}

@@ -95,6 +95,16 @@ export type CreateDatasetInputBody = {
   name: string;
 };
 
+export type CreateDatasetItemFromTraceInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  expected_output?: string;
+  scorer: "groundedness" | "correctness";
+  trace_id: string;
+};
+
 export type CreateDatasetItemsInputBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -175,6 +185,10 @@ export type DatasetItemInput = {
 };
 
 export type DatasetItemResponse = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
   context: Array<Chunk> | null;
   created_at: string;
   dataset_id: string;
@@ -286,8 +300,10 @@ export type EvalRunItemResponse = {
   generated_at?: string;
   generated_context?: Array<Chunk> | null;
   generated_output?: string;
+  snapshot: DatasetItemResponse;
+  snapshot_origin: "creation" | "legacy_backfill";
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   updated_at: string;
 };
 
@@ -314,7 +330,7 @@ export type EvalRunResponse = {
   };
   scorers: Array<string> | null;
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   succeeded_items: number;
   total_items: number;
   updated_at: string;
@@ -376,6 +392,23 @@ export type PutScorerConfigInputBody = {
   judge_config?: JudgeConfigInput;
   prompt_template_id?: string;
   threshold?: number;
+};
+
+export type ReplaceDatasetItemInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  context: Array<Chunk>;
+  expected_output: string | null;
+  external_id: string | null;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output: string | null;
 };
 
 export type ResponseMappingInput = {
@@ -462,6 +495,25 @@ export type ScorerConfigResponse = {
   threshold: number;
 };
 
+export type ScoringEligibilityReasonResponse = {
+  code: string;
+  message: string;
+};
+
+export type ScoringEligibilityResponse = {
+  eligible: boolean;
+  reasons: Array<ScoringEligibilityReasonResponse>;
+  scorer: string;
+};
+
+export type ScoringEligibilityResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  items: Array<ScoringEligibilityResponse>;
+};
+
 export type ScoringTaskCollectionResultBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -543,8 +595,28 @@ export type TraceCollectionResultBody = {
    * A URL to the JSON Schema for this object.
    */
   readonly $schema?: string;
-  items: Array<TraceResponse> | null;
+  items: Array<TraceListResponse> | null;
   next_cursor?: string;
+};
+
+export type TraceListResponse = {
+  application_id: string;
+  attributes: {
+    [key: string]: unknown;
+  };
+  created_at: string;
+  end_time: string;
+  id: string;
+  otel_trace_id: string;
+  reference_answer?: string;
+  root_name: string;
+  score_summaries: Array<TraceScoreSummaryResponse>;
+  span_count: number;
+  start_time: string;
+  status: string;
+  total_cost?: string;
+  total_tokens: number;
+  updated_at: string;
 };
 
 export type TraceResponse = {
@@ -573,6 +645,14 @@ export type TraceResponse = {
   updated_at: string;
 };
 
+export type TraceScoreSummaryResponse = {
+  created_at: string;
+  passed: boolean;
+  scorer: string;
+  threshold: number;
+  value: number;
+};
+
 export type UpdateApplicationInputBody = {
   /**
    * A URL to the JSON Schema for this object.
@@ -584,6 +664,16 @@ export type UpdateApplicationInputBody = {
   };
   name?: string;
   slug?: string;
+};
+
+export type UpdateDatasetInputBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  clear_description?: boolean;
+  description?: string;
+  name?: string;
 };
 
 export type UpdateProjectInputBody = {
@@ -642,6 +732,12 @@ export type CreateDatasetInputBodyWritable = {
   name: string;
 };
 
+export type CreateDatasetItemFromTraceInputBodyWritable = {
+  expected_output?: string;
+  scorer: "groundedness" | "correctness";
+  trace_id: string;
+};
+
 export type CreateDatasetItemsInputBodyWritable = {
   items: Array<DatasetItemInput> | null;
 };
@@ -680,8 +776,25 @@ export type DatasetCollectionResultBodyWritable = {
 };
 
 export type DatasetItemCollectionResultBodyWritable = {
-  items: Array<DatasetItemResponse> | null;
+  items: Array<DatasetItemResponseWritable> | null;
   next_cursor?: string;
+};
+
+export type DatasetItemResponseWritable = {
+  context: Array<Chunk> | null;
+  created_at: string;
+  dataset_id: string;
+  expected_output?: string;
+  external_id?: string;
+  id: string;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output?: string;
+  updated_at: string;
 };
 
 export type DatasetResponseWritable = {
@@ -731,8 +844,24 @@ export type EvalRunCollectionResultBodyWritable = {
 };
 
 export type EvalRunItemCollectionResultBodyWritable = {
-  items: Array<EvalRunItemResponse> | null;
+  items: Array<EvalRunItemResponseWritable> | null;
   next_cursor?: string;
+};
+
+export type EvalRunItemResponseWritable = {
+  created_at: string;
+  dataset_item_id: string;
+  error?: string;
+  eval_run_id: string;
+  finished_at?: string;
+  generated_at?: string;
+  generated_context?: Array<Chunk> | null;
+  generated_output?: string;
+  snapshot: DatasetItemResponseWritable;
+  snapshot_origin: "creation" | "legacy_backfill";
+  started_at?: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
+  updated_at: string;
 };
 
 export type EvalRunResponseWritable = {
@@ -754,7 +883,7 @@ export type EvalRunResponseWritable = {
   };
   scorers: Array<string> | null;
   started_at?: string;
-  status: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
   succeeded_items: number;
   total_items: number;
   updated_at: string;
@@ -789,6 +918,19 @@ export type PutScorerConfigInputBodyWritable = {
   threshold?: number;
 };
 
+export type ReplaceDatasetItemInputBodyWritable = {
+  context: Array<Chunk>;
+  expected_output: string | null;
+  external_id: string | null;
+  input: {
+    [key: string]: unknown;
+  };
+  metadata: {
+    [key: string]: unknown;
+  };
+  output: string | null;
+};
+
 export type ScoreCollectionResultBodyWritable = {
   items: Array<ScoreResponse> | null;
   next_cursor?: string;
@@ -814,6 +956,10 @@ export type ScorerConfigResponseWritable = {
   threshold: number;
 };
 
+export type ScoringEligibilityResultBodyWritable = {
+  items: Array<ScoringEligibilityResponse>;
+};
+
 export type ScoringTaskCollectionResultBodyWritable = {
   items: Array<ScoringTaskResponse> | null;
 };
@@ -833,7 +979,7 @@ export type TargetEndpointInputWritable = {
 };
 
 export type TraceCollectionResultBodyWritable = {
-  items: Array<TraceResponseWritable> | null;
+  items: Array<TraceListResponse> | null;
   next_cursor?: string;
 };
 
@@ -866,6 +1012,12 @@ export type UpdateApplicationInputBodyWritable = {
   };
   name?: string;
   slug?: string;
+};
+
+export type UpdateDatasetInputBodyWritable = {
+  clear_description?: boolean;
+  description?: string;
+  name?: string;
 };
 
 export type UpdateProjectInputBodyWritable = {
@@ -1395,6 +1547,94 @@ export type GetDatasetResponses = {
 
 export type GetDatasetResponse = GetDatasetResponses[keyof GetDatasetResponses];
 
+export type UpdateDatasetData = {
+  body: UpdateDatasetInputBodyWritable;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}";
+};
+
+export type UpdateDatasetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type UpdateDatasetError = UpdateDatasetErrors[keyof UpdateDatasetErrors];
+
+export type UpdateDatasetResponses = {
+  /**
+   * OK
+   */
+  200: DatasetResponse;
+};
+
+export type UpdateDatasetResponse = UpdateDatasetResponses[keyof UpdateDatasetResponses];
+
+export type CreateDatasetItemFromTraceData = {
+  body: CreateDatasetItemFromTraceInputBodyWritable;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/from-trace";
+};
+
+export type CreateDatasetItemFromTraceErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type CreateDatasetItemFromTraceError =
+  CreateDatasetItemFromTraceErrors[keyof CreateDatasetItemFromTraceErrors];
+
+export type CreateDatasetItemFromTraceResponses = {
+  /**
+   * Created
+   */
+  201: DatasetItemResponse;
+};
+
+export type CreateDatasetItemFromTraceResponse =
+  CreateDatasetItemFromTraceResponses[keyof CreateDatasetItemFromTraceResponses];
+
 export type ListDatasetItemsData = {
   body?: never;
   path: {
@@ -1480,6 +1720,132 @@ export type CreateDatasetItemsResponses = {
 
 export type CreateDatasetItemsResponse =
   CreateDatasetItemsResponses[keyof CreateDatasetItemsResponses];
+
+export type DeleteDatasetItemData = {
+  body?: never;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type DeleteDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteDatasetItemError = DeleteDatasetItemErrors[keyof DeleteDatasetItemErrors];
+
+export type DeleteDatasetItemResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteDatasetItemResponse =
+  DeleteDatasetItemResponses[keyof DeleteDatasetItemResponses];
+
+export type GetDatasetItemData = {
+  body?: never;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type GetDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type GetDatasetItemError = GetDatasetItemErrors[keyof GetDatasetItemErrors];
+
+export type GetDatasetItemResponses = {
+  /**
+   * OK
+   */
+  200: DatasetItemResponse;
+};
+
+export type GetDatasetItemResponse = GetDatasetItemResponses[keyof GetDatasetItemResponses];
+
+export type ReplaceDatasetItemData = {
+  body: ReplaceDatasetItemInputBodyWritable;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/datasets/{id}/items/{itemId}";
+};
+
+export type ReplaceDatasetItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ReplaceDatasetItemError = ReplaceDatasetItemErrors[keyof ReplaceDatasetItemErrors];
+
+export type ReplaceDatasetItemResponses = {
+  /**
+   * OK
+   */
+  200: DatasetItemResponse;
+};
+
+export type ReplaceDatasetItemResponse =
+  ReplaceDatasetItemResponses[keyof ReplaceDatasetItemResponses];
 
 export type ListProjectsData = {
   body?: never;
@@ -1865,6 +2231,49 @@ export type CreateEvalRunResponses = {
 
 export type CreateEvalRunResponse = CreateEvalRunResponses[keyof CreateEvalRunResponses];
 
+export type DeleteEvalRunData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/runs/{id}";
+};
+
+export type DeleteEvalRunErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteEvalRunError = DeleteEvalRunErrors[keyof DeleteEvalRunErrors];
+
+export type DeleteEvalRunResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteEvalRunResponse = DeleteEvalRunResponses[keyof DeleteEvalRunResponses];
+
 export type GetEvalRunData = {
   body?: never;
   path: {
@@ -2091,6 +2500,18 @@ export type ListTracesData = {
     start?: string;
     end?: string;
     status?: string;
+    /**
+     * Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming.
+     */
+    q?: string;
+    /**
+     * Filter by the latest online score for this scorer.
+     */
+    scorer?: "groundedness" | "correctness";
+    /**
+     * Filter score pass state; requires scorer.
+     */
+    passed?: "true" | "false";
     limit?: number;
     cursor?: string;
   };
@@ -2168,6 +2589,49 @@ export type ScoreTracesResponses = {
 
 export type ScoreTracesResponse = ScoreTracesResponses[keyof ScoreTracesResponses];
 
+export type DeleteTraceData = {
+  body?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/traces/{id}";
+};
+
+export type DeleteTraceErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type DeleteTraceError = DeleteTraceErrors[keyof DeleteTraceErrors];
+
+export type DeleteTraceResponses = {
+  /**
+   * No Content
+   */
+  204: void;
+};
+
+export type DeleteTraceResponse = DeleteTraceResponses[keyof DeleteTraceResponses];
+
 export type GetTraceData = {
   body?: never;
   headers?: {
@@ -2213,7 +2677,13 @@ export type GetTraceResponse = GetTraceResponses[keyof GetTraceResponses];
 
 export type AttachTraceReferenceData = {
   body: AttachTraceReferenceInputBodyWritable;
-  path?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path: {
+    id: string;
+  };
   query?: never;
   url: "/v1/traces/{id}/reference";
 };
@@ -2249,3 +2719,44 @@ export type AttachTraceReferenceResponses = {
 
 export type AttachTraceReferenceResponse =
   AttachTraceReferenceResponses[keyof AttachTraceReferenceResponses];
+
+export type GetTraceScoringEligibilityData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/v1/traces/{id}/scoring-eligibility";
+};
+
+export type GetTraceScoringEligibilityErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type GetTraceScoringEligibilityError =
+  GetTraceScoringEligibilityErrors[keyof GetTraceScoringEligibilityErrors];
+
+export type GetTraceScoringEligibilityResponses = {
+  /**
+   * OK
+   */
+  200: ScoringEligibilityResultBody;
+};
+
+export type GetTraceScoringEligibilityResponse =
+  GetTraceScoringEligibilityResponses[keyof GetTraceScoringEligibilityResponses];

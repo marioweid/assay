@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
+import { vi } from "vitest";
 
 import { configureClient } from "@/api/client";
 import { Problem } from "@/api/errors";
@@ -50,6 +51,39 @@ test("uses the current bearer token on same-origin requests", async () => {
   expect(authorization).toBe("Bearer current-token");
   expect(requestOrigin).toBe(window.location.origin);
   expect(client.getConfig().baseUrl).toBe(window.location.origin);
+});
+
+test("invalidates only the credential used by a 401 response", async () => {
+  let token = "expired-token";
+  const onUnauthorized = vi.fn();
+  server.use(
+    http.get("*/v1/applications", ({ request }) => {
+      expect(request.headers.get("Authorization")).toBe("Bearer expired-token");
+      return HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 });
+    }),
+  );
+  configureClient(() => token, onUnauthorized);
+
+  await listApplications().catch(() => undefined);
+
+  expect(onUnauthorized).toHaveBeenCalledOnce();
+  token = "replacement-token";
+});
+
+test("keeps a replacement credential after an old request receives 401", async () => {
+  let token = "expired-token";
+  const onUnauthorized = vi.fn();
+  server.use(
+    http.get("*/v1/applications", () => {
+      token = "replacement-token";
+      return HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 });
+    }),
+  );
+  configureClient(() => token, onUnauthorized);
+
+  await listApplications().catch(() => undefined);
+
+  expect(onUnauthorized).not.toHaveBeenCalled();
 });
 
 test("maps problem details without leaking token-bearing extensions", async () => {

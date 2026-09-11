@@ -68,11 +68,12 @@ type scoreCollectionResult struct {
 }
 
 type evalRunResponse struct {
-	ID             string                           `json:"id" format:"uuid"`
-	ApplicationID  string                           `json:"application_id" format:"uuid"`
-	DatasetID      string                           `json:"dataset_id" format:"uuid"`
-	Name           string                           `json:"name"`
-	Status         string                           `json:"status"`
+	ID            string `json:"id" format:"uuid"`
+	ApplicationID string `json:"application_id" format:"uuid"`
+	DatasetID     string `json:"dataset_id" format:"uuid"`
+	Name          string `json:"name"`
+	//nolint:lll // Huma requires the complete enum schema tag on this field.
+	Status         string                           `json:"status" enum:"pending,running,succeeded,failed,canceled"`
 	Mode           string                           `json:"mode"`
 	Params         map[string]any                   `json:"params"`
 	Scorers        []string                         `json:"scorers"`
@@ -89,17 +90,20 @@ type evalRunResponse struct {
 }
 
 type evalRunItemResponse struct {
-	EvalRunID        string         `json:"eval_run_id" format:"uuid"`
-	DatasetItemID    string         `json:"dataset_item_id" format:"uuid"`
-	Status           string         `json:"status"`
-	Error            *string        `json:"error,omitempty"`
-	StartedAt        *time.Time     `json:"started_at,omitempty"`
-	FinishedAt       *time.Time     `json:"finished_at,omitempty"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	GeneratedOutput  *string        `json:"generated_output,omitempty"`
-	GeneratedContext []domain.Chunk `json:"generated_context,omitempty"`
-	GeneratedAt      *time.Time     `json:"generated_at,omitempty"`
+	EvalRunID     string `json:"eval_run_id" format:"uuid"`
+	DatasetItemID string `json:"dataset_item_id" format:"uuid"`
+	//nolint:lll // Huma requires the complete enum schema tag on this field.
+	Status           string              `json:"status" enum:"pending,running,succeeded,failed,canceled"`
+	Error            *string             `json:"error,omitempty"`
+	StartedAt        *time.Time          `json:"started_at,omitempty"`
+	FinishedAt       *time.Time          `json:"finished_at,omitempty"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+	Snapshot         datasetItemResponse `json:"snapshot"`
+	SnapshotOrigin   string              `json:"snapshot_origin" enum:"creation,legacy_backfill"`
+	GeneratedOutput  *string             `json:"generated_output,omitempty"`
+	GeneratedContext []domain.Chunk      `json:"generated_context,omitempty"`
+	GeneratedAt      *time.Time          `json:"generated_at,omitempty"`
 }
 
 type scoreResponse struct {
@@ -146,6 +150,12 @@ func (h *handler) registerEvalRunRoutes() {
 		http.MethodGet, "/v1/runs/{id}", "get-eval-run", "Get an evaluation run",
 		http.StatusNotFound,
 	), h.getEvalRun)
+	remove := h.operation(
+		http.MethodDelete, "/v1/runs/{id}", "delete-eval-run", "Delete an evaluation run",
+		http.StatusNotFound, http.StatusConflict,
+	)
+	remove.DefaultStatus = http.StatusNoContent
+	huma.Register(h.api, remove, h.deleteEvalRun)
 	huma.Register(h.api, h.operation(
 		http.MethodGet, "/v1/runs/{id}/items", "list-eval-run-items",
 		"List evaluation run items", http.StatusNotFound,
@@ -219,6 +229,20 @@ func (h *handler) getEvalRun(ctx context.Context, input *evalRunIDInput) (*evalR
 		return nil, h.responseError("get eval run", err)
 	}
 	return &evalRunResult{Body: evalRunOutput(run)}, nil
+}
+
+func (h *handler) deleteEvalRun(
+	ctx context.Context,
+	input *evalRunIDInput,
+) (*emptyOutput, error) {
+	id, err := parseID(input.ID, "eval run ID")
+	if err != nil {
+		return nil, h.responseError("delete eval run", err)
+	}
+	if err := h.evaluations.DeleteEvalRun(ctx, id); err != nil {
+		return nil, h.responseError("delete eval run", err)
+	}
+	return &emptyOutput{}, nil
 }
 
 func (h *handler) cancelEvalRun(
@@ -310,6 +334,7 @@ func evalRunItemOutput(item domain.EvalRunItem) evalRunItemResponse {
 		EvalRunID: item.EvalRunID.String(), DatasetItemID: item.DatasetItemID.String(),
 		Status: item.Status, Error: item.Error, StartedAt: item.StartedAt,
 		FinishedAt: item.FinishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+		Snapshot: datasetItemOutput(item.Item), SnapshotOrigin: item.SnapshotOrigin,
 		GeneratedOutput: item.GeneratedOutput, GeneratedContext: item.GeneratedContext,
 		GeneratedAt: item.GeneratedAt,
 	}

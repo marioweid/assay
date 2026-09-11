@@ -76,11 +76,35 @@ type CreateDatasetInput struct {
 	Description   *string
 }
 
+// UpdateDatasetInput contains optional dataset metadata changes.
+type UpdateDatasetInput struct {
+	Name             *string
+	Description      *string
+	ClearDescription bool
+}
+
 // CreateDatasetItemInput contains one offline evaluation case.
 type CreateDatasetItemInput struct {
 	ExternalID     *string
 	Input          map[string]any
 	Output         string
+	ExpectedOutput *string
+	Context        []Chunk
+	Metadata       map[string]any
+}
+
+// DatasetItemFromTraceInput identifies score evidence to import as one dataset item.
+type DatasetItemFromTraceInput struct {
+	TraceID        uuid.UUID
+	Scorer         string
+	ExpectedOutput *string
+}
+
+// ReplaceDatasetItemInput contains all editable fields for a dataset case.
+type ReplaceDatasetItemInput struct {
+	ExternalID     *string
+	Input          map[string]any
+	Output         *string
 	ExpectedOutput *string
 	Context        []Chunk
 	Metadata       map[string]any
@@ -225,6 +249,7 @@ type EvalRunItem struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Item             DatasetItem
+	SnapshotOrigin   string
 	GeneratedOutput  *string
 	GeneratedContext []Chunk
 	GeneratedAt      *time.Time
@@ -335,9 +360,16 @@ type EvaluationRepository interface {
 	CreateDataset(context.Context, Dataset) (Dataset, error)
 	ListDatasets(context.Context, DatasetQuery) ([]Dataset, error)
 	GetDataset(context.Context, uuid.UUID) (Dataset, error)
+	UpdateDataset(context.Context, uuid.UUID, UpdateDatasetInput) (Dataset, error)
 	DeleteDataset(context.Context, uuid.UUID) error
 	CreateDatasetItems(context.Context, uuid.UUID, []DatasetItem) ([]DatasetItem, error)
 	ListDatasetItems(context.Context, uuid.UUID, PageQuery) ([]DatasetItem, error)
+	GetDatasetItem(context.Context, uuid.UUID, uuid.UUID) (DatasetItem, error)
+	ReplaceDatasetItem(context.Context, uuid.UUID, DatasetItem) (DatasetItem, error)
+	DeleteDatasetItem(context.Context, uuid.UUID, uuid.UUID) error
+	CreateDatasetItemFromTrace(
+		context.Context, uuid.UUID, DatasetItemFromTraceInput,
+	) (DatasetItem, error)
 	CountDatasetItems(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingOutput(context.Context, uuid.UUID) (int, error)
 	CountDatasetItemsMissingReference(context.Context, uuid.UUID) (int, error)
@@ -346,6 +378,7 @@ type EvaluationRepository interface {
 	CreateEvalRun(context.Context, EvalRun, Job) (EvalRun, error)
 	ListEvalRuns(context.Context, EvalRunQuery) ([]EvalRun, error)
 	GetEvalRun(context.Context, uuid.UUID) (EvalRun, error)
+	DeleteEvalRun(context.Context, uuid.UUID) error
 	ListEvalRunItems(context.Context, uuid.UUID, PageQuery) ([]EvalRunItem, error)
 	ListEvalRunScores(context.Context, uuid.UUID, ScoreQuery) ([]Score, error)
 	CancelEvalRun(context.Context, uuid.UUID) (EvalRun, error)

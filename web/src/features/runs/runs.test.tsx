@@ -28,9 +28,23 @@ test("lists runs with progress and aggregate summaries", async () => {
   renderApp(`/apps/${appID}/runs`);
 
   expect(await screen.findByRole("link", { name: "Baseline run" })).toBeInTheDocument();
+  expect(screen.getByRole("table").parentElement).toHaveClass("bg-surface");
+  expect(screen.getByRole("link", { name: "Baseline run" })).toHaveClass("text-accent");
   expect(screen.getByText("Regression cases")).toBeInTheDocument();
   expect(screen.getByText("3 / 4")).toBeInTheDocument();
   expect(screen.getByText(/groundedness 0.82/)).toBeInTheDocument();
+});
+
+test("loads additional datasets before creating a run", async () => {
+  server.use(
+    ...baseHandlers(),
+    http.get("*/v1/runs", () => HttpResponse.json({ items: [] })),
+  );
+  renderApp(`/apps/${appID}/runs`);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "New evaluation run" }));
+  await user.click(screen.getByRole("button", { name: "Load more datasets" }));
+  expect(await screen.findByRole("option", { name: "Later cases" })).toBeInTheDocument();
 });
 
 test.each([
@@ -92,6 +106,17 @@ test("keeps problem details inside the creation dialog", async () => {
   expect(screen.getByRole("dialog", { name: "New evaluation run" })).toBeInTheDocument();
 });
 
+test("allows a pending run to be cancelled", async () => {
+  server.use(
+    ...baseHandlers(),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("pending"))),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+
+  expect(await screen.findByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+  expect(screen.getByText("Total").parentElement).toHaveClass("bg-surface");
+});
+
 test("confirms and applies active-run cancellation", async () => {
   let canceled = false;
   server.use(
@@ -108,9 +133,7 @@ test("confirms and applies active-run cancellation", async () => {
   const user = userEvent.setup();
 
   await user.click(await screen.findByRole("button", { name: "Cancel run" }));
-  expect(screen.getByRole("cell", { name: "75%" })).toBeInTheDocument();
-  expect(screen.getByRole("cell", { name: "0.82" })).toBeInTheDocument();
-  expect(screen.getByRole("alertdialog", { name: "Cancel evaluation run" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Cancel evaluation run" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Confirm cancellation" }));
   expect(await screen.findByText("canceled")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument();
@@ -158,8 +181,21 @@ function baseHandlers() {
         ],
       }),
     ),
-    http.get("*/v1/datasets", () =>
-      HttpResponse.json({
+    http.get("*/v1/datasets", ({ request }) => {
+      if (new URL(request.url).searchParams.get("cursor") === "next") {
+        return HttpResponse.json({
+          items: [
+            {
+              id: "019d11d2-cbd3-7a5e-ae83-9b791c932933",
+              application_id: appID,
+              name: "Later cases",
+              created_at: "2026-09-01T10:00:00Z",
+              updated_at: "2026-09-01T10:00:00Z",
+            },
+          ],
+        });
+      }
+      return HttpResponse.json({
         items: [
           {
             id: datasetID,
@@ -169,8 +205,9 @@ function baseHandlers() {
             updated_at: "2026-09-01T10:00:00Z",
           },
         ],
-      }),
-    ),
+        next_cursor: "next",
+      });
+    }),
   ];
 }
 

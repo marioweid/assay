@@ -1,6 +1,7 @@
 import type { ScoreResponse } from "@/api/generated/types.gen";
 
 import { JsonView } from "@/components/json-view";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 type ScoreResultProps = {
   score: ScoreResponse;
@@ -8,14 +9,12 @@ type ScoreResultProps = {
 
 export function ScoreResult({ score }: ScoreResultProps) {
   return (
-    <article className="border border-line bg-white p-4">
+    <article className="border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="font-semibold">{score.scorer}</h3>
-        <span
-          className={score.passed ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}
-        >
+        <StatusBadge tone={score.passed ? "success" : "danger"}>
           {score.passed ? "Passed" : "Failed"}
-        </span>
+        </StatusBadge>
         <strong className="font-mono text-lg">{score.value}</strong>
         <span className="text-sm text-muted">Threshold {score.threshold}</span>
       </div>
@@ -39,6 +38,22 @@ export function ScoreResult({ score }: ScoreResultProps) {
       {Object.keys(score.details).length > 0 && (
         <div className="mt-4">
           <JsonView value={score.details} />
+        </div>
+      )}
+      {(score.judged_input !== undefined ||
+        score.judged_output !== undefined ||
+        score.judged_context !== undefined ||
+        score.judged_reference !== undefined) && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium">Captured evidence</h4>
+          <JsonView
+            value={{
+              context: score.judged_context,
+              input: score.judged_input,
+              output: score.judged_output,
+              reference: score.judged_reference,
+            }}
+          />
         </div>
       )}
     </article>

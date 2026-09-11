@@ -102,6 +102,32 @@ func (s *EvaluationService) DeleteDataset(ctx context.Context, datasetID uuid.UU
 	return nil
 }
 
+// CreateDatasetItemFromTrace imports the latest retained online score evidence.
+func (s *EvaluationService) CreateDatasetItemFromTrace(
+	ctx context.Context,
+	datasetID uuid.UUID,
+	input DatasetItemFromTraceInput,
+) (DatasetItem, error) {
+	if input.TraceID == uuid.Nil {
+		return DatasetItem{}, fmt.Errorf("import trace score: %w: invalid trace ID", ErrInvalid)
+	}
+	if _, found := defaultScorerConfig(uuid.Nil, input.Scorer); !found {
+		return DatasetItem{}, fmt.Errorf("import trace score: %w: unsupported scorer", ErrInvalid)
+	}
+	if input.ExpectedOutput != nil {
+		expected, err := requiredValue("expected output", *input.ExpectedOutput)
+		if err != nil {
+			return DatasetItem{}, err
+		}
+		input.ExpectedOutput = &expected
+	}
+	item, err := s.repository.CreateDatasetItemFromTrace(ctx, datasetID, input)
+	if err != nil {
+		return DatasetItem{}, fmt.Errorf("import trace score: %w", err)
+	}
+	return item, nil
+}
+
 // CreateDatasetItems validates and atomically persists evaluation cases.
 func (s *EvaluationService) CreateDatasetItems(
 	ctx context.Context,
@@ -116,7 +142,7 @@ func (s *EvaluationService) CreateDatasetItems(
 	}
 	items := make([]DatasetItem, 0, len(inputs))
 	for index, input := range inputs {
-		item, err := newDatasetItem(datasetID, input)
+		item, err := NewDatasetItem(datasetID, input)
 		if err != nil {
 			return nil, fmt.Errorf("create dataset item %d: %w", index, err)
 		}
@@ -129,35 +155,21 @@ func (s *EvaluationService) CreateDatasetItems(
 	return items, nil
 }
 
-func newDatasetItem(datasetID uuid.UUID, input CreateDatasetItemInput) (DatasetItem, error) {
-	question, ok := input.Input["question"].(string)
-	question = strings.TrimSpace(question)
-	if !ok || question == "" {
-		return DatasetItem{}, fmt.Errorf("question: %w: must be a non-blank string", ErrInvalid)
-	}
-	output := strings.TrimSpace(input.Output)
-	var storedOutput *string
-	if output != "" {
-		storedOutput = &output
-	}
-	context, err := normalizedChunks(input.Context)
+// NewDatasetItem normalizes a new dataset item before persistence.
+func NewDatasetItem(datasetID uuid.UUID, input CreateDatasetItemInput) (DatasetItem, error) {
+	item, err := normalizeDatasetItem(ReplaceDatasetItemInput{
+		ExternalID: input.ExternalID, Input: input.Input, Output: &input.Output,
+		ExpectedOutput: input.ExpectedOutput, Context: input.Context, Metadata: input.Metadata,
+	})
 	if err != nil {
 		return DatasetItem{}, err
 	}
-	itemID, err := id.New()
+	item.ID, err = id.New()
 	if err != nil {
 		return DatasetItem{}, fmt.Errorf("generate dataset item ID: %w", err)
 	}
-	input.Input["question"] = question
-	metadata := input.Metadata
-	if metadata == nil {
-		metadata = map[string]any{}
-	}
-	return DatasetItem{
-		ID: itemID, DatasetID: datasetID, ExternalID: trimmedOptional(input.ExternalID),
-		Input: input.Input, Output: storedOutput, ExpectedOutput: input.ExpectedOutput,
-		Context: context, Metadata: metadata,
-	}, nil
+	item.DatasetID = datasetID
+	return item, nil
 }
 
 // ListDatasetItems returns one cursor-paginated dataset item page.

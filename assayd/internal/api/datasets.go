@@ -32,6 +32,24 @@ type datasetIDInput struct {
 	ID string `path:"id" format:"uuid"`
 }
 
+type updateDatasetInput struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		Name             *string `json:"name,omitempty"`
+		Description      *string `json:"description,omitempty"`
+		ClearDescription bool    `json:"clear_description,omitempty"`
+	}
+}
+
+type createDatasetItemFromTraceInput struct {
+	ID   string `path:"id" format:"uuid"`
+	Body struct {
+		TraceID        string  `json:"trace_id" format:"uuid"`
+		Scorer         string  `json:"scorer" enum:"groundedness,correctness"`
+		ExpectedOutput *string `json:"expected_output,omitempty"`
+	}
+}
+
 type createDatasetItemsInput struct {
 	ID   string `path:"id" format:"uuid"`
 	Body struct {
@@ -109,6 +127,10 @@ func (h *handler) registerDatasetRoutes() {
 		http.MethodGet, "/v1/datasets/{id}", "get-dataset", "Get a dataset",
 		http.StatusNotFound,
 	), h.getDataset)
+	huma.Register(h.api, h.operation(
+		http.MethodPatch, "/v1/datasets/{id}", "update-dataset", "Update a dataset",
+		http.StatusNotFound, http.StatusConflict,
+	), h.updateDataset)
 	remove := h.operation(
 		http.MethodDelete, "/v1/datasets/{id}", "delete-dataset", "Delete a dataset",
 		http.StatusNotFound,
@@ -121,10 +143,17 @@ func (h *handler) registerDatasetRoutes() {
 	)
 	addItems.DefaultStatus = http.StatusCreated
 	huma.Register(h.api, addItems, h.createDatasetItems)
+	fromTrace := h.operation(
+		http.MethodPost, "/v1/datasets/{id}/from-trace", "create-dataset-item-from-trace",
+		"Import trace score evidence into a dataset", http.StatusNotFound, http.StatusConflict,
+	)
+	fromTrace.DefaultStatus = http.StatusCreated
+	huma.Register(h.api, fromTrace, h.createDatasetItemFromTrace)
 	huma.Register(h.api, h.operation(
 		http.MethodGet, "/v1/datasets/{id}/items", "list-dataset-items",
 		"List dataset items", http.StatusNotFound,
 	), h.listDatasetItems)
+	h.registerDatasetItemRoutes()
 }
 
 func (h *handler) createDataset(
@@ -183,6 +212,24 @@ func (h *handler) getDataset(ctx context.Context, input *datasetIDInput) (*datas
 	return &datasetResult{Body: datasetOutput(dataset)}, nil
 }
 
+func (h *handler) updateDataset(
+	ctx context.Context,
+	input *updateDatasetInput,
+) (*datasetResult, error) {
+	id, err := parseID(input.ID, "dataset ID")
+	if err != nil {
+		return nil, h.responseError("update dataset", err)
+	}
+	dataset, err := h.evaluations.UpdateDataset(ctx, id, domain.UpdateDatasetInput{
+		Name: input.Body.Name, Description: input.Body.Description,
+		ClearDescription: input.Body.ClearDescription,
+	})
+	if err != nil {
+		return nil, h.responseError("update dataset", err)
+	}
+	return &datasetResult{Body: datasetOutput(dataset)}, nil
+}
+
 func (h *handler) deleteDataset(ctx context.Context, input *datasetIDInput) (*emptyOutput, error) {
 	id, err := parseID(input.ID, "dataset ID")
 	if err != nil {
@@ -192,6 +239,29 @@ func (h *handler) deleteDataset(ctx context.Context, input *datasetIDInput) (*em
 		return nil, h.responseError("delete dataset", err)
 	}
 	return &emptyOutput{}, nil
+}
+
+func (h *handler) createDatasetItemFromTrace(
+	ctx context.Context,
+	input *createDatasetItemFromTraceInput,
+) (*datasetItemResult, error) {
+	datasetID, err := parseID(input.ID, "dataset ID")
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	traceID, err := parseID(input.Body.TraceID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	item, err := h.evaluations.CreateDatasetItemFromTrace(
+		ctx, datasetID, domain.DatasetItemFromTraceInput{
+			TraceID: traceID, Scorer: input.Body.Scorer, ExpectedOutput: input.Body.ExpectedOutput,
+		},
+	)
+	if err != nil {
+		return nil, h.responseError("import trace score", err)
+	}
+	return &datasetItemResult{Body: datasetItemOutput(item)}, nil
 }
 
 func (h *handler) createDatasetItems(

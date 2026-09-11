@@ -7,6 +7,7 @@ import { configureClient } from "@/api/client";
 import { useRunPolling } from "@/features/runs/use-run-polling";
 
 const runID = "019d11d2-cbd3-7a5e-ae83-9b791c932922";
+const otherRunID = "019d11d2-cbd3-7a5e-ae83-9b791c932923";
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -38,6 +39,40 @@ test("polls each second and stops after a terminal response", async () => {
   expect(screen.getByText("succeeded")).toBeInTheDocument();
   await act(() => vi.advanceTimersByTimeAsync(3000));
   expect(requests).toBe(3);
+});
+
+test("continues polling while pending", async () => {
+  let requests = 0;
+  server.use(
+    http.get(`*/v1/runs/${runID}`, () => {
+      requests++;
+      return HttpResponse.json(runFixture(requests === 1 ? "pending" : "succeeded"));
+    }),
+  );
+  render(<PollingHarness />);
+
+  await waitForText("pending");
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(screen.getByText("succeeded")).toBeInTheDocument();
+  expect(requests).toBe(2);
+});
+
+test("clears the prior run while a changed run ID loads", async () => {
+  server.use(
+    http.get("*/v1/runs/:id", async ({ params }) => {
+      if (params["id"] === runID) return HttpResponse.json(runFixture("running"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return HttpResponse.json({ ...runFixture("succeeded"), id: otherRunID });
+    }),
+  );
+  const view = render(<PollingHarness runID={runID} />);
+  await waitForText("running");
+
+  act(() => view.rerender(<PollingHarness runID={otherRunID} />));
+
+  expect(screen.queryByText("running")).not.toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  await waitForText("succeeded");
 });
 
 test("pauses while hidden and resumes when visible", async () => {
@@ -102,8 +137,8 @@ test("resets the failure count after a successful poll and aborts on unmount", a
   expect(aborted).toBe(true);
 });
 
-function PollingHarness() {
-  const polling = useRunPolling(runID);
+function PollingHarness({ runID: currentRunID = runID }: { runID?: string }) {
+  const polling = useRunPolling(currentRunID);
   return (
     <div>
       <span>{polling.run?.status}</span>

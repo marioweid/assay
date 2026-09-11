@@ -49,6 +49,56 @@ func TestEvaluationServiceValidatesDatasetItems(t *testing.T) {
 	}
 }
 
+func TestEvaluationServiceReplacesDatasetItemWithoutMutatingInput(t *testing.T) {
+	datasetID := uuid.Must(uuid.NewV7())
+	itemID := uuid.Must(uuid.NewV7())
+	repository := &evaluationRepositoryFake{}
+	service := newEvaluationService(t, repository)
+	input := map[string]any{"question": " changed ", "nested": map[string]any{"value": "kept"}}
+	expected := " expected "
+
+	item, err := service.ReplaceDatasetItem(t.Context(), datasetID, itemID,
+		domain.ReplaceDatasetItemInput{
+			Input: input, ExpectedOutput: &expected, Context: []domain.Chunk{},
+			Metadata: map[string]any{"attempt": 1},
+		})
+	if err != nil {
+		t.Fatalf("replace dataset item: %v", err)
+	}
+	if item.ID != itemID || item.DatasetID != datasetID ||
+		item.Input["question"] != "changed" || *item.ExpectedOutput != "expected" {
+		t.Fatalf("replaced item = %#v", item)
+	}
+	if input["question"] != " changed " {
+		t.Fatalf("caller input was mutated: %#v", input)
+	}
+}
+
+func TestEvaluationServiceRejectsInvalidDatasetMutations(t *testing.T) {
+	service := newEvaluationService(t, &evaluationRepositoryFake{})
+	datasetID := uuid.Must(uuid.NewV7())
+	itemID := uuid.Must(uuid.NewV7())
+	blank := " "
+
+	_, err := service.UpdateDataset(t.Context(), datasetID, domain.UpdateDatasetInput{})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("empty dataset update error = %v", err)
+	}
+	_, err = service.UpdateDataset(t.Context(), datasetID, domain.UpdateDatasetInput{
+		Description: &blank, ClearDescription: true,
+	})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("conflicting dataset update error = %v", err)
+	}
+	_, err = service.ReplaceDatasetItem(t.Context(), datasetID, itemID,
+		domain.ReplaceDatasetItemInput{
+			Input: map[string]any{"question": "valid"}, ExpectedOutput: &blank,
+		})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("blank expected output error = %v", err)
+	}
+}
+
 func TestEvaluationServiceResolvesScorerOverrides(t *testing.T) {
 	applicationID := uuid.Must(uuid.NewV7())
 	projectID := uuid.Must(uuid.NewV7())
@@ -251,6 +301,7 @@ type evaluationRepositoryFake struct {
 	missingReference int
 	job              domain.Job
 	upserted         domain.ScorerConfig
+	replaced         domain.DatasetItem
 }
 
 func (f *evaluationRepositoryFake) GetApplication(
@@ -281,6 +332,23 @@ func (f *evaluationRepositoryFake) CreateDatasetItems(
 ) ([]domain.DatasetItem, error) {
 	f.items = items
 	return items, nil
+}
+
+func (f *evaluationRepositoryFake) UpdateDataset(
+	_ context.Context,
+	_ uuid.UUID,
+	_ domain.UpdateDatasetInput,
+) (domain.Dataset, error) {
+	return f.dataset, nil
+}
+
+func (f *evaluationRepositoryFake) ReplaceDatasetItem(
+	_ context.Context,
+	_ uuid.UUID,
+	item domain.DatasetItem,
+) (domain.DatasetItem, error) {
+	f.replaced = item
+	return item, nil
 }
 
 func (f *evaluationRepositoryFake) ListScorerConfigs(

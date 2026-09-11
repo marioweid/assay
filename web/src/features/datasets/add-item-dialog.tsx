@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Problem } from "@/api/errors";
 import { createDatasetItems } from "@/api/generated/sdk.gen";
 import type { DatasetItemInput, DatasetItemResponse } from "@/api/generated/types.gen";
-import { Modal } from "@/components/modal";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { fieldControlClass } from "@/components/ui/field";
 
 type Props = { datasetID: string; onCreated: (items: DatasetItemResponse[]) => void };
 const fields = [
@@ -11,30 +13,38 @@ const fields = [
   ["output", "Recorded answer (optional)"],
   ["expected", "Expected answer (optional)"],
   ["context", "Supporting context (optional)"],
+  ["externalID", "External ID (optional)"],
+  ["inputJSON", "Input JSON"],
+  ["metadataJSON", "Metadata JSON"],
 ] as const;
 type Values = Record<(typeof fields)[number][0], string>;
 
-export function AddDatasetItem(props: Props) {
+export function AddDatasetItem(props: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        className="mt-4 bg-blue-700 px-4 py-2 text-sm text-white"
-        onClick={() => setOpen(true)}
-      >
+      <Button onClick={() => setOpen(true)} variant="primary">
         Add item
-      </button>
-      {open && <AddItemDialog {...props} onClose={() => setOpen(false)} />}
+      </Button>
+      <AddItemDialog {...props} onClose={() => setOpen(false)} open={open} />
     </>
   );
 }
 
-function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () => void }) {
+function AddItemDialog({
+  datasetID,
+  onCreated,
+  onClose,
+  open,
+}: Props & { onClose: () => void; open: boolean }) {
   const [values, setValues] = useState<Values>({
     question: "",
     output: "",
     expected: "",
     context: "",
+    externalID: "",
+    inputJSON: "{}",
+    metadataJSON: "{}",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +54,11 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (active.current !== null || values.question.trim() === "") return;
+    const item = toItem(values);
+    if (item === null) {
+      setError("Input JSON and Metadata JSON must each be a JSON object.");
+      return;
+    }
     const controller = new AbortController();
     active.current = controller;
     setSubmitting(true);
@@ -51,7 +66,7 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
     try {
       const response = await createDatasetItems({
         path: { id: datasetID },
-        body: { items: [toItem(values)] },
+        body: { items: [item] },
         signal: controller.signal,
         throwOnError: true,
       });
@@ -71,21 +86,23 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
   }
 
   return (
-    <Modal label="Add dataset item" onClose={onClose}>
-      <form
-        className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto border border-line bg-white p-6 shadow-xl"
-        onSubmit={(event) => void submit(event)}
-      >
-        <h2 className="text-xl font-semibold">Add dataset item</h2>
+    <Dialog
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      open={open}
+      title="Add dataset item"
+    >
+      <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
         <p className="text-sm text-muted">
           Record an answer to score it directly, or leave it blank to generate one during
           evaluation. Correctness uses the expected answer; groundedness uses supporting context.
         </p>
         {fields.map(([key, label]) => (
           <label className="block text-sm" key={key}>
-            {label}
+            <span className="font-medium text-ink">{label}</span>
             <textarea
-              className="mt-1 block w-full border border-line bg-white px-3 py-2"
+              className={fieldControlClass + " mt-1"}
               rows={2}
               required={key === "question"}
               disabled={submitting}
@@ -95,32 +112,46 @@ function AddItemDialog({ datasetID, onCreated, onClose }: Props & { onClose: () 
           </label>
         ))}
         {error !== null && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <button type="button" className="border border-line px-4 py-2 text-sm" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="bg-blue-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
             disabled={submitting || values.question.trim() === ""}
+            type="submit"
+            variant="primary"
           >
             {submitting ? "Saving..." : "Save item"}
-          </button>
+          </Button>
         </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
-function toItem(values: Values): DatasetItemInput {
-  const item: DatasetItemInput = { input: { question: values.question.trim() } };
+function toItem(values: Values): DatasetItemInput | null {
+  const input = parseObject(values.inputJSON);
+  const metadata = parseObject(values.metadataJSON);
+  if (input === null || metadata === null) return null;
+  const item: DatasetItemInput = { input: { ...input, question: values.question.trim() } };
+  if (values.externalID.trim() !== "") item.external_id = values.externalID.trim();
+  if (Object.keys(metadata).length > 0) item.metadata = metadata;
   if (values.output.trim() !== "") item.output = values.output.trim();
   if (values.expected.trim() !== "") item.expected_output = values.expected.trim();
   if (values.context.trim() !== "")
     item.context = [{ id: "context-1", text: values.context.trim() }];
   return item;
+}
+
+function parseObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed !== null && !Array.isArray(parsed) && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }

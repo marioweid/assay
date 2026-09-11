@@ -246,6 +246,31 @@
         "required": ["application_id", "name"],
         "type": "object"
       },
+      "CreateDatasetItemFromTraceInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": ["https://example.com/schemas/CreateDatasetItemFromTraceInputBody.json"],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expected_output": {
+            "type": "string"
+          },
+          "scorer": {
+            "enum": ["groundedness", "correctness"],
+            "type": "string"
+          },
+          "trace_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": ["trace_id", "scorer"],
+        "type": "object"
+      },
       "CreateDatasetItemsInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -456,6 +481,13 @@
       "DatasetItemResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": ["https://example.com/schemas/DatasetItemResponse.json"],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "context": {
             "items": {
               "$ref": "#/components/schemas/Chunk"
@@ -709,11 +741,19 @@
           "generated_output": {
             "type": "string"
           },
+          "snapshot": {
+            "$ref": "#/components/schemas/DatasetItemResponse"
+          },
+          "snapshot_origin": {
+            "enum": ["creation", "legacy_backfill"],
+            "type": "string"
+          },
           "started_at": {
             "format": "date-time",
             "type": "string"
           },
           "status": {
+            "enum": ["pending", "running", "succeeded", "failed", "canceled"],
             "type": "string"
           },
           "updated_at": {
@@ -721,7 +761,15 @@
             "type": "string"
           }
         },
-        "required": ["eval_run_id", "dataset_item_id", "status", "created_at", "updated_at"],
+        "required": [
+          "eval_run_id",
+          "dataset_item_id",
+          "status",
+          "created_at",
+          "updated_at",
+          "snapshot",
+          "snapshot_origin"
+        ],
         "type": "object"
       },
       "EvalRunResponse": {
@@ -792,6 +840,7 @@
             "type": "string"
           },
           "status": {
+            "enum": ["pending", "running", "succeeded", "failed", "canceled"],
             "type": "string"
           },
           "succeeded_items": {
@@ -983,6 +1032,43 @@
             "type": "number"
           }
         },
+        "type": "object"
+      },
+      "ReplaceDatasetItemInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": ["https://example.com/schemas/ReplaceDatasetItemInputBody.json"],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "context": {
+            "items": {
+              "$ref": "#/components/schemas/Chunk"
+            },
+            "type": "array"
+          },
+          "expected_output": {
+            "type": ["string", "null"]
+          },
+          "external_id": {
+            "type": ["string", "null"]
+          },
+          "input": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "metadata": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "output": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["external_id", "input", "output", "expected_output", "context", "metadata"],
         "type": "object"
       },
       "ResponseMappingInput": {
@@ -1250,6 +1336,58 @@
         ],
         "type": "object"
       },
+      "ScoringEligibilityReasonResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"],
+        "type": "object"
+      },
+      "ScoringEligibilityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ScoringEligibilityReasonResponse"
+            },
+            "type": "array"
+          },
+          "scorer": {
+            "type": "string"
+          }
+        },
+        "required": ["scorer", "eligible", "reasons"],
+        "type": "object"
+      },
+      "ScoringEligibilityResultBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": ["https://example.com/schemas/ScoringEligibilityResultBody.json"],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoringEligibilityResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "type": "object"
+      },
       "ScoringTaskCollectionResultBody": {
         "additionalProperties": false,
         "properties": {
@@ -1490,7 +1628,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/TraceResponse"
+              "$ref": "#/components/schemas/TraceListResponse"
             },
             "type": ["array", "null"]
           },
@@ -1499,6 +1637,84 @@
           }
         },
         "required": ["items"],
+        "type": "object"
+      },
+      "TraceListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "end_time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "otel_trace_id": {
+            "type": "string"
+          },
+          "reference_answer": {
+            "type": "string"
+          },
+          "root_name": {
+            "type": "string"
+          },
+          "score_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/TraceScoreSummaryResponse"
+            },
+            "type": "array"
+          },
+          "span_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "start_time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_cost": {
+            "type": "string"
+          },
+          "total_tokens": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "otel_trace_id",
+          "root_name",
+          "start_time",
+          "end_time",
+          "status",
+          "span_count",
+          "total_tokens",
+          "attributes",
+          "score_summaries",
+          "created_at",
+          "updated_at"
+        ],
         "type": "object"
       },
       "TraceResponse": {
@@ -1597,6 +1813,31 @@
         ],
         "type": "object"
       },
+      "TraceScoreSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "scorer": {
+            "type": "string"
+          },
+          "threshold": {
+            "format": "double",
+            "type": "number"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": ["scorer", "value", "threshold", "passed", "created_at"],
+        "type": "object"
+      },
       "UpdateApplicationInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1621,6 +1862,28 @@
             "type": "string"
           },
           "slug": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateDatasetInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": ["https://example.com/schemas/UpdateDatasetInputBody.json"],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clear_description": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         },
@@ -2701,6 +2964,192 @@
           }
         ],
         "summary": "Get a dataset"
+      },
+      "patch": {
+        "operationId": "update-dataset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatasetInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Update a dataset"
+      }
+    },
+    "/v1/datasets/{id}/from-trace": {
+      "post": {
+        "operationId": "create-dataset-item-from-trace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetItemFromTraceInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetItemResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Import trace score evidence into a dataset"
       }
     },
     "/v1/datasets/{id}/items": {
@@ -2886,6 +3335,264 @@
           }
         ],
         "summary": "Create dataset items"
+      }
+    },
+    "/v1/datasets/{id}/items/{itemId}": {
+      "delete": {
+        "operationId": "delete-dataset-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Delete a dataset item"
+      },
+      "get": {
+        "operationId": "get-dataset-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetItemResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Get a dataset item"
+      },
+      "put": {
+        "operationId": "replace-dataset-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceDatasetItemInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetItemResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Replace a dataset item"
       }
     },
     "/v1/projects": {
@@ -3638,6 +4345,81 @@
       }
     },
     "/v1/runs/{id}": {
+      "delete": {
+        "operationId": "delete-eval-run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Delete an evaluation run"
+      },
       "get": {
         "operationId": "get-eval-run",
         "parameters": [
@@ -4165,6 +4947,38 @@
             }
           },
           {
+            "description": "Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by the latest online score for this scorer.",
+            "explode": false,
+            "in": "query",
+            "name": "scorer",
+            "schema": {
+              "description": "Filter by the latest online score for this scorer.",
+              "enum": ["groundedness", "correctness"],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter score pass state; requires scorer.",
+            "explode": false,
+            "in": "query",
+            "name": "passed",
+            "schema": {
+              "description": "Filter score pass state; requires scorer.",
+              "enum": ["true", "false"],
+              "type": "string"
+            }
+          },
+          {
             "explode": false,
             "in": "query",
             "name": "limit",
@@ -4337,12 +5151,94 @@
           },
           {
             "projectAPIKey": []
+          },
+          {
+            "adminBearer": []
           }
         ],
         "summary": "Queue trace scoring"
       }
     },
     "/v1/traces/{id}": {
+      "delete": {
+        "operationId": "delete-trace",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Delete a trace"
+      },
       "get": {
         "operationId": "get-trace",
         "parameters": [
@@ -4439,6 +5335,31 @@
     "/v1/traces/{id}/reference": {
       "patch": {
         "operationId": "attach-trace-reference",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4507,9 +5428,86 @@
           },
           {
             "projectAPIKey": []
+          },
+          {
+            "adminBearer": []
           }
         ],
         "summary": "Attach a trace reference"
+      }
+    },
+    "/v1/traces/{id}/scoring-eligibility": {
+      "get": {
+        "operationId": "get-trace-scoring-eligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringEligibilityResultBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Get trace scoring eligibility"
       }
     }
   }

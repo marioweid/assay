@@ -12,6 +12,8 @@ export function RunsPage() {
   const [runs, setRuns] = useState<EvalRunResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [nextDatasetCursor, setNextDatasetCursor] = useState<string | null>(null);
+  const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +40,7 @@ export function RunsPage() {
         if (controller.signal.aborted || requestNumber.current !== currentRequest) return;
         setRuns(runResponse.data.items ?? []);
         setDatasets(datasetResponse.data.items ?? []);
+        setNextDatasetCursor(datasetResponse.data.next_cursor ?? null);
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted && requestNumber.current === currentRequest) {
@@ -51,6 +54,31 @@ export function RunsPage() {
       });
     return () => controller.abort();
   }, [appId]);
+
+  async function loadMoreDatasets(): Promise<void> {
+    if (nextDatasetCursor === null || loadingDatasets) return;
+    setLoadingDatasets(true);
+    try {
+      const response = await listDatasets({
+        query: { application_id: appId, cursor: nextDatasetCursor },
+        throwOnError: true,
+      });
+      setDatasets((current) => {
+        const ids = new Set(current.map((dataset) => dataset.id));
+        return [
+          ...current,
+          ...(response.data.items ?? []).filter((dataset) => !ids.has(dataset.id)),
+        ];
+      });
+      setNextDatasetCursor(response.data.next_cursor ?? null);
+    } catch (reason) {
+      setError(
+        reason instanceof Problem ? (reason.detail ?? reason.title) : "Unable to load datasets",
+      );
+    } finally {
+      setLoadingDatasets(false);
+    }
+  }
 
   return (
     <section aria-labelledby="runs-heading">
@@ -81,7 +109,14 @@ export function RunsPage() {
       )}
       {runs.length > 0 && <RunsTable appID={appId} datasets={datasets} runs={runs} />}
       {dialogOpen && (
-        <CreateRunDialog appID={appId} datasets={datasets} onClose={() => setDialogOpen(false)} />
+        <CreateRunDialog
+          appID={appId}
+          datasets={datasets}
+          loadingDatasets={loadingDatasets}
+          nextDatasetCursor={nextDatasetCursor}
+          onClose={() => setDialogOpen(false)}
+          onLoadMoreDatasets={loadMoreDatasets}
+        />
       )}
     </section>
   );
@@ -98,9 +133,9 @@ function RunsTable({
 }) {
   const names = new Map(datasets.map((dataset) => [dataset.id, dataset.name]));
   return (
-    <div className="mt-6 overflow-x-auto border border-line bg-white">
+    <div className="mt-6 overflow-x-auto border border-line bg-surface">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-line bg-slate-50 text-xs uppercase tracking-wide text-muted">
+        <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-muted">
           <tr>
             {["Name", "Dataset", "Mode", "Status", "Progress", "Aggregates"].map((heading) => (
               <th className="px-4 py-3" key={heading}>
@@ -114,7 +149,7 @@ function RunsTable({
             <tr className="border-b border-line last:border-0" key={run.id}>
               <td className="px-4 py-3">
                 <Link
-                  className="font-medium text-blue-700 hover:underline"
+                  className="font-medium text-accent hover:underline"
                   to={`/apps/${appID}/runs/${run.id}`}
                 >
                   {run.name}

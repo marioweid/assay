@@ -53,10 +53,8 @@ func (d *Database) createEvalRunTransaction(
 	if err != nil {
 		return domain.EvalRun{}, mapStoreError("insert eval run", err)
 	}
-	if err := queries.CreateEvalRunItems(ctx, db.CreateEvalRunItemsParams{
-		EvalRunID: run.ID, DatasetID: run.DatasetID,
-	}); err != nil {
-		return domain.EvalRun{}, mapStoreError("insert eval run items", err)
+	if err := createEvalRunSnapshots(ctx, queries, row); err != nil {
+		return domain.EvalRun{}, err
 	}
 	if job.EvalRunID == nil {
 		return domain.EvalRun{}, fmt.Errorf("insert eval run job: %w: missing run ID", domain.ErrInvalid)
@@ -70,6 +68,44 @@ func (d *Database) createEvalRunTransaction(
 		return domain.EvalRun{}, fmt.Errorf("commit eval run transaction: %w", err)
 	}
 	return evalRunFromRow(row)
+}
+
+func createEvalRunSnapshots(ctx context.Context, queries *db.Queries, run db.EvalRun) error {
+	if err := queries.CreateEvalRunItems(ctx, db.CreateEvalRunItemsParams{
+		EvalRunID: run.ID, DatasetID: run.DatasetID,
+	}); err != nil {
+		return mapStoreError("insert eval run items", err)
+	}
+	return validateEvalRunSnapshots(ctx, queries, run)
+}
+
+func validateEvalRunSnapshots(ctx context.Context, queries *db.Queries, run db.EvalRun) error {
+	count, err := queries.CountEvalRunItems(ctx, run.ID)
+	if err != nil {
+		return mapStoreError("count eval run snapshots", err)
+	}
+	if count == 0 || count != run.TotalItems {
+		return fmt.Errorf(
+			"create eval run: %w: copied %d of %d input snapshots",
+			domain.ErrInvalid, count, run.TotalItems,
+		)
+	}
+	invalid, err := queries.CountInvalidEvalRunSnapshots(
+		ctx,
+		db.CountInvalidEvalRunSnapshotsParams{
+			EvalRunID: run.ID, Mode: run.Mode, Scorers: run.Scorers,
+		},
+	)
+	if err != nil {
+		return mapStoreError("validate eval run snapshots", err)
+	}
+	if invalid > 0 {
+		return fmt.Errorf(
+			"create eval run: %w: %d input snapshots lack required scoring fields",
+			domain.ErrInvalid, invalid,
+		)
+	}
+	return nil
 }
 
 func evalRunFromRow(row db.EvalRun) (domain.EvalRun, error) {
@@ -229,7 +265,7 @@ func evalRunItemFromRow(row db.ListEvalRunItemsRow) (domain.EvalRunItem, error) 
 		EvalRunID: row.EvalRunID, DatasetItemID: row.DatasetItemID, Status: row.Status,
 		Error: optionalText(row.Error), StartedAt: optionalTimestamp(row.StartedAt),
 		FinishedAt: optionalTimestamp(row.FinishedAt), CreatedAt: row.CreatedAt.Time,
-		UpdatedAt: row.UpdatedAt.Time, Item: datasetItem,
+		UpdatedAt: row.UpdatedAt.Time, Item: datasetItem, SnapshotOrigin: row.SnapshotOrigin,
 		GeneratedOutput:  optionalText(row.GeneratedOutput),
 		GeneratedContext: generatedContext,
 		GeneratedAt:      optionalTimestamp(row.GeneratedAt),

@@ -51,7 +51,7 @@ export function DatasetsPage() {
         Datasets
       </h1>
       <button
-        className="mt-4 bg-blue-700 px-4 py-2 text-sm text-white"
+        className="mt-4 bg-accent px-4 py-2 text-sm text-on-accent"
         onClick={() => setCreating(true)}
       >
         Create dataset
@@ -60,7 +60,7 @@ export function DatasetsPage() {
         <CreateDatasetDialog key={appId} appID={appId} onClose={() => setCreating(false)} />
       )}
       {error && (
-        <p className="mt-4 border border-red-300 bg-red-50 p-3 text-sm" role="alert">
+        <p className="mt-4 border border-danger bg-danger/10 p-3 text-sm" role="alert">
           {error}
         </p>
       )}
@@ -69,9 +69,9 @@ export function DatasetsPage() {
         <p className="mt-8 text-muted">No datasets yet. Create one to collect evaluation cases.</p>
       )}
       {datasets.length > 0 && (
-        <div className="mt-6 overflow-x-auto border border-line bg-white">
+        <div className="mt-6 overflow-x-auto border border-line bg-surface">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-line bg-slate-50 text-xs uppercase tracking-wide text-muted">
+            <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Description</th>
@@ -83,7 +83,7 @@ export function DatasetsPage() {
                 <tr className="border-b border-line last:border-0" key={dataset.id}>
                   <td className="px-4 py-3">
                     <Link
-                      className="font-medium text-blue-700 hover:underline"
+                      className="font-medium text-accent hover:underline"
                       to={`/apps/${appId}/datasets/${dataset.id}`}
                     >
                       {dataset.name}

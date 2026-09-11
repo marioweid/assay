@@ -3,6 +3,9 @@ import { useParams } from "react-router";
 
 import { applicationMetrics } from "@/api/generated/sdk.gen";
 import type { MetricPoint } from "@/api/generated/types.gen";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingState } from "@/components/loading-state";
+import { ProblemState } from "@/components/problem-state";
 
 export function MetricsPage() {
   const { appId = "" } = useParams();
@@ -10,6 +13,7 @@ export function MetricsPage() {
   const [items, setItems] = useState<MetricPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -34,7 +38,7 @@ export function MetricsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [appId, days]);
+  }, [appId, days, refresh]);
 
   return (
     <section>
@@ -44,7 +48,7 @@ export function MetricsPage() {
           aria-label="Time period"
           value={days}
           onChange={(event) => setDays(event.target.value)}
-          className="border border-line bg-white px-3 py-2"
+          className="rounded-md border border-line bg-surface px-3 py-2 text-ink"
         >
           <option value="7">Last 7 days</option>
           <option value="30">Last 30 days</option>
@@ -55,9 +59,20 @@ export function MetricsPage() {
         Daily UTC averages across online and offline scores. Pass rates use the threshold recorded
         when each score was computed. Days without scores are omitted.
       </p>
-      {loading ? <p role="status">Loading metrics…</p> : null}
-      {error !== null ? <p role="alert">{error}</p> : null}
-      {!loading && error === null && items.length === 0 ? <p>No scores in this period.</p> : null}
+      {loading ? <LoadingState label="Loading metrics" /> : null}
+      {!loading && error !== null ? (
+        <ProblemState
+          detail={error}
+          onRetry={() => setRefresh((current) => current + 1)}
+          title="Metrics unavailable"
+        />
+      ) : null}
+      {!loading && error === null && items.length === 0 ? (
+        <EmptyState
+          description="No scores were recorded in the selected period."
+          title="No scores in this period"
+        />
+      ) : null}
       {items.length > 0 ? <TrendTable items={items} /> : null}
     </section>
   );
@@ -83,8 +98,11 @@ function TrendTable({ items }: { items: MetricPoint[] }) {
               <td className="px-4 py-3">{point.scorer}</td>
               <td className="min-w-36 px-4 py-3">
                 <span>{(point.mean * 100).toFixed(1)}%</span>
-                <div aria-hidden="true" className="mt-1 h-1.5 bg-slate-100">
-                  <div className="h-full bg-blue-600" style={{ width: `${point.mean * 100}%` }} />
+                <div aria-hidden="true" className="mt-1 h-1.5 rounded bg-line">
+                  <div
+                    className="h-full rounded bg-accent"
+                    style={{ width: `${point.mean * 100}%` }}
+                  />
                 </div>
               </td>
               <td className="px-4 py-3">{(point.pass_rate * 100).toFixed(1)}%</td>

@@ -7,6 +7,51 @@ import (
 	"github.com/marioweid/assay/assayd/internal/domain"
 )
 
+func TestTraceScoringEligibilityReportsStableContentReasons(t *testing.T) {
+	tests := []struct {
+		name   string
+		trace  domain.Trace
+		scorer string
+		codes  []string
+	}{
+		{
+			name: "missing span", scorer: domain.ScorerGroundedness,
+			codes: []string{"missing_scorable_span"},
+		},
+		{
+			name: "multiple spans", scorer: domain.ScorerGroundedness,
+			trace: domain.Trace{Spans: []domain.Span{{IsScorable: true}, {IsScorable: true}}},
+			codes: []string{"multiple_scorable_spans"},
+		},
+		{
+			name: "multiple content failures", scorer: domain.ScorerGroundedness,
+			trace: traceWithScorableSpan(map[string]any{}),
+			codes: []string{"missing_input", "missing_output", "missing_context"},
+		},
+		{
+			name: "malformed input", scorer: domain.ScorerCorrectness,
+			trace: traceWithScorableSpan(map[string]any{
+				"gen_ai.input.messages":  "bad",
+				"gen_ai.output.messages": []any{message("assistant", "answer")},
+			}),
+			codes: []string{"malformed_content", "missing_reference"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, reasons := domain.EvaluateTraceScoreInput(test.trace, test.scorer)
+			if len(reasons) != len(test.codes) {
+				t.Fatalf("reasons = %#v, want %v", reasons, test.codes)
+			}
+			for index, code := range test.codes {
+				if reasons[index].Code != code {
+					t.Fatalf("reason %d = %#v, want %q", index, reasons[index], code)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildTraceScoreInputExtractsOTelMessagesAndContext(t *testing.T) {
 	trace := traceWithScorableSpan(map[string]any{
 		"gen_ai.input.messages": []any{
@@ -55,6 +100,28 @@ func TestBuildTraceScoreInputUsesRetrievalDocumentsAndReference(t *testing.T) {
 	correct, err := domain.BuildTraceScoreInput(trace, domain.ScorerCorrectness)
 	if err != nil || correct.Reference != reference {
 		t.Fatalf("correctness input = %#v, %v", correct, err)
+	}
+}
+
+func TestBuildTraceScoreInputNormalizesCorrectnessContext(t *testing.T) {
+	reference := "Expected answer"
+	trace := traceWithScorableSpan(map[string]any{
+		"gen_ai.input.messages":  []any{message("user", "question")},
+		"gen_ai.output.messages": []any{message("assistant", "answer")},
+	})
+	trace.ReferenceAnswer = &reference
+
+	input, err := domain.BuildTraceScoreInput(trace, domain.ScorerCorrectness)
+	if err != nil {
+		t.Fatalf("build correctness score input: %v", err)
+	}
+	if input.Context == nil || len(input.Context) != 0 {
+		t.Fatalf("correctness context = %#v, want empty array", input.Context)
+	}
+	if _, err := domain.BuildTraceScoreInput(trace, domain.ScorerGroundedness); !errors.Is(
+		err, domain.ErrInvalid,
+	) {
+		t.Fatalf("build groundedness score input error = %v, want ErrInvalid", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,17 +101,35 @@ func TestListTracesValidatesFilters(t *testing.T) {
 	start := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
 	service := domain.NewTraceService(&traceRepositoryFake{}, &applicationCreatorFake{}, 3)
 	end := start.Add(-time.Hour)
-	if _, err := service.List(t.Context(), projectID, domain.TraceQuery{
-		Start: &start,
-		End:   &end,
-	}); !errors.Is(err, domain.ErrInvalid) {
-		t.Fatalf("inverted range error = %v, want ErrInvalid", err)
+	assertInvalidTraceQuery(t, service, projectID, domain.TraceQuery{Start: &start, End: &end})
+	assertInvalidTraceQuery(t, service, projectID, domain.TraceQuery{Limit: 201})
+}
+
+func TestListTracesValidatesDiscoveryFilters(t *testing.T) {
+	projectID := uuid.Must(uuid.NewV7())
+	repository := &traceRepositoryFake{}
+	service := domain.NewTraceService(repository, &applicationCreatorFake{}, 3)
+	assertInvalidTraceQuery(t, service, projectID, domain.TraceQuery{Q: strings.Repeat("x", 201)})
+	assertInvalidTraceQuery(t, service, projectID, domain.TraceQuery{Passed: boolPointer(false)})
+	_, err := service.List(t.Context(), projectID, domain.TraceQuery{
+		Q: "  Needle  ", Scorer: domain.ScorerGroundedness, Passed: boolPointer(false),
+	})
+	if err != nil || repository.query.Q != "Needle" ||
+		repository.query.Scorer != domain.ScorerGroundedness || repository.query.Passed == nil ||
+		*repository.query.Passed {
+		t.Fatalf("normalized trace query = %#v, %v", repository.query, err)
 	}
-	if _, err := service.List(t.Context(), projectID, domain.TraceQuery{Limit: 201}); !errors.Is(
-		err,
-		domain.ErrInvalid,
-	) {
-		t.Fatalf("oversized limit error = %v, want ErrInvalid", err)
+}
+
+func assertInvalidTraceQuery(
+	t *testing.T,
+	service *domain.TraceService,
+	projectID uuid.UUID,
+	query domain.TraceQuery,
+) {
+	t.Helper()
+	if _, err := service.List(t.Context(), projectID, query); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("invalid trace query error = %v, want ErrInvalid", err)
 	}
 }
 
@@ -147,12 +166,16 @@ func TestIngestCreatesUniqueEligibleAutomaticScoreIntents(t *testing.T) {
 	}
 }
 
+//nolint:cyclop // The queue regression covers valid, duplicate, and missing-judge paths.
 func TestQueueScoresValidatesBatchBeforePersistence(t *testing.T) {
 	applicationID := uuid.Must(uuid.NewV7())
 	trace := scoringTrace(applicationID)
 	trace.ID = uuid.Must(uuid.NewV7())
 	repository := &traceRepositoryFake{trace: trace}
-	service := domain.NewTraceService(repository, &applicationCreatorFake{}, 3)
+	resolver := &traceScorerResolverFake{}
+	service := domain.NewTraceServiceWithScorerResolver(
+		repository, &applicationCreatorFake{}, resolver, domain.JudgeDefaults{}, 3,
+	)
 	jobs, err := service.QueueScores(
 		t.Context(), uuid.Must(uuid.NewV7()), []uuid.UUID{trace.ID},
 		[]string{domain.ScorerGroundedness}, true,
@@ -160,8 +183,11 @@ func TestQueueScoresValidatesBatchBeforePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("queue trace scores: %v", err)
 	}
-	if len(jobs) != 1 || !repository.refresh || len(repository.requests) != 1 {
-		t.Fatalf("queued jobs/requests = %#v/%#v", jobs, repository.requests)
+	if len(jobs) != 1 || !repository.refresh || len(repository.requests) != 1 || resolver.calls != 2 {
+		t.Fatalf(
+			"queued jobs/requests/resolver calls = %#v/%#v/%d",
+			jobs, repository.requests, resolver.calls,
+		)
 	}
 	_, err = service.QueueScores(
 		t.Context(), uuid.Must(uuid.NewV7()), []uuid.UUID{trace.ID, trace.ID},
@@ -169,6 +195,14 @@ func TestQueueScoresValidatesBatchBeforePersistence(t *testing.T) {
 	)
 	if !errors.Is(err, domain.ErrInvalid) || repository.queueCalls != 1 {
 		t.Fatalf("duplicate batch error/calls = %v/%d", err, repository.queueCalls)
+	}
+	resolver.err = domain.ErrInvalid
+	_, err = service.QueueScores(
+		t.Context(), uuid.Must(uuid.NewV7()), []uuid.UUID{trace.ID},
+		[]string{domain.ScorerGroundedness}, true,
+	)
+	if !errors.Is(err, domain.ErrInvalid) || repository.queueCalls != 1 {
+		t.Fatalf("missing judge error/calls = %v/%d", err, repository.queueCalls)
 	}
 }
 
@@ -191,6 +225,10 @@ func TestAttachReferenceRefreshesAutomaticCorrectness(t *testing.T) {
 		repository.referenceJob.Scorer != domain.ScorerCorrectness {
 		t.Fatalf("reference/job = %q/%#v", repository.reference, repository.referenceJob)
 	}
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 func scoringTrace(applicationID uuid.UUID) domain.Trace {
@@ -217,9 +255,13 @@ type traceRepositoryFake struct {
 	intents        []domain.AutoScoreIntent
 	trace          domain.Trace
 	traceID        uuid.UUID
+	details        map[uuid.UUID]domain.Trace
+	detailErr      error
+	applications   map[uuid.UUID]domain.Application
 	requests       []domain.TraceScoreRequest
 	refresh        bool
 	queueCalls     int
+	deletedTraceID uuid.UUID
 	reference      string
 	referenceJob   *domain.Job
 }
@@ -248,8 +290,11 @@ func (f *traceRepositoryFake) UpsertTraces(
 
 func (f *traceRepositoryFake) GetApplication(
 	_ context.Context,
-	_ uuid.UUID,
+	applicationID uuid.UUID,
 ) (domain.Application, error) {
+	if application, found := f.applications[applicationID]; found {
+		return application, nil
+	}
 	return f.application, f.applicationErr
 }
 
@@ -285,6 +330,12 @@ func (f *traceRepositoryFake) GetTraceDetailByID(
 	traceID uuid.UUID,
 ) (domain.Trace, error) {
 	f.traceID = traceID
+	if trace, found := f.details[traceID]; found {
+		return trace, nil
+	}
+	if f.detailErr != nil {
+		return domain.Trace{}, f.detailErr
+	}
 	return f.trace, nil
 }
 
@@ -307,17 +358,38 @@ func (f *traceRepositoryFake) QueueTraceScores(
 	return jobs, nil
 }
 
+func (f *traceRepositoryFake) DeleteTrace(_ context.Context, traceID uuid.UUID) error {
+	f.deletedTraceID = traceID
+	return nil
+}
+
 func (f *traceRepositoryFake) AttachTraceReference(
 	_ context.Context,
-	_ uuid.UUID,
+	projectID uuid.UUID,
 	_ uuid.UUID,
 	reference string,
 	job *domain.Job,
 ) (domain.Trace, error) {
+	f.projectID = projectID
 	f.reference = reference
 	f.referenceJob = job
 	f.trace.ReferenceAnswer = &reference
 	return f.trace, nil
+}
+
+type traceScorerResolverFake struct {
+	calls int
+	err   error
+}
+
+func (f *traceScorerResolverFake) ResolveScorerConfigs(
+	context.Context,
+	uuid.UUID,
+	[]string,
+	domain.JudgeDefaults,
+) ([]domain.ResolvedScorerConfig, error) {
+	f.calls++
+	return nil, f.err
 }
 
 type applicationCreatorFake struct {

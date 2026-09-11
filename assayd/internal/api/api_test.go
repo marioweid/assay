@@ -48,9 +48,16 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodPost, path: "/v1/datasets", body: `{}`},
 		{method: http.MethodGet, path: "/v1/datasets"},
 		{method: http.MethodGet, path: "/v1/datasets/" + id},
+		{method: http.MethodPatch, path: "/v1/datasets/" + id, body: `{}`},
 		{method: http.MethodDelete, path: "/v1/datasets/" + id},
 		{method: http.MethodPost, path: "/v1/datasets/" + id + "/items", body: `{}`},
+		{method: http.MethodPost, path: "/v1/datasets/" + id + "/from-trace", body: `{}`},
 		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items"},
+		{method: http.MethodGet, path: "/v1/datasets/" + id + "/items/" + id},
+		{method: http.MethodPut, path: "/v1/datasets/" + id + "/items/" + id, body: `{}`},
+		{method: http.MethodDelete, path: "/v1/datasets/" + id + "/items/" + id},
+		{method: http.MethodDelete, path: "/v1/traces/" + id},
+		{method: http.MethodDelete, path: "/v1/runs/" + id},
 		{method: http.MethodGet, path: "/v1/applications/" + id + "/scorers"},
 		{
 			method: http.MethodPut,
@@ -154,10 +161,12 @@ func TestDomainAPIFlowRedactsSecretsAndReturnsKeyOnce(t *testing.T) {
 }
 
 type apiFixture struct {
-	t       *testing.T
-	handler http.Handler
-	service *domain.Service
-	traces  *domain.TraceService
+	t           *testing.T
+	handler     http.Handler
+	service     *domain.Service
+	traces      *domain.TraceService
+	evaluations *domain.EvaluationService
+	database    *store.Database
 }
 
 type requestSpec struct {
@@ -200,6 +209,10 @@ type openAPIDocument struct {
 			Type   string `json:"type"`
 			Scheme string `json:"scheme"`
 		} `json:"securitySchemes"`
+		Schemas map[string]struct {
+			Required   []string                   `json:"required"`
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"schemas"`
 	} `json:"components"`
 }
 
@@ -257,6 +270,8 @@ var managementPaths = []string{
 	"/v1/datasets",
 	"/v1/datasets/{id}",
 	"/v1/datasets/{id}/items",
+	"/v1/datasets/{id}/from-trace",
+	"/v1/datasets/{id}/items/{itemId}",
 	"/v1/runs",
 	"/v1/runs/{id}",
 	"/v1/runs/{id}/items",
@@ -284,23 +299,32 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatalf("create secret cipher: %v", err)
 	}
 	service := domain.NewService(database, cipher)
-	traceService := domain.NewTraceService(database, service, 3)
 	evaluations := domain.NewEvaluationService(database, cipher, 3)
+	traceService := domain.NewTraceServiceWithScorerResolver(
+		database, service, evaluations,
+		domain.JudgeDefaults{BaseURL: "http://judge.test", Model: "test"}, 3,
+	)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(database),
 		Service:   service, Traces: traceService, Evaluations: evaluations,
 		AdminToken: adminToken, Logger: logger,
 	})
-	return &apiFixture{t: t, handler: mux, service: service, traces: traceService}
+	return &apiFixture{
+		t: t, handler: mux, service: service, traces: traceService,
+		evaluations: evaluations, database: database,
+	}
 }
 
 func newDocumentationHandler(t *testing.T) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := domain.NewService(nil, nil)
-	traceService := domain.NewTraceService(nil, service, 3)
 	evaluations := domain.NewEvaluationService(nil, nil, 3)
+	traceService := domain.NewTraceServiceWithScorerResolver(
+		nil, service, evaluations,
+		domain.JudgeDefaults{BaseURL: "http://judge.test", Model: "test"}, 3,
+	)
 	mux := http.NewServeMux()
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(nil),

@@ -21,6 +21,9 @@ import type {
   CreateApplicationResponses,
   CreateDatasetData,
   CreateDatasetErrors,
+  CreateDatasetItemFromTraceData,
+  CreateDatasetItemFromTraceErrors,
+  CreateDatasetItemFromTraceResponses,
   CreateDatasetItemsData,
   CreateDatasetItemsErrors,
   CreateDatasetItemsResponses,
@@ -36,15 +39,27 @@ import type {
   DeleteApplicationResponses,
   DeleteDatasetData,
   DeleteDatasetErrors,
+  DeleteDatasetItemData,
+  DeleteDatasetItemErrors,
+  DeleteDatasetItemResponses,
   DeleteDatasetResponses,
+  DeleteEvalRunData,
+  DeleteEvalRunErrors,
+  DeleteEvalRunResponses,
   DeleteProjectData,
   DeleteProjectErrors,
   DeleteProjectResponses,
+  DeleteTraceData,
+  DeleteTraceErrors,
+  DeleteTraceResponses,
   GetApplicationData,
   GetApplicationErrors,
   GetApplicationResponses,
   GetDatasetData,
   GetDatasetErrors,
+  GetDatasetItemData,
+  GetDatasetItemErrors,
+  GetDatasetItemResponses,
   GetDatasetResponses,
   GetEvalRunData,
   GetEvalRunErrors,
@@ -55,6 +70,9 @@ import type {
   GetTraceData,
   GetTraceErrors,
   GetTraceResponses,
+  GetTraceScoringEligibilityData,
+  GetTraceScoringEligibilityErrors,
+  GetTraceScoringEligibilityResponses,
   ListApiKeysData,
   ListApiKeysErrors,
   ListApiKeysResponses,
@@ -91,6 +109,9 @@ import type {
   PutScorerConfigData,
   PutScorerConfigErrors,
   PutScorerConfigResponses,
+  ReplaceDatasetItemData,
+  ReplaceDatasetItemErrors,
+  ReplaceDatasetItemResponses,
   RevokeApiKeyData,
   RevokeApiKeyErrors,
   RevokeApiKeyResponses,
@@ -103,6 +124,9 @@ import type {
   UpdateApplicationEndpointResponses,
   UpdateApplicationErrors,
   UpdateApplicationResponses,
+  UpdateDatasetData,
+  UpdateDatasetErrors,
+  UpdateDatasetResponses,
   UpdateProjectData,
   UpdateProjectErrors,
   UpdateProjectResponses,
@@ -407,6 +431,58 @@ export const getDataset = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Update a dataset
+ */
+export const updateDataset = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDatasetData, ThrowOnError>,
+): RequestResult<UpdateDatasetResponses, UpdateDatasetErrors, ThrowOnError> =>
+  (options.client ?? client).patch<UpdateDatasetResponses, UpdateDatasetErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Import trace score evidence into a dataset
+ */
+export const createDatasetItemFromTrace = <ThrowOnError extends boolean = false>(
+  options: Options<CreateDatasetItemFromTraceData, ThrowOnError>,
+): RequestResult<
+  CreateDatasetItemFromTraceResponses,
+  CreateDatasetItemFromTraceErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateDatasetItemFromTraceResponses,
+    CreateDatasetItemFromTraceErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/from-trace",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
  * List dataset items
  */
 export const listDatasetItems = <ThrowOnError extends boolean = false>(
@@ -443,6 +519,72 @@ export const createDatasetItems = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/datasets/{id}/items",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Delete a dataset item
+ */
+export const deleteDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteDatasetItemData, ThrowOnError>,
+): RequestResult<DeleteDatasetItemResponses, DeleteDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).delete<
+    DeleteDatasetItemResponses,
+    DeleteDatasetItemErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
+    ...options,
+  });
+
+/**
+ * Get a dataset item
+ */
+export const getDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<GetDatasetItemData, ThrowOnError>,
+): RequestResult<GetDatasetItemResponses, GetDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).get<GetDatasetItemResponses, GetDatasetItemErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
+    ...options,
+  });
+
+/**
+ * Replace a dataset item
+ */
+export const replaceDatasetItem = <ThrowOnError extends boolean = false>(
+  options: Options<ReplaceDatasetItemData, ThrowOnError>,
+): RequestResult<ReplaceDatasetItemResponses, ReplaceDatasetItemErrors, ThrowOnError> =>
+  (options.client ?? client).put<
+    ReplaceDatasetItemResponses,
+    ReplaceDatasetItemErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/datasets/{id}/items/{itemId}",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -647,6 +789,24 @@ export const createEvalRun = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Delete an evaluation run
+ */
+export const deleteEvalRun = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteEvalRunData, ThrowOnError>,
+): RequestResult<DeleteEvalRunResponses, DeleteEvalRunErrors, ThrowOnError> =>
+  (options.client ?? client).delete<DeleteEvalRunResponses, DeleteEvalRunErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/runs/{id}",
+    ...options,
+  });
+
+/**
  * Get an evaluation run
  */
 export const getEvalRun = <ThrowOnError extends boolean = false>(
@@ -780,6 +940,11 @@ export const scoreTraces = <ThrowOnError extends boolean = false>(
         type: "http",
       },
       { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
     ],
     url: "/v1/traces/score",
     ...options,
@@ -787,6 +952,24 @@ export const scoreTraces = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+  });
+
+/**
+ * Delete a trace
+ */
+export const deleteTrace = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteTraceData, ThrowOnError>,
+): RequestResult<DeleteTraceResponses, DeleteTraceErrors, ThrowOnError> =>
+  (options.client ?? client).delete<DeleteTraceResponses, DeleteTraceErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/traces/{id}",
+    ...options,
   });
 
 /**
@@ -831,6 +1014,11 @@ export const attachTraceReference = <ThrowOnError extends boolean = false>(
         type: "http",
       },
       { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
     ],
     url: "/v1/traces/{id}/reference",
     ...options,
@@ -838,4 +1026,30 @@ export const attachTraceReference = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+  });
+
+/**
+ * Get trace scoring eligibility
+ */
+export const getTraceScoringEligibility = <ThrowOnError extends boolean = false>(
+  options: Options<GetTraceScoringEligibilityData, ThrowOnError>,
+): RequestResult<
+  GetTraceScoringEligibilityResponses,
+  GetTraceScoringEligibilityErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetTraceScoringEligibilityResponses,
+    GetTraceScoringEligibilityErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/traces/{id}/scoring-eligibility",
+    ...options,
   });

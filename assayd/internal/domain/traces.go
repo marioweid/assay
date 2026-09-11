@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/marioweid/assay/assayd/internal/id"
 
@@ -27,16 +28,25 @@ type TraceRepository interface {
 	GetTraceDetailByID(context.Context, uuid.UUID) (Trace, error)
 	QueueTraceScores(context.Context, uuid.UUID, []TraceScoreRequest, bool) ([]Job, error)
 	AttachTraceReference(context.Context, uuid.UUID, uuid.UUID, string, *Job) (Trace, error)
+	DeleteTrace(context.Context, uuid.UUID) error
 }
 
 type applicationCreator interface {
 	CreateApplication(context.Context, CreateApplicationInput) (Application, error)
 }
 
+type traceScorerResolver interface {
+	ResolveScorerConfigs(
+		context.Context, uuid.UUID, []string, JudgeDefaults,
+	) ([]ResolvedScorerConfig, error)
+}
+
 // TraceService owns application resolution, ingestion, and project-scoped trace reads.
 type TraceService struct {
 	repository  TraceRepository
 	creator     applicationCreator
+	resolver    traceScorerResolver
+	defaults    JudgeDefaults
 	maxAttempts int
 }
 
@@ -47,6 +57,20 @@ func NewTraceService(
 	maxAttempts int,
 ) *TraceService {
 	return &TraceService{repository: repository, creator: creator, maxAttempts: maxAttempts}
+}
+
+// NewTraceServiceWithScorerResolver constructs trace workflows with queue-time judge validation.
+func NewTraceServiceWithScorerResolver(
+	repository TraceRepository,
+	creator applicationCreator,
+	resolver traceScorerResolver,
+	defaults JudgeDefaults,
+	maxAttempts int,
+) *TraceService {
+	return &TraceService{
+		repository: repository, creator: creator, resolver: resolver, defaults: defaults,
+		maxAttempts: maxAttempts,
+	}
 }
 
 // ResolveApplication resolves or optionally creates a project application from a resource slug.
@@ -173,12 +197,26 @@ func (s *TraceService) QueueScores(
 	if err := validateTraceScoreSelection(traceIDs, scorers); err != nil {
 		return nil, err
 	}
-	requests := make([]TraceScoreRequest, 0, len(traceIDs)*len(scorers))
+	traces := make([]Trace, 0, len(traceIDs))
 	for _, traceID := range traceIDs {
 		trace, err := s.repository.GetTrace(ctx, projectID, traceID)
 		if err != nil {
 			return nil, fmt.Errorf("queue trace scores: %w", err)
 		}
+		traces = append(traces, trace)
+	}
+	return s.queueScoresForTraces(ctx, projectID, traces, scorers, refresh)
+}
+
+func (s *TraceService) queueScoresForTraces(
+	ctx context.Context,
+	projectID uuid.UUID,
+	traces []Trace,
+	scorers []string,
+	refresh bool,
+) ([]Job, error) {
+	requests := make([]TraceScoreRequest, 0, len(traces)*len(scorers))
+	for _, trace := range traces {
 		if err := s.validateTraceScorers(ctx, trace, scorers); err != nil {
 			return nil, err
 		}
@@ -216,25 +254,72 @@ func validateTraceScoreSelection(traceIDs []uuid.UUID, scorers []string) error {
 	return validateScorerNames(scorers)
 }
 
+// ScoringEligibility returns deterministic readiness for both supported scorers.
+func (s *TraceService) ScoringEligibility(
+	ctx context.Context,
+	traceID uuid.UUID,
+) ([]TraceScoringEligibility, error) {
+	trace, err := s.repository.GetTraceDetailByID(ctx, traceID)
+	if err != nil {
+		return nil, fmt.Errorf("trace scoring eligibility: %w", err)
+	}
+	return s.traceScoringEligibility(ctx, trace)
+}
+
 func (s *TraceService) validateTraceScorers(
 	ctx context.Context,
 	trace Trace,
 	scorers []string,
 ) error {
-	persisted, err := s.repository.ListScorerConfigs(ctx, trace.ApplicationID)
+	eligibility, err := s.traceScoringEligibility(ctx, trace)
 	if err != nil {
-		return fmt.Errorf("queue trace scores: list scorer configs: %w", err)
+		return err
 	}
-	configs := effectiveConfigMap(trace.ApplicationID, persisted)
+	byScorer := make(map[string]TraceScoringEligibility, len(eligibility))
+	for _, result := range eligibility {
+		byScorer[result.Scorer] = result
+	}
 	for _, scorer := range scorers {
-		if !configs[scorer].Enabled {
-			return fmt.Errorf("queue trace scores: %w: scorer %q is disabled", ErrInvalid, scorer)
-		}
-		if _, err := BuildTraceScoreInput(trace, scorer); err != nil {
-			return err
+		result := byScorer[scorer]
+		if !result.Eligible {
+			return fmt.Errorf("queue trace scores: %w: %s", ErrInvalid, result.Reasons[0].Message)
 		}
 	}
 	return nil
+}
+
+func (s *TraceService) traceScoringEligibility(
+	ctx context.Context,
+	trace Trace,
+) ([]TraceScoringEligibility, error) {
+	persisted, err := s.repository.ListScorerConfigs(ctx, trace.ApplicationID)
+	if err != nil {
+		return nil, fmt.Errorf("trace scoring eligibility: list scorer configs: %w", err)
+	}
+	configs := effectiveConfigMap(trace.ApplicationID, persisted)
+	scorers := []string{ScorerGroundedness, ScorerCorrectness}
+	results := make([]TraceScoringEligibility, 0, len(scorers))
+	for _, scorer := range scorers {
+		_, reasons := EvaluateTraceScoreInput(trace, scorer)
+		if !configs[scorer].Enabled {
+			reasons = append([]TraceScoringReason{eligibilityReason("scorer_disabled")}, reasons...)
+		}
+		if s.resolver != nil && configs[scorer].Enabled {
+			if _, resolveErr := s.resolver.ResolveScorerConfigs(
+				ctx, trace.ApplicationID, []string{scorer}, s.defaults,
+			); resolveErr != nil {
+				if errors.Is(resolveErr, ErrInvalid) {
+					reasons = append([]TraceScoringReason{eligibilityReason("missing_judge")}, reasons...)
+				} else {
+					return nil, fmt.Errorf("trace scoring eligibility: resolve scorer: %w", resolveErr)
+				}
+			}
+		}
+		results = append(results, TraceScoringEligibility{
+			Scorer: scorer, Eligible: len(reasons) == 0, Reasons: reasons,
+		})
+	}
+	return results, nil
 }
 
 // AttachReference stores a non-blank reference and refreshes automatic correctness when enabled.
@@ -252,6 +337,15 @@ func (s *TraceService) AttachReference(
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
 	}
+	return s.attachReference(ctx, projectID, trace, reference)
+}
+
+func (s *TraceService) attachReference(
+	ctx context.Context,
+	projectID uuid.UUID,
+	trace Trace,
+	reference string,
+) (Trace, error) {
 	application, err := s.repository.GetApplication(ctx, trace.ApplicationID)
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
@@ -260,7 +354,7 @@ func (s *TraceService) AttachReference(
 	if err != nil {
 		return Trace{}, err
 	}
-	trace, err = s.repository.AttachTraceReference(ctx, projectID, traceID, reference, job)
+	trace, err = s.repository.AttachTraceReference(ctx, projectID, trace.ID, reference, job)
 	if err != nil {
 		return Trace{}, fmt.Errorf("attach trace reference: %w", err)
 	}
@@ -355,6 +449,21 @@ func normalizeTraceQuery(query *TraceQuery) error {
 	if query.Start != nil && query.End != nil && !query.Start.Before(*query.End) {
 		return fmt.Errorf("list traces: %w: start must be before end", ErrInvalid)
 	}
+	return normalizeTraceDiscoveryQuery(query)
+}
+
+func normalizeTraceDiscoveryQuery(query *TraceQuery) error {
 	query.Status = strings.TrimSpace(query.Status)
+	query.Q = strings.TrimSpace(query.Q)
+	query.Scorer = strings.TrimSpace(query.Scorer)
+	if utf8.RuneCountInString(query.Q) > 200 {
+		return fmt.Errorf("list traces: %w: q must be at most 200 characters", ErrInvalid)
+	}
+	if query.Scorer != "" && !knownScorer(query.Scorer) {
+		return fmt.Errorf("list traces: %w: invalid scorer %q", ErrInvalid, query.Scorer)
+	}
+	if query.Passed != nil && query.Scorer == "" {
+		return fmt.Errorf("list traces: %w: passed requires scorer", ErrInvalid)
+	}
 	return nil
 }

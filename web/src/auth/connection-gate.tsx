@@ -3,6 +3,8 @@ import type { FormEvent, ReactNode } from "react";
 import { Outlet } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
+import { Button } from "@/components/ui/button";
+import { fieldControlClass } from "@/components/ui/field";
 
 export function ConnectionGate(): ReactNode {
   const auth = useAuth();
@@ -46,7 +48,7 @@ export function ConnectionGate(): ReactNode {
             autoComplete="current-password"
             value={candidate}
             onChange={(event) => setCandidate(event.target.value)}
-            className="w-full border border-line bg-white px-3 py-2 text-sm"
+            className={fieldControlClass}
             required
           />
           {auth.error ? (
@@ -54,12 +56,9 @@ export function ConnectionGate(): ReactNode {
               {auth.error}
             </p>
           ) : null}
-          <button
-            type="submit"
-            className="w-full bg-accent-strong px-4 py-2 text-sm font-medium text-white"
-          >
+          <Button className="w-full" type="submit" variant="primary">
             Connect
-          </button>
+          </Button>
         </form>
       </section>
     </main>

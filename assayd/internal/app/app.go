@@ -78,12 +78,16 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	)
 	dispatcher := worker.NewDispatcher(runner, traceRunner)
 	return &App{
-		config:      cfg,
-		logger:      logger,
-		database:    database,
-		cipher:      cipher,
-		service:     service,
-		traces:      domain.NewTraceService(database, service, cfg.JobMaxAttempts),
+		config:   cfg,
+		logger:   logger,
+		database: database,
+		cipher:   cipher,
+		service:  service,
+		traces: domain.NewTraceServiceWithScorerResolver(
+			database, service, evaluations,
+			domain.JudgeDefaults{BaseURL: cfg.JudgeBaseURL, APIKey: cfg.JudgeAPIKey, Model: cfg.JudgeModel},
+			cfg.JobMaxAttempts,
+		),
 		evaluations: evaluations,
 		workers: worker.NewPool(
 			database, dispatcher, logger, uuid.NewString(), cfg.WorkerConcurrency,

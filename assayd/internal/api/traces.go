@@ -22,8 +22,14 @@ type listTracesInput struct {
 	Start         time.Time `query:"start" required:"false"`
 	End           time.Time `query:"end" required:"false"`
 	Status        string    `query:"status" required:"false"`
-	Limit         int       `query:"limit" minimum:"0" maximum:"200" required:"false"`
-	Cursor        string    `query:"cursor" required:"false"`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Q string `query:"q" required:"false" doc:"Trimmed literal case-insensitive root-name search, or exact Assay UUID or 32-hex OpenTelemetry trace ID; maximum 200 characters after trimming."`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Scorer string `query:"scorer" required:"false" enum:"groundedness,correctness" doc:"Filter by the latest online score for this scorer."`
+	//nolint:lll // Huma requires the public parameter documentation in one struct tag.
+	Passed string `query:"passed" required:"false" enum:"true,false" doc:"Filter score pass state; requires scorer."`
+	Limit  int    `query:"limit" minimum:"0" maximum:"200" required:"false"`
+	Cursor string `query:"cursor" required:"false"`
 }
 
 type traceIDInput struct {
@@ -41,17 +47,40 @@ type scoreTracesInput struct {
 	}
 }
 
+type scoringEligibilityInput struct {
+	ID string `path:"id" format:"uuid"`
+}
+
 type attachTraceReferenceInput struct {
-	traceIDInput
-	Body struct {
+	Authorization string `header:"Authorization" required:"false"`
+	XAPIKey       string `header:"x-api-key" required:"false"`
+	ID            string `path:"id" format:"uuid"`
+	Body          struct {
 		ReferenceAnswer string `json:"reference_answer" minLength:"1"`
+	}
+}
+
+type scoringEligibilityReasonResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type scoringEligibilityResponse struct {
+	Scorer   string                             `json:"scorer"`
+	Eligible bool                               `json:"eligible"`
+	Reasons  []scoringEligibilityReasonResponse `json:"reasons" nullable:"false"`
+}
+
+type scoringEligibilityResult struct {
+	Body struct {
+		Items []scoringEligibilityResponse `json:"items" nullable:"false"`
 	}
 }
 
 type traceCollectionResult struct {
 	Body struct {
-		Items      []traceResponse `json:"items"`
-		NextCursor string          `json:"next_cursor,omitempty"`
+		Items      []traceListResponse `json:"items"`
+		NextCursor string              `json:"next_cursor,omitempty"`
 	}
 }
 
@@ -73,6 +102,14 @@ type scoringTaskResponse struct {
 	Error   *string `json:"error,omitempty"`
 }
 
+type traceScoreSummaryResponse struct {
+	Scorer    string    `json:"scorer"`
+	Value     float64   `json:"value"`
+	Threshold float64   `json:"threshold"`
+	Passed    bool      `json:"passed"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type traceResponse struct {
 	ID              string                `json:"id" format:"uuid"`
 	ApplicationID   string                `json:"application_id" format:"uuid"`
@@ -91,6 +128,24 @@ type traceResponse struct {
 	ScoringTasks    []scoringTaskResponse `json:"scoring_tasks,omitempty"`
 	CreatedAt       time.Time             `json:"created_at"`
 	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
+type traceListResponse struct {
+	ID              string                      `json:"id" format:"uuid"`
+	ApplicationID   string                      `json:"application_id" format:"uuid"`
+	OTelTraceID     string                      `json:"otel_trace_id"`
+	RootName        string                      `json:"root_name"`
+	StartTime       time.Time                   `json:"start_time"`
+	EndTime         time.Time                   `json:"end_time"`
+	Status          string                      `json:"status"`
+	SpanCount       int                         `json:"span_count"`
+	TotalTokens     int64                       `json:"total_tokens"`
+	TotalCost       *string                     `json:"total_cost,omitempty"`
+	ReferenceAnswer *string                     `json:"reference_answer,omitempty"`
+	Attributes      map[string]any              `json:"attributes"`
+	ScoreSummaries  []traceScoreSummaryResponse `json:"score_summaries" nullable:"false"`
+	CreatedAt       time.Time                   `json:"created_at"`
+	UpdatedAt       time.Time                   `json:"updated_at"`
 }
 
 type spanResponse struct {
@@ -121,16 +176,20 @@ type traceCursorJSON struct {
 }
 
 func (h *handler) registerTraceRoutes() {
-	score := h.projectOperation(
+	score := traceReadOperation(h.projectOperation(
 		http.MethodPost, "/v1/traces/score", "score-traces", "Queue trace scoring",
 		http.StatusNotFound,
-	)
+	))
 	score.DefaultStatus = http.StatusAccepted
 	huma.Register(h.api, score, h.scoreTraces)
-	huma.Register(h.api, h.projectOperation(
+	huma.Register(h.api, h.operation(
+		http.MethodGet, "/v1/traces/{id}/scoring-eligibility", "get-trace-scoring-eligibility",
+		"Get trace scoring eligibility", http.StatusNotFound,
+	), h.scoringEligibility)
+	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodPatch, "/v1/traces/{id}/reference", "attach-trace-reference",
 		"Attach a trace reference", http.StatusNotFound,
-	), h.attachTraceReference)
+	)), h.attachTraceReference)
 	huma.Register(h.api, traceReadOperation(h.projectOperation(
 		http.MethodGet,
 		"/v1/traces",
@@ -145,16 +204,47 @@ func (h *handler) registerTraceRoutes() {
 		"Get a trace and its span tree",
 		http.StatusNotFound,
 	)), h.getTrace)
+	remove := h.operation(
+		http.MethodDelete, "/v1/traces/{id}", "delete-trace", "Delete a trace",
+		http.StatusNotFound,
+	)
+	remove.DefaultStatus = http.StatusNoContent
+	huma.Register(h.api, remove, h.deleteTrace)
+}
+
+func (h *handler) scoringEligibility(
+	ctx context.Context,
+	input *scoringEligibilityInput,
+) (*scoringEligibilityResult, error) {
+	traceID, err := parseID(input.ID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("get trace scoring eligibility", err)
+	}
+	items, err := h.traces.ScoringEligibility(ctx, traceID)
+	if err != nil {
+		return nil, h.responseError("get trace scoring eligibility", err)
+	}
+	result := &scoringEligibilityResult{}
+	result.Body.Items = make([]scoringEligibilityResponse, 0, len(items))
+	for _, item := range items {
+		output := scoringEligibilityResponse{
+			Scorer: item.Scorer, Eligible: item.Eligible,
+			Reasons: make([]scoringEligibilityReasonResponse, 0, len(item.Reasons)),
+		}
+		for _, reason := range item.Reasons {
+			output.Reasons = append(output.Reasons, scoringEligibilityReasonResponse{
+				Code: reason.Code, Message: reason.Message,
+			})
+		}
+		result.Body.Items = append(result.Body.Items, output)
+	}
+	return result, nil
 }
 
 func (h *handler) scoreTraces(
 	ctx context.Context,
 	input *scoreTracesInput,
 ) (*scoringTaskCollectionResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("score traces", err)
-	}
 	traceIDs := make([]uuid.UUID, 0, len(input.Body.TraceIDs))
 	for _, value := range input.Body.TraceIDs {
 		traceID, parseErr := parseID(value, "trace ID")
@@ -163,7 +253,7 @@ func (h *handler) scoreTraces(
 		}
 		traceIDs = append(traceIDs, traceID)
 	}
-	jobs, err := h.traces.QueueScores(ctx, projectID, traceIDs, input.Body.Scorers, true)
+	jobs, err := h.queueTraceScores(ctx, input, traceIDs)
 	if err != nil {
 		return nil, h.responseError("score traces", err)
 	}
@@ -175,25 +265,63 @@ func (h *handler) scoreTraces(
 	return result, nil
 }
 
+func (h *handler) queueTraceScores(
+	ctx context.Context,
+	input *scoreTracesInput,
+	traceIDs []uuid.UUID,
+) ([]domain.Job, error) {
+	if h.isAdmin(input.Authorization) {
+		return h.traces.QueueScoresAdmin(ctx, traceIDs, input.Body.Scorers)
+	}
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return nil, err
+	}
+	return h.traces.QueueScores(ctx, projectID, traceIDs, input.Body.Scorers, true)
+}
+
 func (h *handler) attachTraceReference(
 	ctx context.Context,
 	input *attachTraceReferenceInput,
 ) (*traceResult, error) {
-	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-	if err != nil {
-		return nil, h.responseError("attach trace reference", err)
-	}
 	traceID, err := parseID(input.ID, "trace ID")
 	if err != nil {
 		return nil, h.responseError("attach trace reference", err)
 	}
-	trace, err := h.traces.AttachReference(
-		ctx, projectID, traceID, input.Body.ReferenceAnswer,
-	)
+	trace, err := h.attachReference(ctx, input, traceID)
 	if err != nil {
 		return nil, h.responseError("attach trace reference", err)
 	}
 	return &traceResult{Body: traceOutput(trace, true)}, nil
+}
+
+func (h *handler) attachReference(
+	ctx context.Context,
+	input *attachTraceReferenceInput,
+	traceID uuid.UUID,
+) (domain.Trace, error) {
+	if h.isAdmin(input.Authorization) {
+		return h.traces.AttachReferenceAdmin(ctx, traceID, input.Body.ReferenceAnswer)
+	}
+	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	if err != nil {
+		return domain.Trace{}, err
+	}
+	return h.traces.AttachReference(ctx, projectID, traceID, input.Body.ReferenceAnswer)
+}
+
+func (h *handler) deleteTrace(
+	ctx context.Context,
+	input *traceIDInput,
+) (*emptyOutput, error) {
+	traceID, err := parseID(input.ID, "trace ID")
+	if err != nil {
+		return nil, h.responseError("delete trace", err)
+	}
+	if err := h.traces.DeleteAdmin(ctx, traceID); err != nil {
+		return nil, h.responseError("delete trace", err)
+	}
+	return &emptyOutput{}, nil
 }
 
 func (h *handler) listTraces(
@@ -213,9 +341,9 @@ func (h *handler) listTraces(
 		return nil, h.responseError("list traces", err)
 	}
 	result := &traceCollectionResult{}
-	result.Body.Items = make([]traceResponse, 0, len(page.Items))
+	result.Body.Items = make([]traceListResponse, 0, len(page.Items))
 	for _, trace := range page.Items {
-		result.Body.Items = append(result.Body.Items, traceOutput(trace, false))
+		result.Body.Items = append(result.Body.Items, traceListOutput(trace))
 	}
 	result.Body.NextCursor, err = encodeTraceCursor(page.NextCursor)
 	if err != nil {
@@ -280,7 +408,13 @@ func (h *handler) getTrace(
 func traceQuery(input *listTracesInput) (domain.TraceQuery, error) {
 	query := domain.TraceQuery{
 		Status: input.Status,
+		Q:      input.Q,
+		Scorer: input.Scorer,
 		Limit:  input.Limit,
+	}
+	if input.Passed != "" {
+		passed := input.Passed == "true"
+		query.Passed = &passed
 	}
 	if !input.Start.IsZero() {
 		query.Start = &input.Start
@@ -367,6 +501,33 @@ func traceOutput(trace domain.Trace, includeSpans bool) traceResponse {
 	return response
 }
 
+func traceListOutput(trace domain.Trace) traceListResponse {
+	response := traceListResponse{
+		ID:              trace.ID.String(),
+		ApplicationID:   trace.ApplicationID.String(),
+		OTelTraceID:     hex.EncodeToString(trace.OTelTraceID[:]),
+		RootName:        trace.RootName,
+		StartTime:       trace.StartTime,
+		EndTime:         trace.EndTime,
+		Status:          trace.Status,
+		SpanCount:       trace.SpanCount,
+		TotalTokens:     trace.TotalTokens,
+		TotalCost:       trace.TotalCost,
+		ReferenceAnswer: trace.ReferenceAnswer,
+		Attributes:      trace.Attributes,
+		ScoreSummaries:  make([]traceScoreSummaryResponse, 0, len(trace.ScoreSummaries)),
+		CreatedAt:       trace.CreatedAt,
+		UpdatedAt:       trace.UpdatedAt,
+	}
+	for _, summary := range trace.ScoreSummaries {
+		response.ScoreSummaries = append(response.ScoreSummaries, traceScoreSummaryResponse{
+			Scorer: summary.Scorer, Value: summary.Value, Threshold: summary.Threshold,
+			Passed: summary.Passed, CreatedAt: summary.CreatedAt,
+		})
+	}
+	return response
+}
+
 func scoringTaskOutput(job domain.Job) scoringTaskResponse {
 	response := scoringTaskResponse{
 		ID: job.ID.String(), Scorer: job.Scorer, Status: job.Status, Error: job.LastError,
@@ -375,27 +536,6 @@ func scoringTaskOutput(job domain.Job) scoringTaskResponse {
 		response.TraceID = job.TraceID.String()
 	}
 	return response
-}
-
-func spanTree(spans []domain.Span) []*spanResponse {
-	nodes := make(map[string]*spanResponse, len(spans))
-	ordered := make([]*spanResponse, 0, len(spans))
-	for _, span := range spans {
-		node := spanOutput(span)
-		nodes[node.OTelSpanID] = node
-		ordered = append(ordered, node)
-	}
-	roots := make([]*spanResponse, 0)
-	for _, node := range ordered {
-		if node.ParentSpanID != nil {
-			if parent, found := nodes[*node.ParentSpanID]; found && parent != node {
-				parent.Children = append(parent.Children, node)
-				continue
-			}
-		}
-		roots = append(roots, node)
-	}
-	return roots
 }
 
 func spanOutput(span domain.Span) *spanResponse {

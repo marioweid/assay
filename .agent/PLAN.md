@@ -1,15 +1,15 @@
 ## Now
 
-- Post-merge findings are implemented, verified with available local gates, and independently reviewed with no blockers or should-fix items; ready for user review.
-- Docker-backed PostgreSQL integration tests remain locally skipped because Docker is unavailable. Go race detection remains blocked because CGO is disabled and no C compiler is installed.
+- Post-merge findings are merged in PR #9 (`132cba7`), independently reviewed, and verified by all backend, web, and Python CI workflows; ready for the next milestone.
 - Preserve the user-owned untracked `Default.merchant-rules-v36.json` and `nul` paths.
 
 ## Next
 
-- Run the Docker-backed migration/concurrency tests and Go race suite in CI or once the required local services/toolchain are available.
+- Select the next scoped milestone.
 
 ## Done
 
+- 2026-09-11 PR #9 passed Docker-backed PostgreSQL integration tests, Go race detection, frontend production checks, and Python checks in CI.
 - 2026-09-11 closed `findings.md`: scoped deletion locking, single-source application loading with error presentation, protected one-time keys, blank expected-output normalization, narrowed docs ignore, and populated migration upgrade coverage.
 
 - 2026-09-11 M7C5 and M7C6 merged to `main` in PR #8 (`41e3a6d`). M7C6 shipped eligibility, reference/score/save-to-dataset trace-detail actions, transactional score-evidence import, generated contract/client, and Python one-POST delegation.

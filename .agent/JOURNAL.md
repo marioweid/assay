@@ -35,3 +35,8 @@
 
 [OUTCOME] Replaced global jobs-table deletion locks with deterministic target-scoped row locks across trace, run, dataset, application, and project deletion. Authentication now seeds the application catalog without a duplicate request and catalog errors render truthfully. One-time API keys resist Escape/outside dismissal, blank Python expected outputs normalize to `None`, the docs ignore is scoped, and migration 5 → 6 now has a populated historical-run test. Independent concurrency-focused review passed with no findings.
 [VERIFY] Go build, non-race tests, golangci-lint v2.13.1, and sqlc v1.31.1 generation pass. Frontend 140 tests, lint, typecheck, format, and production build pass. Python 158 tests pass with one opt-in live test skipped; ruff and ty pass. Docker-backed PostgreSQL cases were skipped because Docker is unavailable. Go race detection could not run because CGO is disabled and no C compiler is installed.
+
+## 2026-09-11T20:51Z — Post-merge findings landed
+
+[OUTCOME] PR #9 merged to `main` as `132cba7` through the repository PR workflow.
+[VERIFY] Backend CI passed in 3m08s, including Docker-backed PostgreSQL integration tests and Go race detection. Web CI passed in 2m07s, and Python CI passed in 10s.

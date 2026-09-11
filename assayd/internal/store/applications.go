@@ -129,10 +129,11 @@ func (d *Database) UpdateApplication(
 
 // DeleteApplication removes an application by ID.
 func (d *Database) DeleteApplication(ctx context.Context, applicationID uuid.UUID) error {
-	return d.deleteWithJobLock(ctx, "delete application", func(queries *db.Queries) error {
-		_, err := queries.DeleteApplication(ctx, applicationID)
-		return err
-	})
+	return d.deleteWithJobLock(
+		ctx, "delete application", lockApplicationJobs(applicationID), func(queries *db.Queries) error {
+			_, err := queries.DeleteApplication(ctx, applicationID)
+			return err
+		})
 }
 
 type applicationParams struct {

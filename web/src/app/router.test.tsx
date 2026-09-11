@@ -25,8 +25,14 @@ beforeEach(() => localStorage.clear());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-test("validates and persists a token while preserving a protected deep link", async () => {
-  server.use(http.get("*/v1/applications", () => HttpResponse.json({ items: [application] })));
+test("validates once and seeds the application catalog for a protected deep link", async () => {
+  let requests = 0;
+  server.use(
+    http.get("*/v1/applications", () => {
+      requests++;
+      return HttpResponse.json({ items: [application] });
+    }),
+  );
   renderApp("/apps/019d11d2-cbd3-7a5e-ae83-9b791c9329de/traces");
   const user = userEvent.setup();
 
@@ -35,6 +41,7 @@ test("validates and persists a token while preserving a protected deep link", as
 
   expect(await screen.findByRole("heading", { name: "Traces" })).toBeInTheDocument();
   expect(localStorage.getItem(storageKey)).toBe("admin-secret");
+  expect(requests).toBe(1);
 });
 
 test("removes a rejected stored token", async () => {

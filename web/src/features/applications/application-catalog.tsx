@@ -16,10 +16,12 @@ type ApplicationCatalog = {
 const ApplicationCatalogContext = createContext<ApplicationCatalog | null>(null);
 
 export function ApplicationCatalogProvider({ children }: { children: ReactNode }): ReactNode {
-  const { status } = useAuth();
+  const { applications: authenticatedApplications, status } = useAuth();
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
-  const [applications, setApplications] = useState<ApplicationResponse[]>([]);
+  const [refreshedApplications, setRefreshedApplications] = useState<ApplicationResponse[] | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +36,7 @@ export function ApplicationCatalogProvider({ children }: { children: ReactNode }
     try {
       const response = await listApplications({ signal: controller.signal, throwOnError: true });
       if (controller.signal.aborted || generation.current !== currentGeneration) return;
-      setApplications(response.data.items ?? []);
+      setRefreshedApplications(response.data.items ?? []);
     } catch (reason) {
       if (controller.signal.aborted || generation.current !== currentGeneration) return;
       setError(reason instanceof Problem ? reason.title : "Unable to load applications");
@@ -47,19 +49,24 @@ export function ApplicationCatalogProvider({ children }: { children: ReactNode }
   }, [status]);
 
   useEffect(() => {
-    if (status === "connected") {
-      void refresh();
-      return () => request.current?.abort();
-    }
+    if (status === "connected") return;
     generation.current++;
     request.current?.abort();
     request.current = null;
-    setApplications([]);
+    setRefreshedApplications(null);
     setError(null);
     setLoading(false);
-    return undefined;
-  }, [refresh, status]);
+  }, [status]);
 
+  useEffect(
+    () => () => {
+      generation.current++;
+      request.current?.abort();
+    },
+    [],
+  );
+
+  const applications = refreshedApplications ?? authenticatedApplications;
   return (
     <ApplicationCatalogContext value={{ applications, error, loading, refresh }}>
       {children}

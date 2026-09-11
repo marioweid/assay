@@ -30,11 +30,51 @@ SELECT * FROM jobs
 WHERE kind = 'scoring_task' AND trace_id = $1
 ORDER BY scorer;
 
--- name: LockJobTableForWrite :exec
-LOCK TABLE jobs IN ROW EXCLUSIVE MODE;
+-- name: LockTraceJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.trace_id = $1
+ORDER BY j.id
+FOR UPDATE OF j;
 
--- name: LockJobTableForDelete :exec
-LOCK TABLE jobs IN EXCLUSIVE MODE;
+-- name: LockEvalRunJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id = $1
+ORDER BY j.id
+FOR UPDATE OF j;
+
+-- name: LockDatasetJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+    SELECT eval_runs.id FROM eval_runs WHERE eval_runs.dataset_id = $1
+)
+ORDER BY j.id
+FOR UPDATE OF j;
+
+-- name: LockApplicationJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+        SELECT eval_runs.id FROM eval_runs WHERE eval_runs.application_id = $1
+    )
+   OR j.trace_id IN (
+        SELECT traces.id FROM traces WHERE traces.application_id = $1
+    )
+ORDER BY j.id
+FOR UPDATE OF j;
+
+-- name: LockProjectJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+        SELECT er.id FROM eval_runs AS er
+        JOIN applications AS application ON application.id = er.application_id
+        WHERE application.project_id = $1
+    )
+   OR j.trace_id IN (
+        SELECT trace.id FROM traces AS trace
+        JOIN applications AS application ON application.id = trace.application_id
+        WHERE application.project_id = $1
+    )
+ORDER BY j.id
+FOR UPDATE OF j;
 
 -- name: ClaimJob :one
 WITH candidate AS (

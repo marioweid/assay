@@ -7,6 +7,7 @@ export type DialogProps = {
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
+  dismissible?: boolean;
   children: ReactNode;
 };
 
@@ -15,6 +16,7 @@ export function Dialog({
   onOpenChange,
   title,
   description,
+  dismissible = true,
   children,
 }: DialogProps): React.ReactElement {
   const lastFocused = useRef<HTMLElement | null>(null);
@@ -33,8 +35,17 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
+        <RadixDialog.Overlay
+          className="fixed inset-0 z-40 bg-black/40"
+          data-testid="dialog-overlay"
+        />
         <RadixDialog.Content
+          onEscapeKeyDown={(event) => {
+            if (!dismissible) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (!dismissible) event.preventDefault();
+          }}
           className={[
             "fixed left-1/2 top-1/2 z-50 grid w-[min(100%-2rem,36rem)]",
             "max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2",

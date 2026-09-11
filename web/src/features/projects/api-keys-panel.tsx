@@ -108,6 +108,7 @@ function CreateKeyDialog({
 
   return (
     <Dialog
+      dismissible={createdKey === null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}

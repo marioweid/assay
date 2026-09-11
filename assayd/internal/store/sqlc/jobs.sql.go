@@ -327,22 +327,92 @@ func (q *Queries) ListTraceScoringTasks(ctx context.Context, traceID pgtype.UUID
 	return items, nil
 }
 
-const lockJobTableForDelete = `-- name: LockJobTableForDelete :exec
-LOCK TABLE jobs IN EXCLUSIVE MODE
+const lockApplicationJobsForDelete = `-- name: LockApplicationJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+        SELECT eval_runs.id FROM eval_runs WHERE eval_runs.application_id = $1
+    )
+   OR j.trace_id IN (
+        SELECT traces.id FROM traces WHERE traces.application_id = $1
+    )
+ORDER BY j.id
+FOR UPDATE OF j
 `
 
-func (q *Queries) LockJobTableForDelete(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockJobTableForDelete)
-	return err
+func (q *Queries) LockApplicationJobsForDelete(ctx context.Context, applicationID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockApplicationJobsForDelete, applicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const lockJobTableForWrite = `-- name: LockJobTableForWrite :exec
-LOCK TABLE jobs IN ROW EXCLUSIVE MODE
+const lockDatasetJobsForDelete = `-- name: LockDatasetJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+    SELECT eval_runs.id FROM eval_runs WHERE eval_runs.dataset_id = $1
+)
+ORDER BY j.id
+FOR UPDATE OF j
 `
 
-func (q *Queries) LockJobTableForWrite(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockJobTableForWrite)
-	return err
+func (q *Queries) LockDatasetJobsForDelete(ctx context.Context, datasetID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockDatasetJobsForDelete, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockEvalRunJobsForDelete = `-- name: LockEvalRunJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id = $1
+ORDER BY j.id
+FOR UPDATE OF j
+`
+
+func (q *Queries) LockEvalRunJobsForDelete(ctx context.Context, evalRunID pgtype.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockEvalRunJobsForDelete, evalRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockOwnedJob = `-- name: LockOwnedJob :one
@@ -363,6 +433,69 @@ func (q *Queries) LockOwnedJob(ctx context.Context, arg LockOwnedJobParams) (uui
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const lockProjectJobsForDelete = `-- name: LockProjectJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.eval_run_id IN (
+        SELECT er.id FROM eval_runs AS er
+        JOIN applications AS application ON application.id = er.application_id
+        WHERE application.project_id = $1
+    )
+   OR j.trace_id IN (
+        SELECT trace.id FROM traces AS trace
+        JOIN applications AS application ON application.id = trace.application_id
+        WHERE application.project_id = $1
+    )
+ORDER BY j.id
+FOR UPDATE OF j
+`
+
+func (q *Queries) LockProjectJobsForDelete(ctx context.Context, projectID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockProjectJobsForDelete, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockTraceJobsForDelete = `-- name: LockTraceJobsForDelete :many
+SELECT j.id FROM jobs AS j
+WHERE j.trace_id = $1
+ORDER BY j.id
+FOR UPDATE OF j
+`
+
+func (q *Queries) LockTraceJobsForDelete(ctx context.Context, traceID pgtype.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockTraceJobsForDelete, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const reapExpiredJobs = `-- name: ReapExpiredJobs :one

@@ -2,6 +2,19 @@
 
 Reviewed `origin/main...HEAD` on branch `feat/product-completion`.
 
+## Resolution
+
+Resolved after merge on 2026-09-11. The dark-mode palette issue was already fixed in PR #8. The
+follow-up changes replace global job-table deletion locks with target-scoped row locks, seed the
+application catalog from authentication, surface refresh failures, protect newly created API keys
+from implicit dismissal, normalize blank Python expected outputs, narrow the documentation ignore
+rule, and exercise a populated migration 5 → 6 upgrade. Independent review found no blockers or
+should-fix items.
+
+Available Go, frontend, and Python checks pass. Docker-backed PostgreSQL tests could not execute
+because the local Docker daemon is unavailable, and Go race detection could not run because CGO is
+disabled and no C compiler is installed.
+
 ## High
 
 ### 1. Dark mode breaks existing screens

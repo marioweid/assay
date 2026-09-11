@@ -12,12 +12,13 @@ import { fieldControlClass } from "@/components/ui/field";
 import { EmptyState } from "@/components/empty-state";
 import { LoadingState } from "@/components/loading-state";
 import { PageHeading } from "@/components/page-heading";
+import { ProblemState } from "@/components/problem-state";
 import { useApplicationCatalog } from "@/features/applications/application-catalog";
 import { ApplicationForm } from "@/features/applications/application-form";
 
 export function ApplicationsPage(): ReactNode {
   const { disconnect } = useAuth();
-  const { applications, loading, refresh } = useApplicationCatalog();
+  const { applications, error, loading, refresh } = useApplicationCatalog();
   const [editing, setEditing] = useState<ApplicationResponse | "new" | null>(null);
   const [deleting, setDeleting] = useState<ApplicationResponse | null>(null);
   const close = (): void => setEditing(null);
@@ -55,6 +56,12 @@ export function ApplicationsPage(): ReactNode {
       </div>
       {loading ? (
         <LoadingState label="Loading applications" />
+      ) : error !== null ? (
+        <ProblemState
+          detail={error}
+          onRetry={() => void refresh()}
+          title="Applications unavailable"
+        />
       ) : applications.length === 0 ? (
         <EmptyState
           action={
@@ -62,7 +69,9 @@ export function ApplicationsPage(): ReactNode {
               Create application
             </Button>
           }
-          description="Create an application here, or use the CLI or API to start collecting traces."
+          description={
+            "Create an application here, or use the CLI or API to start collecting traces."
+          }
           title="No applications yet"
         />
       ) : (

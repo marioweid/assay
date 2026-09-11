@@ -43,9 +43,6 @@ func (d *Database) createEvalRunTransaction(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := db.New(tx)
-	if err := queries.LockJobTableForWrite(ctx); err != nil {
-		return domain.EvalRun{}, mapStoreError("lock jobs for run creation", err)
-	}
 	row, err := queries.CreateEvalRun(ctx, db.CreateEvalRunParams{
 		ID: run.ID, Name: run.Name, Mode: run.Mode, Params: params, Scorers: run.Scorers,
 		DatasetID: run.DatasetID, ApplicationID: run.ApplicationID,

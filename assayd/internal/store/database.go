@@ -9,6 +9,7 @@ import (
 
 	db "github.com/marioweid/assay/assayd/internal/store/sqlc"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
@@ -20,9 +21,12 @@ type Database struct {
 	queries     *db.Queries
 }
 
+type deleteJobLocker func(context.Context, *db.Queries) error
+
 func (d *Database) deleteWithJobLock(
 	ctx context.Context,
 	operation string,
+	lockJobs deleteJobLocker,
 	remove func(*db.Queries) error,
 ) error {
 	tx, err := d.pool.Begin(ctx)
@@ -31,7 +35,7 @@ func (d *Database) deleteWithJobLock(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := db.New(tx)
-	if err := queries.LockJobTableForDelete(ctx); err != nil {
+	if err := lockJobs(ctx, queries); err != nil {
 		return mapStoreError("lock jobs for deletion", err)
 	}
 	if err := remove(queries); err != nil {
@@ -41,6 +45,41 @@ func (d *Database) deleteWithJobLock(
 		return fmt.Errorf("commit %s transaction: %w", operation, err)
 	}
 	return nil
+}
+
+func lockApplicationJobs(applicationID uuid.UUID) deleteJobLocker {
+	return func(ctx context.Context, queries *db.Queries) error {
+		_, err := queries.LockApplicationJobsForDelete(ctx, applicationID)
+		return err
+	}
+}
+
+func lockDatasetJobs(datasetID uuid.UUID) deleteJobLocker {
+	return func(ctx context.Context, queries *db.Queries) error {
+		_, err := queries.LockDatasetJobsForDelete(ctx, datasetID)
+		return err
+	}
+}
+
+func lockEvalRunJobs(runID uuid.UUID) deleteJobLocker {
+	return func(ctx context.Context, queries *db.Queries) error {
+		_, err := queries.LockEvalRunJobsForDelete(ctx, nullableUUID(&runID))
+		return err
+	}
+}
+
+func lockProjectJobs(projectID uuid.UUID) deleteJobLocker {
+	return func(ctx context.Context, queries *db.Queries) error {
+		_, err := queries.LockProjectJobsForDelete(ctx, projectID)
+		return err
+	}
+}
+
+func lockTraceJobs(traceID uuid.UUID) deleteJobLocker {
+	return func(ctx context.Context, queries *db.Queries) error {
+		_, err := queries.LockTraceJobsForDelete(ctx, nullableUUID(&traceID))
+		return err
+	}
 }
 
 // Open connects both Postgres handles and verifies that the database is reachable.

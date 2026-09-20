@@ -83,6 +83,7 @@ func assertEvaluationPaths(t *testing.T, paths map[string]map[string]generatedOp
 		"/v1/runs",
 		"/v1/runs/{id}",
 		"/v1/runs/{id}/items",
+		"/v1/runs/{id}/items/{itemId}",
 		"/v1/runs/{id}/scores",
 		"/v1/runs/{id}/cancel",
 	}

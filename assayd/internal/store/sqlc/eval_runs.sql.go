@@ -362,6 +362,77 @@ func (q *Queries) GetEvalRun(ctx context.Context, id uuid.UUID) (EvalRun, error)
 	return i, err
 }
 
+const getEvalRunItem = `-- name: GetEvalRunItem :one
+SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
+       ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
+       ri.snapshot_dataset_id AS dataset_id, ri.snapshot_external_id AS external_id,
+       ri.snapshot_input AS input, ri.snapshot_output AS output,
+       ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
+       ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
+FROM eval_run_items ri
+WHERE ri.eval_run_id = $1
+  AND ri.dataset_item_id = $2
+`
+
+type GetEvalRunItemParams struct {
+	EvalRunID     uuid.UUID
+	DatasetItemID uuid.UUID
+}
+
+type GetEvalRunItemRow struct {
+	EvalRunID        uuid.UUID
+	DatasetItemID    uuid.UUID
+	Status           string
+	Error            pgtype.Text
+	StartedAt        pgtype.Timestamptz
+	FinishedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	GeneratedOutput  pgtype.Text
+	GeneratedContext []byte
+	GeneratedAt      pgtype.Timestamptz
+	DatasetID        uuid.UUID
+	ExternalID       pgtype.Text
+	Input            json.RawMessage
+	Output           pgtype.Text
+	ExpectedOutput   pgtype.Text
+	Context          json.RawMessage
+	Metadata         json.RawMessage
+	ItemCreatedAt    pgtype.Timestamptz
+	ItemUpdatedAt    pgtype.Timestamptz
+	SnapshotOrigin   string
+}
+
+func (q *Queries) GetEvalRunItem(ctx context.Context, arg GetEvalRunItemParams) (GetEvalRunItemRow, error) {
+	row := q.db.QueryRow(ctx, getEvalRunItem, arg.EvalRunID, arg.DatasetItemID)
+	var i GetEvalRunItemRow
+	err := row.Scan(
+		&i.EvalRunID,
+		&i.DatasetItemID,
+		&i.Status,
+		&i.Error,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GeneratedOutput,
+		&i.GeneratedContext,
+		&i.GeneratedAt,
+		&i.DatasetID,
+		&i.ExternalID,
+		&i.Input,
+		&i.Output,
+		&i.ExpectedOutput,
+		&i.Context,
+		&i.Metadata,
+		&i.ItemCreatedAt,
+		&i.ItemUpdatedAt,
+		&i.SnapshotOrigin,
+	)
+	return i, err
+}
+
 const insertOfflineScore = `-- name: InsertOfflineScore :one
 INSERT INTO scores (
     scorer, scorer_config_id, value, threshold, passed, rationale, details,
@@ -447,6 +518,65 @@ func (q *Queries) InsertOfflineScore(ctx context.Context, arg InsertOfflineScore
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listEvalRunItemScores = `-- name: ListEvalRunItemScores :many
+SELECT id, scorer, scorer_config_id, value, threshold, passed, rationale, details,
+       prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
+       dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input,
+       judged_output, judged_context, judged_reference
+FROM scores
+WHERE eval_run_id = $1
+  AND dataset_item_id = ANY($2::uuid[])
+ORDER BY dataset_item_id, scorer, created_at, id
+`
+
+type ListEvalRunItemScoresParams struct {
+	EvalRunID      pgtype.UUID
+	DatasetItemIds []uuid.UUID
+}
+
+func (q *Queries) ListEvalRunItemScores(ctx context.Context, arg ListEvalRunItemScoresParams) ([]Score, error) {
+	rows, err := q.db.Query(ctx, listEvalRunItemScores, arg.EvalRunID, arg.DatasetItemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Score
+	for rows.Next() {
+		var i Score
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scorer,
+			&i.ScorerConfigID,
+			&i.Value,
+			&i.Threshold,
+			&i.Passed,
+			&i.Rationale,
+			&i.Details,
+			&i.PromptTemplateID,
+			&i.JudgeModel,
+			&i.JudgeProvider,
+			&i.JudgeTokens,
+			&i.EvalRunID,
+			&i.DatasetItemID,
+			&i.CreatedAt,
+			&i.TraceID,
+			&i.SpanID,
+			&i.SpanStartTime,
+			&i.JudgedInput,
+			&i.JudgedOutput,
+			&i.JudgedContext,
+			&i.JudgedReference,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEvalRunItems = `-- name: ListEvalRunItems :many

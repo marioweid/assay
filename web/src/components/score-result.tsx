@@ -15,7 +15,7 @@ export function ScoreResult({ score }: ScoreResultProps) {
         <StatusBadge tone={score.passed ? "success" : "danger"}>
           {score.passed ? "Passed" : "Failed"}
         </StatusBadge>
-        <strong className="font-mono text-lg">{score.value}</strong>
+        <strong className="font-mono text-lg">{score.value.toFixed(2)}</strong>
         <span className="text-sm text-muted">Threshold {score.threshold}</span>
       </div>
       <p className="mt-3 text-sm leading-6">{score.rationale}</p>

@@ -45,3 +45,18 @@
 
 [OUTCOME] Identified root `nul` as redirected `where.exe` stderr created by Windows-style `2>NUL` under Git Bash. Renamed and moved `nul` plus the empty `nul.txt` fallback artifact to a temporary directory, then sent both safely to the Windows Recycle Bin. Future Git Bash commands use `/dev/null`.
 [VERIFY] `git status` no longer reports either reserved-name artifact.
+
+## 2026-09-20T07:42Z — M7D1 evaluation item evidence complete
+
+[OUTCOME] Paged evaluation items now include complete persisted score evidence, and admin-only scoped item lookup returns the same immutable snapshot after source deletion. Both reads use one repeatable-read snapshot, preventing impossible running-item/new-score combinations during worker completion. Independent review passed after the consistency repair.
+[VERIFY] The deterministic interleaving test failed under read committed and passed under repeatable read for list and direct reads. Focused race tests, full Go tests, build, golangci-lint, 140 web tests, web lint/format/typecheck/build, generation stability, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 engine warning.
+
+## 2026-09-20T07:50Z — M7D2 case outcomes started
+
+[OUTCOME] Run detail now loads cursor-paginated case outcomes, labels execution failures separately from absent quality scores, and preserves zero-valued failed scores. Shared score cards consistently format score values to two decimals.
+[VERIFY] The score regression failed before formatting was fixed. All 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed; pnpm reported the known Node 24 versus required Node 22 engine warning.
+
+## 2026-09-20T07:54Z — M7D2 direct case evidence
+
+[OUTCOME] Run cases now open URL-backed direct detail through the scoped item endpoint, showing original input/context/reference, recorded versus generated output, execution errors, score rationale, provenance, and raw details.
+[VERIFY] Focused run tests and all 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed.

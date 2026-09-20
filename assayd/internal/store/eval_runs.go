@@ -194,13 +194,21 @@ func (d *Database) ListEvalRunItems(
 	runID uuid.UUID,
 	query domain.PageQuery,
 ) ([]domain.EvalRunItem, error) {
+	transaction, err := d.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("begin eval run item list transaction: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	queries := d.queries.WithTx(transaction)
 	params := db.ListEvalRunItemsParams{EvalRunID: runID, PageSize: int32(query.Limit)}
 	if query.Cursor != nil {
 		params.HasCursor = true
 		params.CursorTime = timestamp(query.Cursor.CreatedAt)
 		params.CursorID = query.Cursor.ID
 	}
-	rows, err := d.queries.ListEvalRunItems(ctx, params)
+	rows, err := queries.ListEvalRunItems(ctx, params)
 	if err != nil {
 		return nil, mapStoreError("select eval run items", err)
 	}
@@ -212,7 +220,85 @@ func (d *Database) ListEvalRunItems(
 		}
 		items = append(items, item)
 	}
+	if err := attachEvalRunItemScores(ctx, queries, runID, items); err != nil {
+		return nil, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit eval run item list transaction: %w", err)
+	}
 	return items, nil
+}
+
+// GetEvalRunItem returns one item outcome scoped to its run.
+func (d *Database) GetEvalRunItem(
+	ctx context.Context,
+	runID uuid.UUID,
+	itemID uuid.UUID,
+) (domain.EvalRunItem, error) {
+	transaction, err := d.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return domain.EvalRunItem{}, fmt.Errorf("begin eval run item transaction: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	queries := d.queries.WithTx(transaction)
+	row, err := queries.GetEvalRunItem(ctx, db.GetEvalRunItemParams{
+		EvalRunID: runID, DatasetItemID: itemID,
+	})
+	if err != nil {
+		return domain.EvalRunItem{}, mapStoreError("select eval run item", err)
+	}
+	item, err := evalRunItemFromGetRow(row)
+	if err != nil {
+		return domain.EvalRunItem{}, err
+	}
+	items := []domain.EvalRunItem{item}
+	if err := attachEvalRunItemScores(ctx, queries, runID, items); err != nil {
+		return domain.EvalRunItem{}, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return domain.EvalRunItem{}, fmt.Errorf("commit eval run item transaction: %w", err)
+	}
+	return items[0], nil
+}
+
+func attachEvalRunItemScores(
+	ctx context.Context,
+	queries *db.Queries,
+	runID uuid.UUID,
+	items []domain.EvalRunItem,
+) error {
+	if len(items) == 0 {
+		return nil
+	}
+	itemIDs := make([]uuid.UUID, 0, len(items))
+	positions := make(map[uuid.UUID]int, len(items))
+	for index := range items {
+		itemIDs = append(itemIDs, items[index].DatasetItemID)
+		positions[items[index].DatasetItemID] = index
+	}
+	rows, err := queries.ListEvalRunItemScores(ctx, db.ListEvalRunItemScoresParams{
+		EvalRunID: nullableUUID(&runID), DatasetItemIds: itemIDs,
+	})
+	if err != nil {
+		return mapStoreError("select eval run item scores", err)
+	}
+	for _, row := range rows {
+		score, convertErr := scoreFromRow(row)
+		if convertErr != nil {
+			return convertErr
+		}
+		if score.DatasetItemID == nil {
+			return errors.New("select eval run item scores: score is missing dataset item ID")
+		}
+		index, found := positions[*score.DatasetItemID]
+		if !found {
+			return errors.New("select eval run item scores: score belongs to an unexpected item")
+		}
+		items[index].Scores = append(items[index].Scores, score)
+	}
+	return nil
 }
 
 // ListEvalRunScores returns score rows using a bigint cursor.
@@ -266,6 +352,31 @@ func evalRunItemFromRow(row db.ListEvalRunItemsRow) (domain.EvalRunItem, error) 
 		GeneratedOutput:  optionalText(row.GeneratedOutput),
 		GeneratedContext: generatedContext,
 		GeneratedAt:      optionalTimestamp(row.GeneratedAt),
+		Scores:           []domain.Score{},
+	}, nil
+}
+
+func evalRunItemFromGetRow(row db.GetEvalRunItemRow) (domain.EvalRunItem, error) {
+	datasetItem, err := datasetItemFromRow(db.DatasetItem{
+		ID: row.DatasetItemID, DatasetID: row.DatasetID, ExternalID: row.ExternalID,
+		Input: row.Input, Output: row.Output, ExpectedOutput: row.ExpectedOutput,
+		Context: row.Context, Metadata: row.Metadata, CreatedAt: row.ItemCreatedAt,
+		UpdatedAt: row.ItemUpdatedAt,
+	})
+	if err != nil {
+		return domain.EvalRunItem{}, err
+	}
+	generatedContext, err := generatedContextFromJSON(row.GeneratedContext)
+	if err != nil {
+		return domain.EvalRunItem{}, err
+	}
+	return domain.EvalRunItem{
+		EvalRunID: row.EvalRunID, DatasetItemID: row.DatasetItemID, Status: row.Status,
+		Error: optionalText(row.Error), StartedAt: optionalTimestamp(row.StartedAt),
+		FinishedAt: optionalTimestamp(row.FinishedAt), CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time, Item: datasetItem, SnapshotOrigin: row.SnapshotOrigin,
+		GeneratedOutput: optionalText(row.GeneratedOutput), GeneratedContext: generatedContext,
+		GeneratedAt: optionalTimestamp(row.GeneratedAt), Scores: []domain.Score{},
 	}, nil
 }
 

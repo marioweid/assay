@@ -100,7 +100,7 @@ export function RunDetail() {
         </p>
       )}
       <RunSummary run={run} />
-      <RunItems runID={run.id} />
+      <RunItems key={run.id} refreshKey={run.updated_at} runID={run.id} />
       {confirming && (
         <CancelDialog
           canceling={canceling}

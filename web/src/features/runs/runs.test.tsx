@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router";
+import { vi } from "vitest";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
@@ -14,7 +15,10 @@ const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.setItem("assay.admin-token.v1", "admin-secret"));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.useRealTimers();
+});
 afterAll(() => server.close());
 
 test("lists runs with progress and aggregate summaries", async () => {
@@ -168,6 +172,66 @@ test("shows scored and execution-failed run cases", async () => {
   expect(await screen.findByRole("heading", { name: "Case scored" })).toBeInTheDocument();
   expect(screen.getByText("Original input")).toBeInTheDocument();
   expect(screen.getByText("Evidence")).toBeInTheDocument();
+});
+
+test("refreshes the visible case page when an active run advances", async () => {
+  vi.useFakeTimers();
+  let runRequests = 0;
+  let itemRequests = 0;
+  server.use(
+    http.get(`*/v1/runs/${runID}/items`, () => {
+      itemRequests++;
+      return HttpResponse.json({
+        items: [
+          runItemFixture(itemRequests === 1 ? "pending-case" : "finished-case", "succeeded", []),
+        ],
+      });
+    }),
+    http.get(`*/v1/runs/${runID}`, () => {
+      runRequests++;
+      return HttpResponse.json({
+        ...runFixture(runRequests === 1 ? "running" : "succeeded"),
+        updated_at: `2026-09-01T10:00:0${runRequests}Z`,
+      });
+    }),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "pending-case" })).toBeInTheDocument(),
+  );
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "finished-case" })).toBeInTheDocument(),
+  );
+  expect(itemRequests).toBe(2);
+});
+
+test("pages run cases without accumulating prior pages", async () => {
+  const cursors: Array<string | null> = [];
+  server.use(
+    http.get(`*/v1/runs/${runID}/items`, ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get("cursor");
+      cursors.push(cursor);
+      return HttpResponse.json({
+        items: [runItemFixture(cursor === null ? "first" : "second", "succeeded", [])],
+        ...(cursor === null ? { next_cursor: "next" } : {}),
+      });
+    }),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  expect(await screen.findByRole("button", { name: "first" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Next cases" }));
+  expect(await screen.findByRole("button", { name: "second" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "first" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Previous cases" }));
+  expect(await screen.findByRole("button", { name: "first" })).toBeInTheDocument();
+  expect(cursors).toEqual([null, "next", null]);
 });
 
 test("rejects a run from a different application", async () => {

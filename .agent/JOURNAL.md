@@ -60,3 +60,8 @@
 
 [OUTCOME] Run cases now open URL-backed direct detail through the scoped item endpoint, showing original input/context/reference, recorded versus generated output, execution errors, score rationale, provenance, and raw details.
 [VERIFY] Focused run tests and all 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed.
+
+## 2026-09-20T14:07Z — M7D2 bounded item polling
+
+[OUTCOME] Run detail pagination now replaces the visible cursor page instead of accumulating every prior page. Active run updates refresh that page, including one final terminal refresh, while page navigation retains back/forward cursor state.
+[VERIFY] Focused polling and pagination regressions plus all 144 web tests, lint, format, typecheck, production build, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 engine warning.

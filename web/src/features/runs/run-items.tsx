@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { Problem } from "@/api/errors";
@@ -8,46 +8,50 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RunItemDetail } from "@/features/runs/run-item-detail";
 
-export function RunItems({ runID }: { runID: string }) {
+export function RunItems({ refreshKey, runID }: { refreshKey: string; runID: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemID = searchParams.get("item");
   const request = useRef<AbortController | null>(null);
   const [items, setItems] = useState<EvalRunItemResponse[]>([]);
-  const [cursor, setCursor] = useState<string>();
+  const [pageCursor, setPageCursor] = useState<string>();
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [history, setHistory] = useState<Array<string | undefined>>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function load(nextCursor?: string): Promise<void> {
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listEvalRunItems({
-        path: { id: runID },
-        query: { limit: 100, ...(nextCursor === undefined ? {} : { cursor: nextCursor }) },
-        signal: controller.signal,
-        throwOnError: true,
-      });
-      if (controller.signal.aborted) return;
-      const received = response.data.items ?? [];
-      setItems((current) => (nextCursor === undefined ? received : [...current, ...received]));
-      setCursor(response.data.next_cursor);
-    } catch (reason) {
-      if (!controller.signal.aborted)
-        setError(
-          reason instanceof Problem ? (reason.detail ?? reason.title) : "Unable to load cases",
-        );
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }
+  const load = useCallback(
+    async (cursor?: string): Promise<void> => {
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await listEvalRunItems({
+          path: { id: runID },
+          query: { limit: 100, ...(cursor === undefined ? {} : { cursor }) },
+          signal: controller.signal,
+          throwOnError: true,
+        });
+        if (controller.signal.aborted) return;
+        setItems(response.data.items ?? []);
+        setNextCursor(response.data.next_cursor);
+      } catch (reason) {
+        if (!controller.signal.aborted)
+          setError(
+            reason instanceof Problem ? (reason.detail ?? reason.title) : "Unable to load cases",
+          );
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    },
+    [runID],
+  );
 
   useEffect(() => {
-    void load();
+    void load(pageCursor);
     return () => request.current?.abort();
-  }, [runID]); // oxlint-disable-line react-hooks/exhaustive-deps -- load resets for this run ID
+  }, [load, pageCursor, refreshKey]);
 
   return (
     <section aria-labelledby="run-cases-heading" className="mt-6">
@@ -115,10 +119,30 @@ export function RunItems({ runID }: { runID: string }) {
         </div>
       )}
       {loading && <p className="mt-3 text-sm text-muted">Loading cases...</p>}
-      {cursor && !loading && (
-        <Button className="mt-3" onClick={() => void load(cursor)}>
-          Load more cases
-        </Button>
+      {!loading && (history.length > 0 || nextCursor !== undefined) && (
+        <div className="mt-3 flex gap-2">
+          {history.length > 0 && (
+            <Button
+              onClick={() => {
+                const previous = history.at(-1);
+                setHistory((current) => current.slice(0, -1));
+                setPageCursor(previous);
+              }}
+            >
+              Previous cases
+            </Button>
+          )}
+          {nextCursor !== undefined && (
+            <Button
+              onClick={() => {
+                setHistory((current) => [...current, pageCursor]);
+                setPageCursor(nextCursor);
+              }}
+            >
+              Next cases
+            </Button>
+          )}
+        </div>
       )}
       {selectedItemID && (
         <RunItemDetail itemID={selectedItemID} onClose={() => setSearchParams({})} runID={runID} />

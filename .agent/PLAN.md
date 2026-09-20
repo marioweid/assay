@@ -1,10 +1,10 @@
 ## Now
 
-- M7D1 is implemented and independently reviewed on `feat/m7d-evaluation-review`: paged and direct evaluation item reads return immutable snapshots plus complete, consistently snapshotted score evidence.
+- M7D2 is in progress on `feat/m7d-evaluation-review`: run detail now loads paginated case outcomes and distinguishes zero-valued failed scores from execution failures.
 
 ## Next
 
-- Implement and verify M7D2 run-item review using the generated item-detail contract.
+- Add direct case evidence detail, active-run item polling, rerun/delete actions, and bounded JSONL export.
 
 ## Done
 

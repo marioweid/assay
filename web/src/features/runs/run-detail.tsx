@@ -7,6 +7,7 @@ import type { EvalRunResponse } from "@/api/generated/types.gen";
 import { useRunPolling } from "@/features/runs/use-run-polling";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { RunItems } from "@/features/runs/run-items";
 import { isActiveRun } from "@/features/runs/run-status";
 
 export function RunDetail() {
@@ -99,6 +100,7 @@ export function RunDetail() {
         </p>
       )}
       <RunSummary run={run} />
+      <RunItems runID={run.id} />
       {confirming && (
         <CancelDialog
           canceling={canceling}

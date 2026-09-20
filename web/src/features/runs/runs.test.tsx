@@ -139,6 +139,27 @@ test("confirms and applies active-run cancellation", async () => {
   expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument();
 });
 
+test("shows scored and execution-failed run cases", async () => {
+  server.use(
+    http.get(`*/v1/runs/${runID}/items`, () =>
+      HttpResponse.json({
+        items: [
+          runItemFixture("scored", "succeeded", [{ id: 1, value: 0, passed: false }]),
+          { ...runItemFixture("network", "failed", []), error: "Target unavailable" },
+        ],
+      }),
+    ),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+
+  expect(await screen.findByRole("heading", { name: "Cases" })).toBeInTheDocument();
+  expect(await screen.findByText("groundedness 0.00 · Fail")).toBeInTheDocument();
+  expect(screen.getByText("Target unavailable")).toBeInTheDocument();
+  expect(screen.getByText("Not scored")).toBeInTheDocument();
+});
+
 test("rejects a run from a different application", async () => {
   server.use(
     ...baseHandlers(),
@@ -165,6 +186,7 @@ function renderApp(path: string): void {
 
 function baseHandlers() {
   return [
+    http.get("*/v1/runs/:runId/items", () => HttpResponse.json({ items: [] })),
     http.get("*/v1/applications", () =>
       HttpResponse.json({
         items: [
@@ -209,6 +231,43 @@ function baseHandlers() {
       });
     }),
   ];
+}
+
+function runItemFixture(
+  externalID: string,
+  status: string,
+  scores: Array<{ id: number; value: number; passed: boolean }>,
+) {
+  return {
+    eval_run_id: runID,
+    dataset_item_id: `${runID.slice(0, -1)}${externalID === "scored" ? "3" : "4"}`,
+    status,
+    created_at: "2026-09-01T10:00:00Z",
+    updated_at: "2026-09-01T10:00:00Z",
+    snapshot_origin: "creation",
+    snapshot: {
+      id: datasetID,
+      dataset_id: datasetID,
+      external_id: externalID,
+      input: { question: externalID },
+      context: [],
+      metadata: {},
+      created_at: "2026-09-01T10:00:00Z",
+      updated_at: "2026-09-01T10:00:00Z",
+    },
+    scores: scores.map((score) => ({
+      ...score,
+      scorer: "groundedness",
+      threshold: 0.5,
+      rationale: "Evidence",
+      details: {},
+      prompt_template_id: "groundedness@v1",
+      judge_model: "judge",
+      judge_provider: "fake",
+      judge_tokens: 1,
+      created_at: "2026-09-01T10:00:00Z",
+    })),
+  };
 }
 
 function runFixture(status: string) {

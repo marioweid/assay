@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RunItemDetail } from "@/features/runs/run-item-detail";
 
-export function RunItems({ refreshKey, runID }: { refreshKey: string; runID: string }) {
+export function RunItems({
+  refreshGeneration,
+  runID,
+}: {
+  refreshGeneration: number;
+  runID: string;
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemID = searchParams.get("item");
   const request = useRef<AbortController | null>(null);
@@ -51,7 +57,7 @@ export function RunItems({ refreshKey, runID }: { refreshKey: string; runID: str
   useEffect(() => {
     void load(pageCursor);
     return () => request.current?.abort();
-  }, [load, pageCursor, refreshKey]);
+  }, [load, pageCursor, refreshGeneration]);
 
   return (
     <section aria-labelledby="run-cases-heading" className="mt-6">

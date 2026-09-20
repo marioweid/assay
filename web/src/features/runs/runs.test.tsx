@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -174,7 +174,164 @@ test("shows scored and execution-failed run cases", async () => {
   expect(screen.getByText("Evidence")).toBeInTheDocument();
 });
 
-test("refreshes the visible case page when an active run advances", async () => {
+test("prefills a new run from current dataset and configuration", async () => {
+  let requestBody: unknown;
+  server.use(
+    http.post("*/v1/runs", async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json(runFixture("pending"), { status: 201 });
+    }),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Run again" }));
+  const dialog = screen.getByRole("dialog", { name: "Run evaluation again" });
+  expect(dialog).toHaveTextContent("current dataset and current application/scorer configuration");
+  expect(within(dialog).getByLabelText("Run name")).toHaveValue("Baseline run copy");
+  expect(within(dialog).getByLabelText("Dataset")).toHaveValue(datasetID);
+  expect(within(dialog).getByLabelText("groundedness")).toBeChecked();
+  await user.click(within(dialog).getByRole("button", { name: "Create run" }));
+
+  await vi.waitFor(() =>
+    expect(requestBody).toEqual({
+      application_id: appID,
+      dataset_id: datasetID,
+      mode: "score_existing",
+      name: "Baseline run copy",
+      scorers: ["groundedness"],
+    }),
+  );
+});
+
+test("prevents dismissing a rerun while creation is in flight", async () => {
+  let finishRequest: () => void = () => undefined;
+  const pendingRequest = new Promise<void>((resolve) => {
+    finishRequest = resolve;
+  });
+  server.use(
+    http.post("*/v1/runs", async () => {
+      await pendingRequest;
+      return HttpResponse.json(runFixture("pending"), { status: 201 });
+    }),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Run again" }));
+  const dialog = screen.getByRole("dialog", { name: "Run evaluation again" });
+  const submission = user.click(within(dialog).getByRole("button", { name: "Create run" }));
+  await vi.waitFor(() =>
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled(),
+  );
+  finishRequest();
+  await submission;
+  await vi.waitFor(() =>
+    expect(within(dialog).getByRole("button", { name: "Close" })).not.toBeDisabled(),
+  );
+});
+
+test("blocks another rerun after an uncertain create outcome", async () => {
+  server.use(
+    http.post("*/v1/runs", () => HttpResponse.error()),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Run again" }));
+  const dialog = screen.getByRole("dialog", { name: "Run evaluation again" });
+  const create = within(dialog).getByRole("button", { name: "Create run" });
+  await user.click(create);
+
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Creation outcome is unknown");
+  expect(create).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
+  await user.click(within(dialog).getByRole("button", { name: "Refresh run list" }));
+  expect(await screen.findByRole("heading", { name: "Evaluation runs" })).toBeInTheDocument();
+});
+
+test("deletes a terminal run after typed-name confirmation", async () => {
+  let deleted = false;
+  server.use(
+    http.delete(`*/v1/runs/${runID}`, () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete run" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete evaluation run?" });
+  const confirm = within(dialog).getByRole("button", { name: "Delete run" });
+  expect(dialog).toHaveTextContent("case outcomes, and all scores");
+  expect(confirm).toBeDisabled();
+  const confirmation = within(dialog).getByLabelText(/to confirm/);
+  await user.type(confirmation, " Baseline run ");
+  expect(confirm).toBeDisabled();
+  await user.clear(confirmation);
+  await user.type(confirmation, "Baseline run");
+  await user.click(confirm);
+
+  expect(deleted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Evaluation runs" })).toBeInTheDocument();
+});
+
+test("blocks another delete after an uncertain transport outcome", async () => {
+  server.use(
+    http.delete(`*/v1/runs/${runID}`, () => HttpResponse.error()),
+    http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete run" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete evaluation run?" });
+  await user.type(within(dialog).getByLabelText(/to confirm/), "Baseline run");
+  const confirm = within(dialog).getByRole("button", { name: "Delete run" });
+  await user.click(confirm);
+
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Deletion outcome is unknown");
+  expect(confirm).toBeDisabled();
+});
+
+test("refreshes after a run deletion conflict", async () => {
+  let runRequests = 0;
+  server.use(
+    http.delete(`*/v1/runs/${runID}`, () =>
+      HttpResponse.json({ title: "Conflict" }, { status: 409 }),
+    ),
+    http.get(`*/v1/runs/${runID}`, () => {
+      runRequests++;
+      return HttpResponse.json(runFixture(runRequests === 1 ? "succeeded" : "running"));
+    }),
+    ...baseHandlers(),
+  );
+  renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: "Delete run" }));
+  const dialog = screen.getByRole("dialog", { name: "Delete evaluation run?" });
+  await user.type(within(dialog).getByLabelText(/to confirm/), "Baseline run");
+  await user.click(within(dialog).getByRole("button", { name: "Delete run" }));
+
+  expect(await screen.findByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Run state changed. Only terminal runs can be deleted. Run details were refreshed.",
+  );
+  expect(runRequests).toBe(2);
+});
+
+test("polls the visible case page while the parent timestamp is unchanged", async () => {
   vi.useFakeTimers();
   let runRequests = 0;
   let itemRequests = 0;
@@ -183,16 +340,21 @@ test("refreshes the visible case page when an active run advances", async () => 
       itemRequests++;
       return HttpResponse.json({
         items: [
-          runItemFixture(itemRequests === 1 ? "pending-case" : "finished-case", "succeeded", []),
+          runItemFixture(
+            itemRequests === 1
+              ? "pending-case"
+              : itemRequests === 2
+                ? "running-case"
+                : "finished-case",
+            "succeeded",
+            [],
+          ),
         ],
       });
     }),
     http.get(`*/v1/runs/${runID}`, () => {
       runRequests++;
-      return HttpResponse.json({
-        ...runFixture(runRequests === 1 ? "running" : "succeeded"),
-        updated_at: `2026-09-01T10:00:0${runRequests}Z`,
-      });
+      return HttpResponse.json(runFixture(runRequests < 3 ? "running" : "succeeded"));
     }),
     ...baseHandlers(),
   );
@@ -203,9 +365,13 @@ test("refreshes the visible case page when an active run advances", async () => 
   );
   await act(() => vi.advanceTimersByTimeAsync(1000));
   await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "running-case" })).toBeInTheDocument(),
+  );
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "finished-case" })).toBeInTheDocument(),
   );
-  expect(itemRequests).toBe(2);
+  expect(itemRequests).toBe(3);
 });
 
 test("pages run cases without accumulating prior pages", async () => {

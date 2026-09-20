@@ -55,12 +55,17 @@ export function RunItemDetail({
         </h3>
         <Button onClick={onClose}>Close detail</Button>
       </div>
+      <p className="mt-2 text-sm text-muted">
+        Evidence snapshot:{" "}
+        {item.snapshot_origin === "creation" ? "captured at run creation" : "legacy backfill"}
+      </p>
       {item.error && <p className="mt-4 text-sm text-danger">Execution error: {item.error}</p>}
       <dl className="mt-4 grid gap-4 lg:grid-cols-2">
         <Evidence label="Original input" value={item.snapshot.input} />
         <Evidence label="Original context" value={item.snapshot.context} />
         <Evidence label="Recorded output" value={item.snapshot.output ?? null} />
         <Evidence label="Generated output" value={item.generated_output ?? null} />
+        <Evidence label="Generated context" value={item.generated_context ?? null} />
         <Evidence label="Expected output" value={item.snapshot.expected_output ?? null} />
       </dl>
       <div className="mt-6 space-y-3">

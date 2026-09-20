@@ -1,10 +1,10 @@
 ## Now
 
-- M7D2 is in progress on `feat/m7d2-run-item-polling`: run detail loads paginated outcomes and URL-backed direct evidence, and refreshes only the visible cursor page as active runs advance.
+- M7D2 is complete on `feat/m7d2-run-item-polling`: review supports bounded active polling, direct evidence, current-state reruns, cancel/delete lifecycle actions, and capped JSONL export.
 
 ## Next
 
-- Add rerun/delete actions and bounded JSONL export.
+- Start M7D3 paired run comparison with set-based backend queries and regression filters.
 
 ## Done
 

@@ -7,6 +7,7 @@ import { isActiveRun } from "@/features/runs/run-status";
 
 type RunPolling = {
   error: string | null;
+  refreshGeneration: number;
   retry: () => void;
   run: EvalRunResponse | null;
   stopped: boolean;
@@ -16,6 +17,7 @@ export function useRunPolling(runID: string): RunPolling {
   const [run, setRun] = useState<EvalRunResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
   const [retryGeneration, setRetryGeneration] = useState(0);
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export function useRunPolling(runID: string): RunPolling {
         failures = 0;
         setError(null);
         setRun(response.data);
+        setRefreshGeneration((value) => value + 1);
         shouldPoll = isActiveRun(response.data.status);
         if (shouldPoll) schedule();
       } catch (reason) {
@@ -67,6 +70,7 @@ export function useRunPolling(runID: string): RunPolling {
 
     setRun(null);
     setError(null);
+    setRefreshGeneration(0);
     setStopped(false);
     document.addEventListener("visibilitychange", handleVisibility);
     void poll();
@@ -78,7 +82,13 @@ export function useRunPolling(runID: string): RunPolling {
     };
   }, [retryGeneration, runID]);
 
-  return { error, retry: () => setRetryGeneration((value) => value + 1), run, stopped };
+  return {
+    error,
+    refreshGeneration,
+    retry: () => setRetryGeneration((value) => value + 1),
+    run,
+    stopped,
+  };
 }
 
 function errorMessage(reason: unknown): string {

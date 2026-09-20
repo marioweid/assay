@@ -12,6 +12,7 @@ export function RunsPage() {
   const [runs, setRuns] = useState<EvalRunResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const [nextDatasetCursor, setNextDatasetCursor] = useState<string | null>(null);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,7 @@ export function RunsPage() {
         if (requestNumber.current === currentRequest) setLoading(false);
       });
     return () => controller.abort();
-  }, [appId]);
+  }, [appId, loadGeneration]);
 
   async function loadMoreDatasets(): Promise<void> {
     if (nextDatasetCursor === null || loadingDatasets) return;
@@ -116,6 +117,10 @@ export function RunsPage() {
           nextDatasetCursor={nextDatasetCursor}
           onClose={() => setDialogOpen(false)}
           onLoadMoreDatasets={loadMoreDatasets}
+          onUncertainOutcome={() => {
+            setDialogOpen(false);
+            setLoadGeneration((value) => value + 1);
+          }}
         />
       )}
     </section>

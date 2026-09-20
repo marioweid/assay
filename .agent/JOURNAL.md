@@ -65,3 +65,9 @@
 
 [OUTCOME] Run detail pagination now replaces the visible cursor page instead of accumulating every prior page. Active run updates refresh that page, including one final terminal refresh, while page navigation retains back/forward cursor state.
 [VERIFY] Focused polling and pagination regressions plus all 144 web tests, lint, format, typecheck, production build, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 engine warning.
+
+## 2026-09-20T14:14Z — M7D2 run lifecycle and export
+
+[OUTCOME] Terminal runs now support typed-name deletion with 409 state refresh, current-state reruns through the existing prefilled creation form, and complete JSONL evidence export. Browser export follows cursors and stops on repeated cursors, 10,000 cases, or 50 MiB; larger runs direct users to the CLI.
+[OUTCOME] Direct case detail now labels snapshot provenance and includes generated context alongside original and generated evidence.
+[VERIFY] Focused lifecycle, rerun, pagination, and export tests passed with lint and typecheck. Independent review found item polling tied to a non-advancing parent timestamp, unsafe retries after uncertain create/delete outcomes, and non-exact whitespace confirmation. Polling now uses every successful parent poll as a page refresh generation; uncertain mutations remain disabled pending list reconciliation; confirmation is byte-for-byte exact. Focused recheck found create uncertainty could be erased by dialog dismissal, so in-flight/uncertain dialogs now block dismissal and provide an explicit parent-owned run-list reconciliation action. Regressions cover each repair.

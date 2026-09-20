@@ -82,6 +82,28 @@ WHERE ri.eval_run_id = sqlc.arg(eval_run_id)
 ORDER BY ri.created_at, ri.dataset_item_id
 LIMIT sqlc.arg(page_size);
 
+-- name: GetEvalRunItem :one
+SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
+       ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,
+       ri.snapshot_dataset_id AS dataset_id, ri.snapshot_external_id AS external_id,
+       ri.snapshot_input AS input, ri.snapshot_output AS output,
+       ri.snapshot_expected_output AS expected_output, ri.snapshot_context AS context,
+       ri.snapshot_metadata AS metadata, ri.snapshot_created_at AS item_created_at,
+       ri.snapshot_updated_at AS item_updated_at, ri.snapshot_origin
+FROM eval_run_items ri
+WHERE ri.eval_run_id = sqlc.arg(eval_run_id)
+  AND ri.dataset_item_id = sqlc.arg(dataset_item_id);
+
+-- name: ListEvalRunItemScores :many
+SELECT id, scorer, scorer_config_id, value, threshold, passed, rationale, details,
+       prompt_template_id, judge_model, judge_provider, judge_tokens, eval_run_id,
+       dataset_item_id, created_at, trace_id, span_id, span_start_time, judged_input,
+       judged_output, judged_context, judged_reference
+FROM scores
+WHERE eval_run_id = sqlc.arg(eval_run_id)
+  AND dataset_item_id = ANY(sqlc.arg(dataset_item_ids)::uuid[])
+ORDER BY dataset_item_id, scorer, created_at, id;
+
 -- name: ListPendingEvalRunItems :many
 SELECT ri.eval_run_id, ri.dataset_item_id, ri.status, ri.error, ri.started_at, ri.finished_at,
        ri.created_at, ri.updated_at, ri.generated_output, ri.generated_context, ri.generated_at,

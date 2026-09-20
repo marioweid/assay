@@ -719,6 +719,19 @@ func (s *EvaluationService) ListEvalRunItems(
 	return page, nil
 }
 
+// GetEvalRunItem returns one item outcome scoped to its evaluation run.
+func (s *EvaluationService) GetEvalRunItem(
+	ctx context.Context,
+	runID uuid.UUID,
+	itemID uuid.UUID,
+) (EvalRunItem, error) {
+	item, err := s.repository.GetEvalRunItem(ctx, runID, itemID)
+	if err != nil {
+		return EvalRunItem{}, fmt.Errorf("get eval run item %s/%s: %w", runID, itemID, err)
+	}
+	return item, nil
+}
+
 // ListEvalRunScores returns bigint-cursor-paginated scores.
 func (s *EvaluationService) ListEvalRunScores(
 	ctx context.Context,

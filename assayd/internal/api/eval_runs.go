@@ -41,6 +41,11 @@ type listEvalRunItemsInput struct {
 	Cursor string `query:"cursor" required:"false"`
 }
 
+type evalRunItemIDInput struct {
+	ID     string `path:"id" format:"uuid"`
+	ItemID string `path:"itemId" format:"uuid"`
+}
+
 type listEvalRunScoresInput struct {
 	ID     string `path:"id" format:"uuid"`
 	Limit  int    `query:"limit" minimum:"0" maximum:"500" required:"false"`
@@ -60,6 +65,7 @@ type evalRunItemCollectionResult struct {
 		NextCursor string                `json:"next_cursor,omitempty"`
 	}
 }
+type evalRunItemResult struct{ Body evalRunItemResponse }
 type scoreCollectionResult struct {
 	Body struct {
 		Items      []scoreResponse `json:"items"`
@@ -104,6 +110,7 @@ type evalRunItemResponse struct {
 	GeneratedOutput  *string             `json:"generated_output,omitempty"`
 	GeneratedContext []domain.Chunk      `json:"generated_context,omitempty"`
 	GeneratedAt      *time.Time          `json:"generated_at,omitempty"`
+	Scores           []scoreResponse     `json:"scores" nullable:"false"`
 }
 
 type scoreResponse struct {
@@ -160,6 +167,10 @@ func (h *handler) registerEvalRunRoutes() {
 		http.MethodGet, "/v1/runs/{id}/items", "list-eval-run-items",
 		"List evaluation run items", http.StatusNotFound,
 	), h.listEvalRunItems)
+	huma.Register(h.api, h.operation(
+		http.MethodGet, "/v1/runs/{id}/items/{itemId}", "get-eval-run-item",
+		"Get an evaluation run item", http.StatusNotFound,
+	), h.getEvalRunItem)
 	huma.Register(h.api, h.operation(
 		http.MethodGet, "/v1/runs/{id}/scores", "list-eval-run-scores",
 		"List evaluation run scores", http.StatusNotFound,
@@ -287,6 +298,25 @@ func (h *handler) listEvalRunItems(
 	return result, err
 }
 
+func (h *handler) getEvalRunItem(
+	ctx context.Context,
+	input *evalRunItemIDInput,
+) (*evalRunItemResult, error) {
+	runID, err := parseID(input.ID, "eval run ID")
+	if err != nil {
+		return nil, h.responseError("get eval run item", err)
+	}
+	itemID, err := parseID(input.ItemID, "dataset item ID")
+	if err != nil {
+		return nil, h.responseError("get eval run item", err)
+	}
+	item, err := h.evaluations.GetEvalRunItem(ctx, runID, itemID)
+	if err != nil {
+		return nil, h.responseError("get eval run item", err)
+	}
+	return &evalRunItemResult{Body: evalRunItemOutput(item)}, nil
+}
+
 func (h *handler) listEvalRunScores(
 	ctx context.Context,
 	input *listEvalRunScoresInput,
@@ -330,14 +360,18 @@ func evalRunOutput(run domain.EvalRun) evalRunResponse {
 }
 
 func evalRunItemOutput(item domain.EvalRunItem) evalRunItemResponse {
-	return evalRunItemResponse{
+	response := evalRunItemResponse{
 		EvalRunID: item.EvalRunID.String(), DatasetItemID: item.DatasetItemID.String(),
 		Status: item.Status, Error: item.Error, StartedAt: item.StartedAt,
 		FinishedAt: item.FinishedAt, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		Snapshot: datasetItemOutput(item.Item), SnapshotOrigin: item.SnapshotOrigin,
 		GeneratedOutput: item.GeneratedOutput, GeneratedContext: item.GeneratedContext,
-		GeneratedAt: item.GeneratedAt,
+		GeneratedAt: item.GeneratedAt, Scores: make([]scoreResponse, 0, len(item.Scores)),
 	}
+	for _, score := range item.Scores {
+		response.Scores = append(response.Scores, scoreOutput(score))
+	}
+	return response
 }
 
 func scoreOutput(score domain.Score) scoreResponse {

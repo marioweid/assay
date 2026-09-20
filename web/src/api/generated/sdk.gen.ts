@@ -63,6 +63,9 @@ import type {
   GetDatasetResponses,
   GetEvalRunData,
   GetEvalRunErrors,
+  GetEvalRunItemData,
+  GetEvalRunItemErrors,
+  GetEvalRunItemResponses,
   GetEvalRunResponses,
   GetProjectData,
   GetProjectErrors,
@@ -857,6 +860,24 @@ export const listEvalRunItems = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/runs/{id}/items",
+    ...options,
+  });
+
+/**
+ * Get an evaluation run item
+ */
+export const getEvalRunItem = <ThrowOnError extends boolean = false>(
+  options: Options<GetEvalRunItemData, ThrowOnError>,
+): RequestResult<GetEvalRunItemResponses, GetEvalRunItemErrors, ThrowOnError> =>
+  (options.client ?? client).get<GetEvalRunItemResponses, GetEvalRunItemErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/runs/{id}/items/{itemId}",
     ...options,
   });
 

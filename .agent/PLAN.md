@@ -1,12 +1,14 @@
 ## Now
 
-- Post-merge findings are merged in PR #9 (`132cba7`), independently reviewed, and verified by all backend, web, and Python CI workflows; ready for the next milestone.
+- M7D1 is implemented and independently reviewed on `feat/m7d-evaluation-review`: paged and direct evaluation item reads return immutable snapshots plus complete, consistently snapshotted score evidence.
 
 ## Next
 
-- Select the next scoped milestone.
+- Implement and verify M7D2 run-item review using the generated item-detail contract.
 
 ## Done
+
+- 2026-09-20 M7D1 shipped: admin-scoped run-item lookup, non-null score arrays, set-based page enrichment, repeatable-read consistency, generated OpenAPI/TypeScript, and regressions for source deletion, 101-score boundaries, and concurrent completion.
 
 - 2026-09-11 PR #9 passed Docker-backed PostgreSQL integration tests, Go race detection, frontend production checks, and Python checks in CI.
 - 2026-09-11 closed `findings.md`: scoped deletion locking, single-source application loading with error presentation, protected one-time keys, blank expected-output normalization, narrowed docs ignore, and populated migration upgrade coverage.

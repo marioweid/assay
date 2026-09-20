@@ -253,6 +253,7 @@ type EvalRunItem struct {
 	GeneratedOutput  *string
 	GeneratedContext []Chunk
 	GeneratedAt      *time.Time
+	Scores           []Score
 }
 
 // Generation is one target endpoint's mapped output and context.
@@ -380,6 +381,7 @@ type EvaluationRepository interface {
 	GetEvalRun(context.Context, uuid.UUID) (EvalRun, error)
 	DeleteEvalRun(context.Context, uuid.UUID) error
 	ListEvalRunItems(context.Context, uuid.UUID, PageQuery) ([]EvalRunItem, error)
+	GetEvalRunItem(context.Context, uuid.UUID, uuid.UUID) (EvalRunItem, error)
 	ListEvalRunScores(context.Context, uuid.UUID, ScoreQuery) ([]Score, error)
 	CancelEvalRun(context.Context, uuid.UUID) (EvalRun, error)
 }

@@ -292,6 +292,10 @@ export type EvalRunItemCollectionResultBody = {
 };
 
 export type EvalRunItemResponse = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
   created_at: string;
   dataset_item_id: string;
   error?: string;
@@ -300,6 +304,7 @@ export type EvalRunItemResponse = {
   generated_at?: string;
   generated_context?: Array<Chunk> | null;
   generated_output?: string;
+  scores: Array<ScoreResponse>;
   snapshot: DatasetItemResponse;
   snapshot_origin: "creation" | "legacy_backfill";
   started_at?: string;
@@ -857,6 +862,7 @@ export type EvalRunItemResponseWritable = {
   generated_at?: string;
   generated_context?: Array<Chunk> | null;
   generated_output?: string;
+  scores: Array<ScoreResponse>;
   snapshot: DatasetItemResponseWritable;
   snapshot_origin: "creation" | "legacy_backfill";
   started_at?: string;
@@ -2397,6 +2403,46 @@ export type ListEvalRunItemsResponses = {
 };
 
 export type ListEvalRunItemsResponse = ListEvalRunItemsResponses[keyof ListEvalRunItemsResponses];
+
+export type GetEvalRunItemData = {
+  body?: never;
+  path: {
+    id: string;
+    itemId: string;
+  };
+  query?: never;
+  url: "/v1/runs/{id}/items/{itemId}";
+};
+
+export type GetEvalRunItemErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type GetEvalRunItemError = GetEvalRunItemErrors[keyof GetEvalRunItemErrors];
+
+export type GetEvalRunItemResponses = {
+  /**
+   * OK
+   */
+  200: EvalRunItemResponse;
+};
+
+export type GetEvalRunItemResponse = GetEvalRunItemResponses[keyof GetEvalRunItemResponses];
 
 export type ListEvalRunScoresData = {
   body?: never;

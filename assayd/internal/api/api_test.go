@@ -68,6 +68,7 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodGet, path: "/v1/runs"},
 		{method: http.MethodGet, path: "/v1/runs/" + id},
 		{method: http.MethodGet, path: "/v1/runs/" + id + "/items"},
+		{method: http.MethodGet, path: "/v1/runs/" + id + "/items/" + id},
 		{method: http.MethodGet, path: "/v1/runs/" + id + "/scores"},
 		{method: http.MethodPost, path: "/v1/runs/" + id + "/cancel"},
 	}
@@ -275,6 +276,7 @@ var managementPaths = []string{
 	"/v1/runs",
 	"/v1/runs/{id}",
 	"/v1/runs/{id}/items",
+	"/v1/runs/{id}/items/{itemId}",
 	"/v1/runs/{id}/scores",
 	"/v1/runs/{id}/cancel",
 }

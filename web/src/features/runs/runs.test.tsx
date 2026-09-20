@@ -149,15 +149,25 @@ test("shows scored and execution-failed run cases", async () => {
         ],
       }),
     ),
+    http.get(`*/v1/runs/${runID}/items/:itemId`, () =>
+      HttpResponse.json(
+        runItemFixture("scored", "succeeded", [{ id: 1, value: 0, passed: false }]),
+      ),
+    ),
     http.get(`*/v1/runs/${runID}`, () => HttpResponse.json(runFixture("succeeded"))),
     ...baseHandlers(),
   );
   renderApp(`/apps/${appID}/runs/${runID}`);
+  const user = userEvent.setup();
 
   expect(await screen.findByRole("heading", { name: "Cases" })).toBeInTheDocument();
   expect(await screen.findByText("groundedness 0.00 · Fail")).toBeInTheDocument();
   expect(screen.getByText("Target unavailable")).toBeInTheDocument();
   expect(screen.getByText("Not scored")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "scored" }));
+  expect(await screen.findByRole("heading", { name: "Case scored" })).toBeInTheDocument();
+  expect(screen.getByText("Original input")).toBeInTheDocument();
+  expect(screen.getByText("Evidence")).toBeInTheDocument();
 });
 
 test("rejects a run from a different application", async () => {

@@ -55,3 +55,8 @@
 
 [OUTCOME] Run detail now loads cursor-paginated case outcomes, labels execution failures separately from absent quality scores, and preserves zero-valued failed scores. Shared score cards consistently format score values to two decimals.
 [VERIFY] The score regression failed before formatting was fixed. All 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed; pnpm reported the known Node 24 versus required Node 22 engine warning.
+
+## 2026-09-20T07:54Z — M7D2 direct case evidence
+
+[OUTCOME] Run cases now open URL-backed direct detail through the scoped item endpoint, showing original input/context/reference, recorded versus generated output, execution errors, score rationale, provenance, and raw details.
+[VERIFY] Focused run tests and all 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed.

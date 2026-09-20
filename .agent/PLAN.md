@@ -1,10 +1,10 @@
 ## Now
 
-- M7D2 is in progress on `feat/m7d-evaluation-review`: run detail now loads paginated case outcomes and distinguishes zero-valued failed scores from execution failures.
+- M7D2 is in progress on `feat/m7d-run-review-actions`: run detail loads paginated outcomes and URL-backed direct case evidence while distinguishing zero-valued failed scores from execution failures.
 
 ## Next
 
-- Add direct case evidence detail, active-run item polling, rerun/delete actions, and bounded JSONL export.
+- Add active-run item polling, rerun/delete actions, and bounded JSONL export.
 
 ## Done
 

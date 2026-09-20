@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { listEvalRunItems } from "@/api/generated/sdk.gen";
 import type { EvalRunItemResponse } from "@/api/generated/types.gen";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { RunItemDetail } from "@/features/runs/run-item-detail";
 
 export function RunItems({ runID }: { runID: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedItemID = searchParams.get("item");
   const request = useRef<AbortController | null>(null);
   const [items, setItems] = useState<EvalRunItemResponse[]>([]);
   const [cursor, setCursor] = useState<string>();
@@ -71,8 +75,13 @@ export function RunItems({ runID }: { runID: string }) {
               {items.map((item) => (
                 <tr className="border-t border-line" key={item.dataset_item_id}>
                   <td className="px-4 py-3">
-                    {item.snapshot.external_id ??
-                      String(item.snapshot.input["question"] ?? item.dataset_item_id)}
+                    <button
+                      className="text-left text-accent hover:underline"
+                      onClick={() => setSearchParams({ item: item.dataset_item_id })}
+                    >
+                      {item.snapshot.external_id ??
+                        String(item.snapshot.input["question"] ?? item.dataset_item_id)}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge
@@ -110,6 +119,9 @@ export function RunItems({ runID }: { runID: string }) {
         <Button className="mt-3" onClick={() => void load(cursor)}>
           Load more cases
         </Button>
+      )}
+      {selectedItemID && (
+        <RunItemDetail itemID={selectedItemID} onClose={() => setSearchParams({})} runID={runID} />
       )}
     </section>
   );

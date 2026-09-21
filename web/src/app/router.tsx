@@ -13,6 +13,7 @@ import { DatasetsPage } from "@/features/datasets/datasets-page";
 import { MetricsPage } from "@/features/metrics/metrics-page";
 import { ProjectDetail } from "@/features/projects/project-detail";
 import { ProjectsPage } from "@/features/projects/projects-page";
+import { RunComparison } from "@/features/runs/run-comparison";
 import { RunDetail } from "@/features/runs/run-detail";
 import { RunsPage } from "@/features/runs/runs-page";
 import { TraceDetail } from "@/features/traces/trace-detail";
@@ -35,6 +36,7 @@ export function AppRoutes(): ReactNode {
               <Route path="datasets" element={<DatasetsPage />} />
               <Route path="datasets/:datasetId" element={<DatasetDetail />} />
               <Route path="runs" element={<RunsPage />} />
+              <Route path="runs/compare" element={<RunComparison />} />
               <Route path="runs/:runId" element={<RunDetail />} />
               <Route path="metrics" element={<MetricsPage />} />
               <Route path="settings" element={<ApplicationSettings />} />

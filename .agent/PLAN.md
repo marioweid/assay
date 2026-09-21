@@ -1,10 +1,10 @@
 ## Now
 
-- M7D2 is complete on `feat/m7d2-run-item-polling`: review supports bounded active polling, direct evidence, current-state reruns, cancel/delete lifecycle actions, and capped JSONL export.
+- M7D3 is complete on `feat/m7d2-run-item-polling`: terminal run comparison uses immutable case IDs, set-based latest-score pairing, all-page aggregates, bound cursors, and generated UI/API contracts.
 
 ## Next
 
-- Start M7D3 paired run comparison with set-based backend queries and regression filters.
+- Start M7D4 structured Python capture.
 
 ## Done
 

@@ -13,6 +13,9 @@ import type {
   CancelEvalRunData,
   CancelEvalRunErrors,
   CancelEvalRunResponses,
+  CompareEvalRunsData,
+  CompareEvalRunsErrors,
+  CompareEvalRunsResponses,
   CreateApiKeyData,
   CreateApiKeyErrors,
   CreateApiKeyResponses,
@@ -842,6 +845,24 @@ export const cancelEvalRun = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/runs/{id}/cancel",
+    ...options,
+  });
+
+/**
+ * Compare evaluation runs
+ */
+export const compareEvalRuns = <ThrowOnError extends boolean = false>(
+  options: Options<CompareEvalRunsData, ThrowOnError>,
+): RequestResult<CompareEvalRunsResponses, CompareEvalRunsErrors, ThrowOnError> =>
+  (options.client ?? client).get<CompareEvalRunsResponses, CompareEvalRunsErrors, ThrowOnError>({
+    security: [
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/runs/{id}/comparison",
     ...options,
   });
 

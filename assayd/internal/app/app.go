@@ -34,6 +34,7 @@ type App struct {
 	service     *domain.Service
 	traces      *domain.TraceService
 	evaluations *domain.EvaluationService
+	comparisons *domain.RunComparisonService
 	workers     *worker.Pool
 }
 
@@ -89,6 +90,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			cfg.JobMaxAttempts,
 		),
 		evaluations: evaluations,
+		comparisons: domain.NewRunComparisonService(database),
 		workers: worker.NewPool(
 			database, dispatcher, logger, uuid.NewString(), cfg.WorkerConcurrency,
 		),
@@ -124,7 +126,7 @@ func (a *App) registerRoutes(handler *http.ServeMux) {
 	api.Register(handler, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(a.database),
 		Service:   a.service, Traces: a.traces, Evaluations: a.evaluations,
-		AdminToken: a.config.AdminToken, Logger: a.logger,
+		Comparisons: a.comparisons, AdminToken: a.config.AdminToken, Logger: a.logger,
 	})
 	otlp.Register(handler, a.service, a.traces, a.config.AutoCreateApps, a.logger)
 	ui.Register(handler, a.config.UIEnabled)

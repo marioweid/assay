@@ -426,6 +426,38 @@ export type ResponseMappingResponse = {
   output: string;
 };
 
+export type RunComparisonResponse = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  baseline_run_id: string;
+  candidate_run_id: string;
+  items: Array<RunComparisonRow>;
+  next_cursor?: string;
+  scorer: string;
+  summary: RunComparisonSummary;
+  warnings: Array<string>;
+};
+
+export type RunComparisonRow = {
+  baseline: EvalRunItemResponse | null;
+  candidate: EvalRunItemResponse | null;
+  dataset_item_id: string;
+  delta: number | null;
+  kind: "matched" | "changed_case" | "baseline_only" | "candidate_only" | "unscored";
+};
+
+export type RunComparisonSummary = {
+  baseline_only: number;
+  candidate_only: number;
+  changed_cases: number;
+  matched: number;
+  mean_delta: number | null;
+  n: number;
+  unscored: number;
+};
+
 export type ScoreAggregate = {
   mean: number;
   n: number;
@@ -935,6 +967,24 @@ export type ReplaceDatasetItemInputBodyWritable = {
     [key: string]: unknown;
   };
   output: string | null;
+};
+
+export type RunComparisonResponseWritable = {
+  baseline_run_id: string;
+  candidate_run_id: string;
+  items: Array<RunComparisonRowWritable>;
+  next_cursor?: string;
+  scorer: string;
+  summary: RunComparisonSummary;
+  warnings: Array<string>;
+};
+
+export type RunComparisonRowWritable = {
+  baseline: EvalRunItemResponseWritable | null;
+  candidate: EvalRunItemResponseWritable | null;
+  dataset_item_id: string;
+  delta: number | null;
+  kind: "matched" | "changed_case" | "baseline_only" | "candidate_only" | "unscored";
 };
 
 export type ScoreCollectionResultBodyWritable = {
@@ -2361,6 +2411,54 @@ export type CancelEvalRunResponses = {
 };
 
 export type CancelEvalRunResponse = CancelEvalRunResponses[keyof CancelEvalRunResponses];
+
+export type CompareEvalRunsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query: {
+    other_run_id: string;
+    scorer: string;
+    limit?: number;
+    cursor?: string;
+  };
+  url: "/v1/runs/{id}/comparison";
+};
+
+export type CompareEvalRunsErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Conflict
+   */
+  409: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type CompareEvalRunsError = CompareEvalRunsErrors[keyof CompareEvalRunsErrors];
+
+export type CompareEvalRunsResponses = {
+  /**
+   * OK
+   */
+  200: RunComparisonResponse;
+};
+
+export type CompareEvalRunsResponse = CompareEvalRunsResponses[keyof CompareEvalRunsResponses];
 
 export type ListEvalRunItemsData = {
   body?: never;

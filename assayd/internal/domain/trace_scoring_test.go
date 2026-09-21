@@ -151,6 +151,15 @@ func TestBuildTraceScoreInputRejectsMalformedOrIncompleteTrace(t *testing.T) {
 			"gen_ai.input.messages":  valid["gen_ai.input.messages"],
 			"gen_ai.output.messages": []any{message("user", "answer")},
 		}), scorer: domain.ScorerGroundedness},
+		{name: "tool-only assistant", trace: traceWithScorableSpan(map[string]any{
+			"gen_ai.input.messages": valid["gen_ai.input.messages"],
+			"gen_ai.output.messages": []any{map[string]any{
+				"role": "assistant", "parts": []any{map[string]any{
+					"type": "tool_call", "name": "lookup",
+				}},
+			}},
+			"gen_ai.retrieval.documents": valid["gen_ai.retrieval.documents"],
+		}), scorer: domain.ScorerGroundedness},
 		{name: "malformed flattened context", trace: traceWithScorableSpan(map[string]any{
 			"gen_ai.input.messages":     valid["gen_ai.input.messages"],
 			"gen_ai.output.messages":    valid["gen_ai.output.messages"],

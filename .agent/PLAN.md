@@ -1,10 +1,10 @@
 ## Now
 
-- M7D3 is complete on `feat/m7d2-run-item-polling`: terminal run comparison uses immutable case IDs, set-based latest-score pairing, all-page aggregates, bound cursors, and generated UI/API contracts.
+- M7D4 is complete on `feat/m7d2-run-item-polling`: the Python SDK captures bounded structured OTel GenAI messages atomically and exposes active trace/span IDs without changing global capture behavior.
 
 ## Next
 
-- Start M7D4 structured Python capture.
+- Start M7D5 typed client and CLI parity.
 
 ## Done
 

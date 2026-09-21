@@ -10,6 +10,7 @@ from typing import Literal
 from assay._serialization import truncate_utf8
 from assay.models import AttributeValue, Chunk
 
+ASSAY_SEMCONV_MAPPING_VERSION = "b5d8440f6f126738fd50f927752cd669772c517b"
 GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages"
 GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
 GEN_AI_RETRIEVAL_DOCUMENTS = "gen_ai.retrieval.documents"

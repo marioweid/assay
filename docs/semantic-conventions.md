@@ -51,10 +51,16 @@ uses the first `assistant` output candidate. It does not read `assay.input` or `
 fallback attributes. The message-part mapping is pinned to the OpenTelemetry
 [GenAI input](https://github.com/open-telemetry/semantic-conventions-genai/blob/b5d8440f6f126738fd50f927752cd669772c517b/model/gen-ai/gen-ai-input-messages.json)
 and [output](https://github.com/open-telemetry/semantic-conventions-genai/blob/b5d8440f6f126738fd50f927752cd669772c517b/model/gen-ai/gen-ai-output-messages.json)
-schemas at commit `b5d8440f6f126738fd50f927752cd669772c517b`: text parts use
-`type: "text"` and `content`; tool requests use `type: "tool_call"`, `name`,
-optional `arguments`/`id`; tool results use `type: "tool_call_response"`,
-`response`, and optional `id`.
+schemas at commit `b5d8440f6f126738fd50f927752cd669772c517b` (also exposed as
+`ASSAY_SEMCONV_MAPPING_VERSION`): text parts use `type: "text"` and `content`; tool requests use
+`type: "tool_call"`, `name`, optional `arguments`/`id`; tool results use
+`type: "tool_call_response"`, `response`, and optional `id`.
+
+The Python SDK exports `Message`, `TextPart`, `ToolCallPart`, and `ToolResultPart`. Its explicit
+`AssaySpan.set_messages` helper validates and serializes complete message arrays under the configured
+per-attribute byte limit. Redaction runs before validation. Invalid or oversized structured content is
+not truncated or partly written; omitted input/output sides remain unchanged. `set_input` and
+`set_output` remain the simpler single-content helpers and keep their existing truncation behavior.
 
 Groundedness context uses flattened `assay.context.chunks.<i>.id` and `.text` fields when any
 flattened context field or `assay.context.chunk.count` is present. Indices must be contiguous from

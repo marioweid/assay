@@ -31,7 +31,22 @@ def answer(question: str) -> str:
 ```
 
 Use `assay.span(...)` for explicit spans and call `set_input`, `set_output`, `set_context`, or
-`set_reference` on the active span. Call `assay.flush()` before a short-lived process exits and
+`set_reference` on the active span. Structured conversations use the pinned OpenTelemetry GenAI
+message shape directly:
+
+```python
+with assay.span("chat", scorable=True) as current:
+    current.set_messages(
+        input=[{"role": "user", "parts": [{"type": "text", "content": "What is Assay?"}]}],
+        output=[{"role": "assistant", "parts": [{"type": "text", "content": "An eval tool."}]}],
+    )
+    trace_id = current.trace_id
+```
+
+`set_messages` is explicit even when `capture=False`; redact captured content with its `redact`
+callback. It validates complete text/client-tool messages and rejects oversized JSON rather than
+truncating it. The decorator captures function arguments and return values, not provider SDK traffic
+or generator/stream consumption. Call `assay.flush()` before a short-lived process exits and
 `assay.shutdown()` when the tracing lifecycle ends.
 
 ## API Client

@@ -10,6 +10,7 @@ from assay.exceptions import (
     AssayTimeoutError,
     AssayTransportError,
 )
+from assay.messages import Message, TextPart, ToolCallPart, ToolResultPart
 from assay.models import (
     APIKey,
     Application,
@@ -63,6 +64,7 @@ __all__ = [
     "ImportResult",
     "JudgeConfig",
     "JudgeConfigView",
+    "Message",
     "Page",
     "Project",
     "ResponseMapping",
@@ -75,6 +77,9 @@ __all__ = [
     "SpanEvent",
     "TargetEndpoint",
     "TargetEndpointView",
+    "TextPart",
+    "ToolCallPart",
+    "ToolResultPart",
     "Trace",
     "__version__",
     "flush",

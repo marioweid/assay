@@ -5,6 +5,7 @@ on:
     paths:
       - "web/**"
       - "assayd/cmd/openapi/**"
+      - "assayd/cmd/acceptance-fixtures/**"
       - "assayd/internal/api/**"
       - "assayd/internal/ui/**"
       - "assayd/Dockerfile"
@@ -13,12 +14,14 @@ on:
       - ".dockerignore"
       - ".env.example"
       - "docker-compose.yml"
+      - "tests/acceptance/**"
       - ".github/workflows/web.yml"
   push:
     branches: [main]
     paths:
       - "web/**"
       - "assayd/cmd/openapi/**"
+      - "assayd/cmd/acceptance-fixtures/**"
       - "assayd/internal/api/**"
       - "assayd/internal/ui/**"
       - "assayd/Dockerfile"
@@ -27,6 +30,7 @@ on:
       - ".dockerignore"
       - ".env.example"
       - "docker-compose.yml"
+      - "tests/acceptance/**"
       - ".github/workflows/web.yml"
 
 permissions:
@@ -87,5 +91,8 @@ jobs:
         run: cp .env.example .env
       - name: Validate Compose configuration
         run: docker compose config --quiet
-      - name: Build release image
-        run: docker build --file assayd/Dockerfile --tag assay-web-ci .
+      - name: Install Playwright browser
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run embedded acceptance
+        run: tests/acceptance/run.sh

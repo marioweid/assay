@@ -92,3 +92,14 @@
 
 [DISCOVERY] M7D6 cannot be executed honestly yet: its required E1 disposable acceptance harness, isolated Compose project, and deterministic fake judge/target have not been implemented. The repository has no `tests/acceptance`, acceptance fixture command, or Playwright harness. The paid opt-in M6 live test is intentionally not a substitute and no destructive test will default to localhost.
 [NEXT] Implement E1 before creating or claiming the D6 end-to-end acceptance result.
+
+## 2026-09-22T06:24Z — E1 disposable acceptance harness complete
+
+[OUTCOME] E1 now builds an isolated `assay-acceptance-*` Compose stack with fresh Postgres storage, generated 0600 credentials, deterministic stdlib Go judge/target responses, guarded teardown, and no default to the ordinary localhost service. Playwright seeds workspaces and traces through public APIs, checks embedded CSP/browser errors, keyboard modal/drawer behavior, and axe at 360/1440px in both themes. Browser execution exposed Radix's fixed scroll-lock style; CSP now permits only its exact hash rather than `unsafe-inline`.
+[VERIFY] Exact pins `@playwright/test==1.63.0` and `@axe-core/playwright==4.13.0` were resolved from npm; `pnpm audit --audit-level=moderate` reports no findings after updating the existing `js-yaml` override to 4.3.2. All 8 embedded browser tests, 158 Vitest tests, Go fixture/UI tests, focused golangci-lint, frontend lint/format/typecheck/build, shellcheck, shfmt, actionlint, zizmor, Compose validation, and endpoint-refusal checks pass. Teardown preserved the three pre-existing Compose containers with unchanged IDs and left no acceptance images or volumes. Independent review's cleanup-error blocker was repaired and the focused recheck approved it.
+[NEXT] M7D6 is unblocked and can consume this harness for the no-paid-service SDK workflow.
+
+## 2026-09-22T16:08Z — Backend shutdown-test flake fixed
+
+[OUTCOME] Reproduced the failed `main` SHA under repeated race runs. `TestAppMigratesBeforeServingAndStops` timed out while `http.Server.Shutdown` waited on test-owned keep-alive connections; a goroutine dump ruled out the worker pool and database. The M2, M3, and readiness helpers now close idle client connections before the five-second shutdown assertion.
+[VERIFY] The unmodified failing SHA failed in both five-run and instrumented three-run stress executions. After the fix, `go test -race -count=5 ./...`, the exact CI command `go test -race -count=1 ./...`, `go build ./...`, golangci-lint, gofmt, and `git diff --check` pass.

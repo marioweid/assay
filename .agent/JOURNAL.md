@@ -87,3 +87,8 @@
 
 [OUTCOME] The Python SDK now strictly parses immutable run-item snapshots and scores, paired run comparisons, trace score summaries, and scoring eligibility. Typed resources cover dataset mutation/item lifecycle, run inspection/comparison/deletion, and trace filtering/eligibility/deletion with project-key-preferred trace auth and explicit admin fallback. The CLI now exposes the complete project, key, application, dataset/item, scorer, run, and trace workflow matrix; file-backed settings stay out of argv, exports follow guarded cursors as JSONL, and every delete/revoke/endpoint-clear requires `--yes`.
 [VERIFY] The installed Python 3.13 package suite passes 238 tests with one opt-in live test skipped. Python 3.10 passes the 70 focused D5/CLI tests; ruff and ty pass against the declared 3.10 target, console-script help smoke passes, and `git diff --check` is clean. Independent review found required-nullable comparison fields were treated as optional; dedicated nullable parsers now reject omission while preserving explicit JSON null, with regressions for row evidence and summary delta.
+
+## 2026-09-22T05:53Z — M7D6 prerequisite confirmed missing
+
+[DISCOVERY] M7D6 cannot be executed honestly yet: its required E1 disposable acceptance harness, isolated Compose project, and deterministic fake judge/target have not been implemented. The repository has no `tests/acceptance`, acceptance fixture command, or Playwright harness. The paid opt-in M6 live test is intentionally not a substitute and no destructive test will default to localhost.
+[NEXT] Implement E1 before creating or claiming the D6 end-to-end acceptance result.

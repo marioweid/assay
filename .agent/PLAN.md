@@ -1,10 +1,11 @@
 ## Now
 
 - M7D5 is complete on `feat/m7d2-run-item-polling`: typed Python resources and strict parsers cover browser workflows, and the JSON/JSONL CLI exposes the complete agent-operable command matrix with explicit destructive confirmations.
+- M7D6 execution is blocked by its explicit prerequisite: the E1 disposable acceptance harness and fake judge/target do not exist yet.
 
 ## Next
 
-- Start M7D6's no-paid-service SDK-to-trace-to-evaluation acceptance loop.
+- Build E1's isolated acceptance harness, then run M7D6's no-paid-service SDK-to-trace-to-evaluation loop against it.
 
 ## Done
 

@@ -3,7 +3,7 @@
 - E2 delivery implementation is complete locally: reproducible amd64/arm64 builds, separate published Compose, guarded smoke coverage, and a protected GHCR workflow. Actual publication and anonymous-pull evidence remain an approval gate.
 - E1 is complete on `feat/e1-acceptance-harness`: an isolated Compose stack, deterministic fake judge/target, and embedded Playwright/axe suite run without paid services and clean up only their prefixed project.
 - M7D6 is complete on `feat/m7d6-sdk-acceptance`: its disposable SDK acceptance covers trace capture, scoring, retained evidence, evaluation lifecycle, and failure paths without paid services.
-- E3 implementation is complete locally: Linux and PowerShell guides, deployment/recovery guidance, current-checkout SDK examples, and E1-only docs smoke are in place. The dynamic E1 docs workflow needs a runnable local Python/Playwright environment, and PowerShell still needs Windows-runner evidence.
+- E3 implementation is complete locally: Linux and PowerShell guides, deployment/recovery guidance, current-checkout SDK examples, and E1-only docs smoke are in place. Web CI now provisions the pinned `uv` required by E1's SDK/doc checks; GitHub-run evidence is pending. The dynamic E1 docs workflow needs a runnable local Python/Playwright environment, and PowerShell still needs Windows-runner evidence.
 
 ## Next
 

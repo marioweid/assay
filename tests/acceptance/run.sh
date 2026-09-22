@@ -95,6 +95,8 @@ export ASSAY_ACCEPTANCE_PROJECT="$PROJECT"
   pnpm test:e2e
 )
 
+./tests/acceptance/docs-smoke.sh
+
 if [[ -f clients/python/assay/tests/test_product_acceptance.py ]]; then
   command -v uv >/dev/null || {
     echo "acceptance: uv is required for SDK acceptance" >&2

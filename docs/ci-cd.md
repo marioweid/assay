@@ -1,8 +1,8 @@
 # Assay — CI/CD Plan
 
-*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-09-01.
-The backend, frontend, and Python package publishing workflows are implemented; image publishing
-and the scheduled security workflow remain planned. Companion to
+*Design and implementation reference for `.github/workflows/`. Verified pins as of 2026-09-22.
+The backend, frontend, Python package, and container publishing workflows are implemented; the
+scheduled security workflow remains planned. Companion to
 `docs/specs/2026-08-26-assay-design.md`.*
 
 ## Philosophy
@@ -22,7 +22,7 @@ Validation workflows run for relevant pull requests and `main`; publishing uses 
 | `web.yml` | frontend, UI-serving, and OpenAPI-affecting files | generation drift · frontend gates · production assets · embedded Go tests/build · release image |
 | `python.yml` | `clients/python/assay/**` | `ruff check` · `ruff format --check` · `ty check` · `pytest` · `pip-audit` |
 | `python-publish.yml` | tags `python-v*` | version/tag match · test · build · isolated wheel smoke test · PyPI Trusted Publishing |
-| `image.yml` | push to `main`, tags `v*` | multi-stage build (web → embed → go) · push to GHCR |
+| `container-publish.yml` | `v*` tags, manual version | amd64/arm64 build + smoke · SBOM/provenance · protected GHCR publish · anonymous pull smoke |
 | `security.yml` | PRs, weekly cron | `actionlint` · `zizmor` (workflow audit) |
 
 Notes:
@@ -54,8 +54,9 @@ astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d      # v10.0.1
 actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
 actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e   # v4.3.0
-docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a     # v7.3.0
+docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130     # v3
+docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069   # v4.4.1
+docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc     # v7.4.0
 docker/login-action@dbcb813823bdd20940b903addbd779551569679f         # v4.6.0
 golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
 ```
@@ -234,59 +235,41 @@ git push origin python-v0.2.0
 The workflow builds the sdist and wheel, smoke-tests the wheel in an isolated uv environment,
 and publishes both files to PyPI. Confirm the release with `uv add assay-sdk`.
 
-## `image.yml` (sketch — multi-stage: web build → embed → go build)
+## `container-publish.yml`
 
-```yaml
-name: image
-on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-permissions:
-  contents: read
-  packages: write            # GHCR push
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
-        with: { persist-credentials: false }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e   # v4.3.0
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f         # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a     # v7.3.0
-        with:
-          context: .                       # repo root: Dockerfile needs web/ + assayd/
-          file: assayd/Dockerfile
-          push: true
-          tags: ghcr.io/marioweid/assay:latest
-```
+`v<semver>` tags and manual dispatches with a validated `version` input first build and smoke both
+linux/amd64 and linux/arm64 images. Only the subsequent `ghcr` environment-protected job receives
+`packages: write`: it publishes `ghcr.io/marioweid/assay:<version>` and `sha-<commit>`, adds `latest`
+only for non-prereleases, and attaches BuildKit SBOM/provenance. It then checks the manifest and pulls
+the digest through an empty Docker configuration before rerunning the smoke test. The GHCR package
+must be made public by a maintainer before that anonymous pull can pass.
 
 ## `assayd/Dockerfile` (multi-stage shape)
 
 ```dockerfile
-# 1) build the embedded SPA
-FROM node:22.22.0-trixie-slim@sha256:465a8c8f0f4103861bcbcf3e512608394b7155eccb1955425f4ea3f672ddc53e AS web-build
-WORKDIR /src/web
-COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/.npmrc ./
-RUN corepack enable && pnpm install --frozen-lockfile
-COPY web/ ./
-RUN pnpm build
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG CREATED=unknown
 
-# 2) build the Go binary with the SPA embedded
-FROM golang:1.27.0-trixie@sha256:ae28539d2ef595b9a2930dd7f031d9592376829dc0eae7cb869559f7d5812c3a AS build
-WORKDIR /src/assayd
-COPY assayd/go.mod assayd/go.sum ./
-RUN go mod download
-COPY assayd/ ./
-COPY --from=web-build /src/assayd/internal/ui/dist ./internal/ui/dist
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/assayd ./cmd/assayd
+# Build the architecture-independent SPA on the build platform.
+FROM --platform=$BUILDPLATFORM node:22.22.0-trixie-slim@sha256:465a8c8f0f4103861bcbcf3e512608394b7155eccb1955425f4ea3f672ddc53e AS web-build
+# … install web dependencies and run pnpm build
 
-# 3) minimal runtime
+# Cross-compile the Go binary for BuildKit's target platform.
+FROM --platform=$BUILDPLATFORM golang:1.27.0-trixie@sha256:ae28539d2ef595b9a2930dd7f031d9592376829dc0eae7cb869559f7d5812c3a AS build
+ARG TARGETOS
+ARG TARGETARCH
+# … copy the SPA into internal/ui/dist
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/assayd ./cmd/assayd
+
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+ARG VERSION
+ARG REVISION
+ARG CREATED
+LABEL org.opencontainers.image.source="https://github.com/marioweid/assay" \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.created=$CREATED
 COPY --from=build /out/assayd /assayd
 EXPOSE 8080
 ENTRYPOINT ["/assayd"]

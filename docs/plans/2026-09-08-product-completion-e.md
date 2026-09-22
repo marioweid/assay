@@ -94,15 +94,15 @@ assets and the Go CSP; a Vite-only screenshot is insufficient release evidence.
 Published Compose requires `ASSAY_IMAGE` as a real verified release tag or digest and has **no** build
 context. Existing `ASSAY_ADMIN_TOKEN`, `ASSAY_ENCRYPTION_KEY`, optional judge settings retain semantics.
 
-- [ ] Establish current Docker build baseline through existing Dockerfile. Assert index references
+- [x] Establish current Docker build baseline through existing Dockerfile. Assert index references
   hashed assets, known static icon/font exists, `/readyz` returns 200, deep link returns SPA, API auth
   remains protected, and `/assayd healthcheck` works in the distroless image. Do not add curl/sh to
   runtime merely for health checking; current executable already implements it.
-- [ ] Add OCI labels for source/revision/version and explicit build args. For arm64, use correct
+- [x] Add OCI labels for source/revision/version and explicit build args. For arm64, use correct
   BuildKit `BUILDPLATFORM`/`TARGETOS`/`TARGETARCH` stages and Go cross-compilation; UI assets are
   architecture-independent. Preserve nonroot distroless runtime and CA certificates. No secrets in
   build args or layers. Keep pinned base digests unless a separately verified update is required.
-- [ ] Build publishing workflow on `v*` release tags and manual dispatch requiring a version input.
+- [x] Build publishing workflow on `v*` release tags and manual dispatch requiring a version input.
   Validate version/tag and derive lowercase image name. Separate build/test (read-only permissions)
   from publish (`contents:read`, `packages:write`, attestation/OIDC permissions only if used). Verify
   all new Actions' current release SHAs and record version comments. Checkout persist-credentials=false.
@@ -112,7 +112,7 @@ context. Existing `ASSAY_ADMIN_TOKEN`, `ASSAY_ENCRYPTION_KEY`, optional judge se
   environment for first publication. Confirm GitHub package public visibility with maintainer; an
   authenticated CI push is not proof of anonymous pullability. No secret PAT required if GITHUB_TOKEN
   package permissions suffice.
-- [ ] Create the following complete published Compose starting from the existing Postgres digest:
+- [x] Create the following complete published Compose starting from the existing Postgres digest:
 
 ```yaml
 services:
@@ -163,11 +163,11 @@ volumes:
   configurable names. The generated password uses hex so DSN interpolation is safe. Do not imply
   arbitrary unescaped password characters are supported in this interpolated URL; use a URL-encoded
   DSN in a separately configured deployment. Add host-gateway to source Compose too for Linux judges.
-- [ ] Root source Compose keeps `build` and loopback-binds app/Postgres ports; update comment to exact
+- [x] Root source Compose keeps `build` and loopback-binds app/Postgres ports; update comment to exact
   required command. Do not replace user's root `.env`. `.env.example` distinguishes source/published
   use, removes working-looking fake cloud credentials from the normal trace-only path, includes
   `ASSAY_APPLICATION` in SDK section, and explains stable encryption key/optional judge values.
-- [ ] Test missing required env fails `docker compose -f compose.published.yaml config --quiet`;
+- [x] Test missing required env fails `docker compose -f compose.published.yaml config --quiet`;
   tracing-only boot with no judge works; configured fake judge works; Linux host-gateway resolves;
   root build and published no-build files each validate. Keep secrets out of `compose config` stdout.
 - [ ] Run image smoke on linux/amd64 and, if advertised, linux/arm64 with native runner or explicit
@@ -268,6 +268,10 @@ docker compose -f compose.published.yaml up --build --force-recreate -d
 examples do not depend on PowerShell or unpublished package functions by accident.
 
 ## E4. Run end-to-end polish gates and perform an approved release
+
+**Scheduling update (2026-09-22):** Defer this work until E2–E3 are complete and the user approves
+the final UI redesign. Do not add broad browser workflow coverage or visual baselines while the UI
+is still being reshaped; retain E1's existing smoke/security coverage in the interim.
 
 **Files**
 - Create: `web/e2e/product-workflow.spec.ts`, `web/e2e/trace-workbench.spec.ts`,

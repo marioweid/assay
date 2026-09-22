@@ -1,0 +1,47 @@
+# Published Assay deployment. Set every required value in a private .env file first.
+# ASSAY_IMAGE must be a verified released GHCR tag or digest; this file never builds source.
+
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: assay
+      POSTGRES_PASSWORD: ${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}
+      POSTGRES_DB: assay
+    volumes:
+      - assay-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assay -d assay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  assayd:
+    image: ${ASSAY_IMAGE:?Set the verified Assay release image tag or digest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASSAY_HTTP_ADDR: ":8080"
+      ASSAY_DATABASE_URL: postgres://assay:${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}@postgres:5432/assay?sslmode=disable
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:?Set the admin token}
+      ASSAY_ENCRYPTION_KEY: ${ASSAY_ENCRYPTION_KEY:?Set a base64-encoded 32-byte key}
+      ASSAY_JUDGE_BASE_URL: ${ASSAY_JUDGE_BASE_URL:-}
+      ASSAY_JUDGE_MODEL: ${ASSAY_JUDGE_MODEL:-}
+      ASSAY_JUDGE_API_KEY: ${ASSAY_JUDGE_API_KEY:-}
+      ASSAY_UI_ENABLED: "true"
+      ASSAY_TRACE_RETENTION_DAYS: ${ASSAY_TRACE_RETENTION_DAYS:-0}
+    ports:
+      - "127.0.0.1:${ASSAY_HTTP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "/assayd", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  assay-pgdata:

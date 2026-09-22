@@ -1,11 +1,11 @@
 ## Now
 
 - E1 is complete on `feat/e1-acceptance-harness`: an isolated Compose stack, deterministic fake judge/target, and embedded Playwright/axe suite run without paid services and clean up only their prefixed project.
-- M7D6 is now unblocked.
+- M7D6 is complete on `feat/m7d6-sdk-acceptance`: its disposable SDK acceptance covers trace capture, scoring, retained evidence, evaluation lifecycle, and failure paths without paid services.
 
 ## Next
 
-- Run M7D6's SDK-to-trace-to-evaluation acceptance loop against E1 and update the Python/example lifecycle documentation.
+- Implement E2: published-image Compose, container publication workflow, and image smoke tests. Publication itself remains an approval gate.
 
 ## Done
 

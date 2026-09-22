@@ -66,6 +66,15 @@ Typed resources cover complete dataset-item replacement, run-item evidence and s
 comparison, trace score summaries, and scoring eligibility. Response parsing is strict: malformed
 nested server data raises `AssayProtocolError` instead of returning a partial model.
 
+## Trace-to-evaluation lifecycle
+
+Use a project key to emit and inspect that project's traces; management, dataset, and run calls need
+an admin token. Attach a reference before requesting correctness, then import a scored trace into a
+dataset. An import retains its selected score evidence and rejects a repeated trace/scorer pair with
+409. Replacing a dataset item is a full replacement: explicit `None` clears nullable output/reference
+fields. Existing runs retain their immutable creation snapshot; a rerun uses the current dataset.
+Comparisons align immutable item IDs and report matched, changed, one-sided, and unscored exclusions.
+
 ## CLI
 
 Set `ASSAY_ENDPOINT` and the relevant credential, then use the management and evaluation commands:
@@ -107,5 +116,7 @@ require admin authentication and default to 30 days. `--start` and `--end` accep
 timestamps for ranges up to 366 days. Trace imports preserve the selected scorer's latest evidence
 and reject duplicate trace/scorer pairs without overwriting existing items.
 
-The optional `tests/test_live_workflow.py` acceptance test requires `ASSAY_LIVE_TEST_ENDPOINT`
-and `ASSAY_ADMIN_TOKEN`. It makes real judge calls using synthetic data and deletes its project.
+`tests/test_product_acceptance.py` runs through `tests/acceptance/run.sh` against disposable fake
+judge/target services; it never calls a paid provider. Set `ASSAY_ACCEPTANCE_KEEP=1` when running that
+script to retain the synthetic project and stack for dashboard inspection. The optional
+`tests/test_live_workflow.py` instead requires `ASSAY_LIVE_TEST_ENDPOINT` and makes real judge calls.

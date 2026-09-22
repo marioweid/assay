@@ -8,8 +8,13 @@ EXPECTED_ENDPOINT="http://127.0.0.1:$PORT"
 PROJECT="assay-acceptance-$(date +%s)-$$"
 IMAGE="$PROJECT-assayd"
 FIXTURE_IMAGE="$PROJECT-fixtures"
+KEEP=${ASSAY_ACCEPTANCE_KEEP:-0}
 umask 077
 
+if [[ "$KEEP" != "0" && "$KEEP" != "1" ]]; then
+  echo "acceptance: ASSAY_ACCEPTANCE_KEEP must be 0 or 1" >&2
+  exit 1
+fi
 for command in base64 docker head od pnpm; do
   command -v "$command" >/dev/null || {
     echo "acceptance: required command not found: $command" >&2
@@ -30,6 +35,11 @@ cleanup() {
   if [[ ! "$PROJECT" =~ ^assay-acceptance-[a-zA-Z0-9-]+$ ]]; then
     echo "acceptance: refusing cleanup for unsafe project name: $PROJECT" >&2
     exit 1
+  fi
+  if ((status == 0 && KEEP == 1)); then
+    printf 'acceptance: stack preserved at %s; endpoint: %s; credentials: %s\n' \
+      "$PROJECT" "$EXPECTED_ENDPOINT" "$ENV_FILE" >&2
+    exit 0
   fi
   if ((status != 0)); then
     docker compose --env-file "$ENV_FILE" --project-name "$PROJECT" \

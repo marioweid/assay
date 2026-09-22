@@ -79,7 +79,9 @@ admin token from `.env`. Choose **Python Q&A example** and open its newest trace
 asynchronously; refresh after a few seconds. The Score trends tab includes completed scores.
 
 The example deliberately captures synthetic Q&A content. When adapting it to real inputs, choose
-what to capture and redact sensitive content before calling the tracing setters.
+what to capture and redact sensitive content before calling the tracing setters. To turn a failed
+trace into a regression, attach a reference, score it, import its retained evidence into a dataset,
+and create a new run; editing that dataset later does not rewrite earlier run snapshots.
 
 ## Checks
 

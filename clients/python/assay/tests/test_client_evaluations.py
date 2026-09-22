@@ -71,6 +71,9 @@ RUN_ITEM = {
     "generated_output": None,
     "generated_context": [],
     "generated_at": None,
+    "snapshot": DATASET_ITEM,
+    "snapshot_origin": "creation",
+    "scores": [],
 }
 SCORE = {
     "id": 1,

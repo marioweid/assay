@@ -1,10 +1,10 @@
 ## Now
 
-- M7D4 is complete on `feat/m7d2-run-item-polling`: the Python SDK captures bounded structured OTel GenAI messages atomically and exposes active trace/span IDs without changing global capture behavior.
+- M7D5 is complete on `feat/m7d2-run-item-polling`: typed Python resources and strict parsers cover browser workflows, and the JSON/JSONL CLI exposes the complete agent-operable command matrix with explicit destructive confirmations.
 
 ## Next
 
-- Start M7D5 typed client and CLI parity.
+- Start M7D6's no-paid-service SDK-to-trace-to-evaluation acceptance loop.
 
 ## Done
 

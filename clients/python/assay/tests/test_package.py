@@ -14,6 +14,12 @@ def test_package_exports_structured_message_types() -> None:
     assert assay.ToolResultPart.__required_keys__ == frozenset({"type", "response"})
 
 
+def test_package_exports_product_workflow_models() -> None:
+    assert assay.RunComparisonPage.__dataclass_fields__["summary"]
+    assert assay.ScoringEligibility.__dataclass_fields__["reasons"]
+    assert assay.TraceScoreSummary.__dataclass_fields__["value"]
+
+
 def test_distribution_exposes_console_entry_point() -> None:
     entry_points = metadata.entry_points(group="console_scripts", name="assay")
 

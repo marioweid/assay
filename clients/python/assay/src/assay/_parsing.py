@@ -23,14 +23,20 @@ from assay.models import (
     Page,
     Project,
     ResponseMappingView,
+    RunComparisonPage,
+    RunComparisonRow,
+    RunComparisonSummary,
     Score,
     ScoreAggregate,
     ScorerConfig,
+    ScoringEligibility,
+    ScoringEligibilityReason,
     ScoringTask,
     Span,
     SpanEvent,
     TargetEndpointView,
     Trace,
+    TraceScoreSummary,
 )
 
 T = TypeVar("T")
@@ -229,6 +235,11 @@ def parse_eval_run_item(operation: str, payload: Mapping[str, object]) -> EvalRu
         generated_output=_optional_string(operation, payload, "generated_output"),
         generated_context=_chunks(operation, payload, "generated_context", default_empty=True),
         generated_at=_optional_timestamp(operation, payload, "generated_at"),
+        snapshot=parse_dataset_item(operation, _object(operation, payload, "snapshot")),
+        snapshot_origin=_string(operation, payload, "snapshot_origin"),
+        scores=tuple(
+            parse_score(operation, item) for item in _objects(operation, payload, "scores")
+        ),
     )
 
 
@@ -256,6 +267,49 @@ def parse_score(operation: str, payload: Mapping[str, object]) -> Score:
         judged_context=_chunks(operation, payload, "judged_context", default_empty=True),
         judged_reference=_optional_string(operation, payload, "judged_reference"),
         created_at=_timestamp(operation, payload, "created_at"),
+    )
+
+
+def parse_run_comparison(
+    operation: str,
+    payload: Mapping[str, object],
+) -> RunComparisonPage:
+    summary = _object(operation, payload, "summary")
+    return RunComparisonPage(
+        baseline_run_id=_string(operation, payload, "baseline_run_id"),
+        candidate_run_id=_string(operation, payload, "candidate_run_id"),
+        scorer=_string(operation, payload, "scorer"),
+        items=tuple(
+            _parse_comparison_row(operation, item) for item in _objects(operation, payload, "items")
+        ),
+        next_cursor=_optional_string(operation, payload, "next_cursor"),
+        summary=RunComparisonSummary(
+            n=_integer(operation, summary, "n"),
+            mean_delta=_nullable_number(operation, summary, "mean_delta"),
+            matched=_integer(operation, summary, "matched"),
+            changed_cases=_integer(operation, summary, "changed_cases"),
+            baseline_only=_integer(operation, summary, "baseline_only"),
+            candidate_only=_integer(operation, summary, "candidate_only"),
+            unscored=_integer(operation, summary, "unscored"),
+        ),
+        warnings=_string_tuple(operation, payload, "warnings"),
+    )
+
+
+def parse_scoring_eligibility(
+    operation: str,
+    payload: Mapping[str, object],
+) -> ScoringEligibility:
+    return ScoringEligibility(
+        scorer=_string(operation, payload, "scorer"),
+        eligible=_bool(operation, payload, "eligible"),
+        reasons=tuple(
+            ScoringEligibilityReason(
+                code=_string(operation, reason, "code"),
+                message=_string(operation, reason, "message"),
+            )
+            for reason in _objects(operation, payload, "reasons")
+        ),
     )
 
 
@@ -295,8 +349,54 @@ def parse_trace(operation: str, payload: Mapping[str, object]) -> Trace:
             parse_scoring_task(operation, item)
             for item in _objects(operation, payload, "scoring_tasks", default_empty=True)
         ),
+        score_summaries=tuple(
+            _parse_trace_score_summary(operation, item)
+            for item in _objects(operation, payload, "score_summaries", default_empty=True)
+        ),
         created_at=_timestamp(operation, payload, "created_at"),
         updated_at=_timestamp(operation, payload, "updated_at"),
+    )
+
+
+def parse_trace_summary(operation: str, payload: Mapping[str, object]) -> Trace:
+    _objects(operation, payload, "score_summaries")
+    return parse_trace(operation, payload)
+
+
+def _parse_comparison_row(
+    operation: str,
+    payload: Mapping[str, object],
+) -> RunComparisonRow:
+    kind = _string(operation, payload, "kind")
+    if kind not in {
+        "matched",
+        "changed_case",
+        "baseline_only",
+        "candidate_only",
+        "unscored",
+    }:
+        _invalid(operation, "kind")
+    baseline = _nullable_object(operation, payload, "baseline")
+    candidate = _nullable_object(operation, payload, "candidate")
+    return RunComparisonRow(
+        dataset_item_id=_string(operation, payload, "dataset_item_id"),
+        kind=kind,
+        baseline=parse_eval_run_item(operation, baseline) if baseline is not None else None,
+        candidate=parse_eval_run_item(operation, candidate) if candidate is not None else None,
+        delta=_nullable_number(operation, payload, "delta"),
+    )
+
+
+def _parse_trace_score_summary(
+    operation: str,
+    payload: Mapping[str, object],
+) -> TraceScoreSummary:
+    return TraceScoreSummary(
+        scorer=_string(operation, payload, "scorer"),
+        value=_number(operation, payload, "value"),
+        threshold=_number(operation, payload, "threshold"),
+        passed=_bool(operation, payload, "passed"),
+        created_at=_timestamp(operation, payload, "created_at"),
     )
 
 
@@ -400,6 +500,26 @@ def _number(operation: str, payload: Mapping[str, object], name: str) -> float:
     return float(value)
 
 
+def _nullable_number(
+    operation: str,
+    payload: Mapping[str, object],
+    name: str,
+) -> float | None:
+    if name not in payload:
+        _invalid(operation, name)
+    return _optional_number(operation, payload, name)
+
+
+def _optional_number(
+    operation: str,
+    payload: Mapping[str, object],
+    name: str,
+) -> float | None:
+    if payload.get(name) is None:
+        return None
+    return _number(operation, payload, name)
+
+
 def _timestamp(operation: str, payload: Mapping[str, object], name: str) -> datetime:
     value = _string(operation, payload, name)
     parsed: datetime | None = None
@@ -429,6 +549,16 @@ def _object(
     if not isinstance(value, dict):
         _invalid(operation, name)
     return cast(dict[str, object], value)
+
+
+def _nullable_object(
+    operation: str,
+    payload: Mapping[str, object],
+    name: str,
+) -> Mapping[str, object] | None:
+    if name not in payload:
+        _invalid(operation, name)
+    return _optional_object(operation, payload, name)
 
 
 def _optional_object(

@@ -59,7 +59,12 @@ with assay.Client("http://localhost:8080", admin_token="...") as client:
 ```
 
 Management, dataset, scorer, and run operations use an admin token. Trace inspection and scoring
-use a project API key.
+prefer a project API key and fall back to an admin token. Trace deletion and scoring-eligibility
+inspection always use the admin token.
+
+Typed resources cover complete dataset-item replacement, run-item evidence and scores, paired run
+comparison, trace score summaries, and scoring eligibility. Response parsing is strict: malformed
+nested server data raises `AssayProtocolError` instead of returning a partial model.
 
 ## CLI
 
@@ -67,20 +72,37 @@ Set `ASSAY_ENDPOINT` and the relevant credential, then use the management and ev
 
 ```bash
 assay projects list
+assay projects get PROJECT_ID
+assay projects update PROJECT_ID --judge-config-file judge.json
+assay keys revoke PROJECT_ID KEY_ID --yes
 assay apps list --project PROJECT_ID
+assay apps update APP_ID --file application-patch.json
+assay apps clear-endpoint APP_ID --yes
 assay datasets import APPLICATION_ID --file regression.jsonl
+assay datasets list APPLICATION_ID
+assay scorers set APP_ID groundedness --disabled --judge-config-file judge.json
 assay run create APPLICATION_ID --dataset DATASET_ID --scorers groundedness,correctness
+assay run list APPLICATION_ID
+assay run export RUN_ID --format jsonl
 assay run watch RUN_ID --gate groundedness:0.8
+assay run compare BASELINE_RUN_ID CANDIDATE_RUN_ID --scorer groundedness
+assay datasets items replace DATASET_ID ITEM_ID --file item.json
+assay datasets export DATASET_ID --format jsonl
+assay traces list APPLICATION_ID --query answer --scorer correctness --failed
+assay traces reference TRACE_ID --file reference.txt
+assay traces eligibility TRACE_ID
 assay traces score --scorer correctness TRACE_ID
 assay scores export APPLICATION_ID --failed --format jsonl
 assay datasets from-trace DATASET_ID TRACE_ID --scorer groundedness
 assay metrics APPLICATION_ID --scorer groundedness
 ```
 
-Commands emit JSON. `assay run watch` returns exit code 1 when a run fails or a gate is not met,
-which makes it suitable for CI checks.
+Commands emit JSON. Delete, key-revoke, and endpoint-clear commands require `--yes`; run cancel is
+already explicit and does not. `assay run watch` returns exit code 1 when a run fails or a gate is
+not met, which makes it suitable
+for CI checks.
 
-M6 commands are available from this checkout via `uv run assay ...`. Metrics and score export
+Commands are available from this checkout via `uv run assay ...`. Metrics and score export
 require admin authentication and default to 30 days. `--start` and `--end` accept timezone-bearing
 timestamps for ranges up to 366 days. Trace imports preserve the selected scorer's latest evidence
 and reject duplicate trace/scorer pairs without overwriting existing items.

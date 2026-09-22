@@ -91,7 +91,7 @@ def test_dataset_ensure_rejects_ambiguous_exact_name() -> None:
 
 def test_import_file_reports_second_batch_failure(tmp_path: Path) -> None:
     path = tmp_path / "items.jsonl"
-    path.write_text("\n".join(json.dumps({"input": {"n": n}}) for n in range(1001)))
+    path.write_text("\n".join(json.dumps({"input": {"question": str(n)}}) for n in range(1001)))
     calls = 0
 
     def handler(_: httpx.Request) -> httpx.Response:
@@ -136,7 +136,7 @@ def test_import_file_validates_empty_file_and_batch_size_before_io(tmp_path: Pat
 
 def test_import_file_returns_actual_counts_for_custom_batches(tmp_path: Path) -> None:
     path = tmp_path / "items.jsonl"
-    path.write_text("\n".join(json.dumps({"input": {"n": n}}) for n in range(1001)))
+    path.write_text("\n".join(json.dumps({"input": {"question": str(n)}}) for n in range(1001)))
     batch_lengths: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

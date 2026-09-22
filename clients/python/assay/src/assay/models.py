@@ -6,11 +6,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Generic, TypeAlias, TypeVar, cast
+from typing import Generic, Literal, TypeAlias, TypeVar, cast
 
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 JSONObject: TypeAlias = dict[str, JSONValue]
 AttributeScalar: TypeAlias = bool | str | int | float
+ComparisonKind: TypeAlias = Literal[
+    "matched", "changed_case", "baseline_only", "candidate_only", "unscored"
+]
 AttributeValue: TypeAlias = (
     AttributeScalar | Sequence[bool] | Sequence[str] | Sequence[int] | Sequence[float]
 )
@@ -253,6 +256,17 @@ class ScoreAggregate:
 
 
 @dataclass(frozen=True, slots=True)
+class TraceScoreSummary:
+    """Latest online score summary attached to a trace-list row."""
+
+    scorer: str
+    value: float
+    threshold: float
+    passed: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class MetricPoint:
     """Daily UTC score aggregate for one application and scorer."""
 
@@ -294,7 +308,7 @@ class EvalRun:
 
 @dataclass(frozen=True, slots=True)
 class EvalRunItem:
-    """Execution state for one dataset item in an evaluation run."""
+    """Execution state and immutable evidence for one evaluation case."""
 
     eval_run_id: str
     dataset_item_id: str
@@ -307,6 +321,13 @@ class EvalRunItem:
     generated_output: str | None
     generated_context: tuple[Chunk, ...]
     generated_at: datetime | None
+    snapshot: DatasetItem
+    snapshot_origin: str
+    scores: tuple[Score, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "generated_context", tuple(self.generated_context))
+        object.__setattr__(self, "scores", tuple(self.scores))
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,6 +360,47 @@ class Score:
     def __post_init__(self) -> None:
         object.__setattr__(self, "details", _freeze_mapping(self.details))
         object.__setattr__(self, "judged_context", tuple(self.judged_context))
+
+
+@dataclass(frozen=True, slots=True)
+class RunComparisonSummary:
+    """All-page paired comparison counts and mean delta."""
+
+    n: int
+    mean_delta: float | None
+    matched: int
+    changed_cases: int
+    baseline_only: int
+    candidate_only: int
+    unscored: int
+
+
+@dataclass(frozen=True, slots=True)
+class RunComparisonRow:
+    """One case aligned across a baseline and candidate run."""
+
+    dataset_item_id: str
+    kind: ComparisonKind
+    baseline: EvalRunItem | None
+    candidate: EvalRunItem | None
+    delta: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunComparisonPage:
+    """One comparison page with an all-page summary."""
+
+    baseline_run_id: str
+    candidate_run_id: str
+    scorer: str
+    items: tuple[RunComparisonRow, ...]
+    next_cursor: str | None
+    summary: RunComparisonSummary
+    warnings: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", tuple(self.items))
+        object.__setattr__(self, "warnings", tuple(self.warnings))
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,6 +458,26 @@ class ScoringTask:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoringEligibilityReason:
+    """Stable reason why one scorer cannot currently score a trace."""
+
+    code: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ScoringEligibility:
+    """Current eligibility result for one trace scorer."""
+
+    scorer: str
+    eligible: bool
+    reasons: tuple[ScoringEligibilityReason, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reasons", tuple(self.reasons))
+
+
+@dataclass(frozen=True, slots=True)
 class Trace:
     """Project-scoped trace summary or complete detail tree."""
 
@@ -416,9 +498,11 @@ class Trace:
     scoring_tasks: tuple[ScoringTask, ...]
     created_at: datetime
     updated_at: datetime
+    score_summaries: tuple[TraceScoreSummary, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "attributes", _freeze_mapping(self.attributes))
         object.__setattr__(self, "spans", tuple(self.spans))
         object.__setattr__(self, "scores", tuple(self.scores))
         object.__setattr__(self, "scoring_tasks", tuple(self.scoring_tasks))
+        object.__setattr__(self, "score_summaries", tuple(self.score_summaries))

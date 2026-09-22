@@ -9,6 +9,8 @@ coverage.*
 # Node / web (embedded SPA)
 node_modules/
 /web/dist/
+/web/e2e-results/
+/web/playwright-report/
 /assayd/internal/ui/dist/
 
 # Python

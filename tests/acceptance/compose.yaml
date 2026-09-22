@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: assay
+      POSTGRES_PASSWORD: ${ASSAY_ACCEPTANCE_POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: assay
+    volumes:
+      - acceptance-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assay -d assay"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  fixtures:
+    image: ${ASSAY_ACCEPTANCE_FIXTURE_IMAGE:?required}
+    healthcheck:
+      test: ["CMD", "/acceptance-fixtures", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  assayd:
+    image: ${ASSAY_ACCEPTANCE_IMAGE:?required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fixtures:
+        condition: service_healthy
+    environment:
+      ASSAY_HTTP_ADDR: ":8080"
+      ASSAY_DATABASE_URL: postgres://assay:${ASSAY_ACCEPTANCE_POSTGRES_PASSWORD:?required}@postgres:5432/assay?sslmode=disable
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ACCEPTANCE_ADMIN_TOKEN:?required}
+      ASSAY_ENCRYPTION_KEY: ${ASSAY_ACCEPTANCE_ENCRYPTION_KEY:?required}
+      ASSAY_JUDGE_BASE_URL: http://fixtures:18090/v1
+      ASSAY_JUDGE_MODEL: acceptance-fixture
+      ASSAY_WORKER_CONCURRENCY: "2"
+      ASSAY_JOB_MAX_ATTEMPTS: "3"
+      ASSAY_UI_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${ASSAY_ACCEPTANCE_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD", "/assayd", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  acceptance-pgdata:

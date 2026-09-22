@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	immutableCache        = "public, max-age=31536000, immutable"
-	contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; " +
+	immutableCache = "public, max-age=31536000, immutable"
+	// Radix's scroll lock injects this fixed rule when a modal opens; hash only that rule.
+	scrollLockStyleHash   = "'sha256-nzTgYzXYDNe6BAHiiI7NNlfK8n/auuOAhh2t92YvuXo='"
+	contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' " +
+		scrollLockStyleHash + "; " +
 		"img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; " +
 		"frame-ancestors 'none'"
 )

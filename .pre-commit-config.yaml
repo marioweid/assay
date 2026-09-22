@@ -19,6 +19,24 @@ repos:
         language: system
         files: ^clients/python/assay/
         pass_filenames: false
+      - id: web-lint
+        name: Web lint
+        entry: pnpm --dir web lint
+        language: system
+        files: ^web/
+        pass_filenames: false
+      - id: web-format
+        name: Web formatting
+        entry: pnpm --dir web format:check
+        language: system
+        files: ^web/
+        pass_filenames: false
+      - id: web-types
+        name: Web types
+        entry: pnpm --dir web typecheck
+        language: system
+        files: ^web/
+        pass_filenames: false
       - id: go-vet
         name: Go vet
         entry: go -C assayd vet ./...

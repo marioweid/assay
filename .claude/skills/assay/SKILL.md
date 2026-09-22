@@ -38,11 +38,11 @@ assay scores list <APP_ID> --failed --scorer groundedness
 assay datasets from-trace <DATASET_ID> <TRACE_ID> --scorer groundedness
 ```
 
-Inspect the rationale before selecting a trace. Imports preserve the latest selected scorer's
-captured input, output, context, and reference, even after spans expire. Use `--expected-output`
-to supply a corrected reference. The external ID contains the trace ID and scorer; repeating the
-import returns a conflict and preserves the original item. Import corrected outputs into a new
-dataset, or use `generate_then_score` to evaluate a changed target endpoint.
+Inspect the rationale before selecting a trace. Imports preserve the selected scorer's retained
+input, output, context, and reference even after spans expire; repeating an import returns 409 and
+leaves the original item untouched. Use `--expected-output` to supply a corrected reference.
+`datasets items replace` is a full replacement: explicit JSON null clears nullable output/reference
+fields. A run retains its creation snapshot, while a rerun uses the current dataset.
 
 ### 3. Evaluate
 ```
@@ -51,7 +51,13 @@ assay run create <APP_ID> --dataset <DATASET_ID> --scorers groundedness,correctn
 # or generate fresh answers by calling the app's target endpoint, then score
 assay run create <APP_ID> --dataset <DATASET_ID> --scorers groundedness,correctness --mode generate_then_score
 assay run watch <RUN_ID>                       # streams status → per-scorer aggregates (mean, pass_rate, n)
+assay run compare <BASELINE_RUN_ID> <CANDIDATE_RUN_ID> --scorer groundedness
 ```
+
+A comparison reports matched, changed-case, one-sided, and unscored rows; its mean excludes rows
+without a paired score. Attach a trace reference before requesting correctness. Project keys emit
+and inspect project traces; admin credentials manage projects, datasets, runs, eligibility, and
+trace deletion.
 
 ### 4. Gate a change (CI / pre-merge)
 ```

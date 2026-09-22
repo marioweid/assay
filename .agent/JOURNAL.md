@@ -64,7 +64,7 @@
 ## 2026-09-20T14:07Z — M7D2 bounded item polling
 
 [OUTCOME] Run detail pagination now replaces the visible cursor page instead of accumulating every prior page. Active run updates refresh that page, including one final terminal refresh, while page navigation retains back/forward cursor state.
-[VERIFY] Focused polling and pagination regressions plus all 144 web tests, lint, format, typecheck, production build, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 engine warning.
+[VERIFY] Focused polling and pagination regressions plus all 144 web tests, lint, format, typecheck, production build, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 range.
 
 ## 2026-09-20T14:14Z — M7D2 run lifecycle and export
 
@@ -103,3 +103,13 @@
 
 [OUTCOME] Reproduced the failed `main` SHA under repeated race runs. `TestAppMigratesBeforeServingAndStops` timed out while `http.Server.Shutdown` waited on test-owned keep-alive connections; a goroutine dump ruled out the worker pool and database. The M2, M3, and readiness helpers now close idle client connections before the five-second shutdown assertion.
 [VERIFY] The unmodified failing SHA failed in both five-run and instrumented three-run stress executions. After the fix, `go test -race -count=5 ./...`, the exact CI command `go test -race -count=1 ./...`, `go build ./...`, golangci-lint, gofmt, and `git diff --check` pass.
+
+## 2026-09-22T14:27Z — M7D6 SDK lifecycle acceptance complete
+
+[OUTCOME] Added a disposable E1-backed SDK acceptance test covering structured/capture-off traces, eligibility, scoring, retained-evidence import conflicts, snapshot-preserving replacement, transient retry, terminal execution failure, cancellation/deletion, CLI failures, and revoked-key ingestion denial. `ASSAY_ACCEPTANCE_KEEP=1` now preserves a successful disposable stack and its synthetic dashboard data on explicit request.
+[VERIFY] The new test failed first when its CLI lacked admin credentials and when its target context mapping selected objects rather than strings; both corrections were verified by a passing Docker-backed run. Docker-run package checks pass: 238 tests, 2 skips, ruff, format, and ty. The Python Q&A example passes 8 tests plus ruff/format/ty. Browser E1 could not launch locally because NixOS rejects Playwright's dynamically linked Chromium; the existing browser suite was not bypassed. `shellcheck` and `shfmt` are unavailable locally; `bash -n`, explicit invalid-keep rejection, and Compose validation pass. A preserved `assay-acceptance-d6-*` stack is healthy at port 18080 for dashboard inspection.
+
+## 2026-09-22T14:36Z — Local persistent D6 demonstration
+
+[OUTCOME] With explicit approval, rebuilt only the source-Compose `assayd` container against current `main`; the existing Postgres volume was preserved. A deterministic fake fixture container joined the Compose network as `fixtures`, and the complete synthetic D6 project was retained in the localhost dashboard.
+[VERIFY] The first localhost attempt exposed the old container's pre-D5 eligibility response shape; the incomplete project was removed. The rebuilt service passed `tests/test_product_acceptance.py` against `http://127.0.0.1:8080` with `ASSAY_ACCEPTANCE_KEEP=1`, using a project-scoped fake judge and target rather than configured paid providers.

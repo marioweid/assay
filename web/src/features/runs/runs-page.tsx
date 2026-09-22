@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { listDatasets, listEvalRuns } from "@/api/generated/sdk.gen";
 import type { DatasetResponse, EvalRunResponse } from "@/api/generated/types.gen";
+import { Button } from "@/components/ui/button";
+import { fieldControlClass } from "@/components/ui/field";
 import { CreateRunDialog } from "@/features/runs/create-run-dialog";
+import { isActiveRun } from "@/features/runs/run-status";
 
 export function RunsPage() {
   const { appId = "" } = useParams();
@@ -12,6 +15,7 @@ export function RunsPage() {
   const [runs, setRuns] = useState<EvalRunResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const [nextDatasetCursor, setNextDatasetCursor] = useState<string | null>(null);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export function RunsPage() {
         if (requestNumber.current === currentRequest) setLoading(false);
       });
     return () => controller.abort();
-  }, [appId]);
+  }, [appId, loadGeneration]);
 
   async function loadMoreDatasets(): Promise<void> {
     if (nextDatasetCursor === null || loadingDatasets) return;
@@ -104,6 +108,7 @@ export function RunsPage() {
         </p>
       )}
       {loading && <p className="mt-8 text-muted">Loading runs...</p>}
+      {!loading && runs.length > 0 && <RunComparisonForm appID={appId} runs={runs} />}
       {!loading && error === null && runs.length === 0 && (
         <p className="mt-8 text-muted">No evaluation runs yet. Start one from a dataset.</p>
       )}
@@ -116,9 +121,119 @@ export function RunsPage() {
           nextDatasetCursor={nextDatasetCursor}
           onClose={() => setDialogOpen(false)}
           onLoadMoreDatasets={loadMoreDatasets}
+          onUncertainOutcome={() => {
+            setDialogOpen(false);
+            setLoadGeneration((value) => value + 1);
+          }}
         />
       )}
     </section>
+  );
+}
+
+function RunComparisonForm({ appID, runs }: { appID: string; runs: EvalRunResponse[] }) {
+  const navigate = useNavigate();
+  const terminal = runs.filter((run) => !isActiveRun(run.status));
+  const [baselineID, setBaselineID] = useState("");
+  const [candidateID, setCandidateID] = useState("");
+  const [scorer, setScorer] = useState("");
+  const baseline = terminal.find((run) => run.id === baselineID);
+  const candidate = terminal.find((run) => run.id === candidateID);
+  const sharedScorers = (baseline?.scorers ?? []).filter((value) =>
+    (candidate?.scorers ?? []).includes(value),
+  );
+
+  function selectPair(setter: (value: string) => void, value: string): void {
+    setter(value);
+    setScorer("");
+  }
+
+  function compare(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (baselineID === "" || candidateID === "" || baselineID === candidateID || scorer === "")
+      return;
+    const query = new URLSearchParams({ baseline: baselineID, candidate: candidateID, scorer });
+    navigate(`/apps/${appID}/runs/compare?${query.toString()}`);
+  }
+
+  if (terminal.length < 2) {
+    return <p className="mt-6 text-sm text-muted">Complete two runs to compare matched cases.</p>;
+  }
+  return (
+    <form className="mt-6 border border-line bg-surface p-4" onSubmit={compare}>
+      <h2 className="font-semibold">Compare terminal runs</h2>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
+        <RunSelect
+          label="Baseline run"
+          onChange={(value) => selectPair(setBaselineID, value)}
+          runs={terminal}
+          value={baselineID}
+        />
+        <RunSelect
+          label="Candidate run"
+          onChange={(value) => selectPair(setCandidateID, value)}
+          runs={terminal}
+          value={candidateID}
+        />
+        <label className="text-sm">
+          <span className="font-medium">Shared scorer</span>
+          <select
+            className={fieldControlClass + " mt-1"}
+            disabled={baseline === undefined || candidate === undefined}
+            onChange={(event) => setScorer(event.target.value)}
+            value={sharedScorers.includes(scorer) ? scorer : ""}
+          >
+            <option value="">Select a scorer</option>
+            {sharedScorers.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-end">
+          <Button
+            disabled={
+              baselineID === "" || candidateID === "" || baselineID === candidateID || scorer === ""
+            }
+            type="submit"
+            variant="primary"
+          >
+            Compare runs
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function RunSelect({
+  label,
+  onChange,
+  runs,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  runs: EvalRunResponse[];
+  value: string;
+}) {
+  return (
+    <label className="text-sm">
+      <span className="font-medium">{label}</span>
+      <select
+        className={fieldControlClass + " mt-1"}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">Select a run</option>
+        {runs.map((run) => (
+          <option key={run.id} value={run.id}>
+            {run.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

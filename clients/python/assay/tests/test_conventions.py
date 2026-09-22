@@ -4,8 +4,17 @@ from typing import Literal, cast
 
 import pytest
 
-from assay.conventions import context_attributes, message_attribute, validate_chunks
+from assay.conventions import (
+    ASSAY_SEMCONV_MAPPING_VERSION,
+    context_attributes,
+    message_attribute,
+    validate_chunks,
+)
 from assay.models import Chunk
+
+
+def test_structured_message_mapping_is_pinned() -> None:
+    assert ASSAY_SEMCONV_MAPPING_VERSION == "b5d8440f6f126738fd50f927752cd669772c517b"
 
 
 @pytest.mark.parametrize("role", ["user", "assistant"])

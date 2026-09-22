@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Problem } from "@/api/errors";
 import { cancelEvalRun } from "@/api/generated/sdk.gen";
@@ -7,15 +7,21 @@ import type { EvalRunResponse } from "@/api/generated/types.gen";
 import { useRunPolling } from "@/features/runs/use-run-polling";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { CreateRunDialog } from "@/features/runs/create-run-dialog";
+import { DeleteRunAction } from "@/features/runs/run-actions";
+import { ExportRunAction } from "@/features/runs/run-export";
 import { RunItems } from "@/features/runs/run-items";
 import { isActiveRun } from "@/features/runs/run-status";
 
 export function RunDetail() {
   const { appId = "", runId = "" } = useParams();
+  const navigate = useNavigate();
   const polling = useRunPolling(runId);
   const cancelRequest = useRef<AbortController | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [canceling, setCanceling] = useState(false);
 
   useEffect(() => () => cancelRequest.current?.abort(), []);
@@ -75,14 +81,30 @@ export function RunDetail() {
           </h1>
           <p className="mt-2 capitalize text-muted">{run.status}</p>
         </div>
-        {isActiveRun(run.status) && (
-          <button
-            className="border border-danger px-4 py-2 text-sm text-danger"
-            onClick={() => setConfirming(true)}
-          >
-            Cancel run
-          </button>
-        )}
+        <div className="flex gap-2">
+          <Button onClick={() => setRerunning(true)}>Run again</Button>
+          {isActiveRun(run.status) ? (
+            <button
+              className="border border-danger px-4 py-2 text-sm text-danger"
+              onClick={() => setConfirming(true)}
+            >
+              Cancel run
+            </button>
+          ) : (
+            <>
+              <ExportRunAction runID={run.id} />
+              <DeleteRunAction
+                name={run.name}
+                onConflict={(message) => {
+                  setActionNotice(message);
+                  polling.retry();
+                }}
+                onDeleted={() => navigate(`/apps/${appId}/runs`)}
+                runID={run.id}
+              />
+            </>
+          )}
+        </div>
       </div>
       {polling.error && (
         <p className="mt-4 border border-warning bg-warning/10 p-3 text-sm" role="alert">
@@ -99,8 +121,30 @@ export function RunDetail() {
           {cancelError}
         </p>
       )}
+      {actionNotice && (
+        <p className="mt-4 border border-warning bg-warning/10 p-3 text-sm" role="alert">
+          {actionNotice} Run details were refreshed.
+        </p>
+      )}
       <RunSummary run={run} />
-      <RunItems runID={run.id} />
+      <RunItems key={run.id} refreshGeneration={polling.refreshGeneration} runID={run.id} />
+      {rerunning && (
+        <CreateRunDialog
+          appID={appId}
+          datasets={[]}
+          initial={{
+            datasetID: run.dataset_id,
+            mode: run.mode === "generate_then_score" ? run.mode : "score_existing",
+            name: `${run.name} copy`,
+            scorers: run.scorers ?? [],
+          }}
+          loadingDatasets={false}
+          nextDatasetCursor={null}
+          onClose={() => setRerunning(false)}
+          onLoadMoreDatasets={() => Promise.resolve()}
+          onUncertainOutcome={() => navigate(`/apps/${appId}/runs`)}
+        />
+      )}
       {confirming && (
         <CancelDialog
           canceling={canceling}

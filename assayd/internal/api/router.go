@@ -17,6 +17,7 @@ type handler struct {
 	service     *domain.Service
 	traces      *domain.TraceService
 	evaluations *domain.EvaluationService
+	comparisons *domain.RunComparisonService
 	adminToken  string
 	logger      *slog.Logger
 }
@@ -27,6 +28,7 @@ type Dependencies struct {
 	Service     *domain.Service
 	Traces      *domain.TraceService
 	Evaluations *domain.EvaluationService
+	Comparisons *domain.RunComparisonService
 	AdminToken  string
 	Logger      *slog.Logger
 }
@@ -61,6 +63,7 @@ func Register(
 		service:     dependencies.Service,
 		traces:      dependencies.Traces,
 		evaluations: dependencies.Evaluations,
+		comparisons: dependencies.Comparisons,
 		adminToken:  dependencies.AdminToken,
 		logger:      dependencies.Logger,
 	}
@@ -70,6 +73,7 @@ func Register(
 	handlers.registerTraceRoutes()
 	handlers.registerDatasetRoutes()
 	handlers.registerScorerConfigRoutes()
+	handlers.registerRunComparisonRoute()
 	handlers.registerEvalRunRoutes()
 	handlers.registerAnalyticsRoutes()
 	return humaAPI

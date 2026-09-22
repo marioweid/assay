@@ -38,6 +38,7 @@ from assay.conventions import (
     validate_chunks,
 )
 from assay.exceptions import AssayConfigurationError
+from assay.messages import Message, serialize_messages
 from assay.models import AttributeValue, Chunk
 
 P = ParamSpec("P")
@@ -284,6 +285,49 @@ class AssaySpan(AbstractContextManager["AssaySpan"]):
     def set_output(self, value: object) -> None:
         """Set the captured first assistant output message."""
         self._set_message(GEN_AI_OUTPUT_MESSAGES, "assistant", value)
+
+    def set_messages(
+        self,
+        *,
+        input: Sequence[Message] | None = None,
+        output: Sequence[Message] | None = None,
+        redact: Callable[[object], object] | None = None,
+    ) -> None:
+        """Set complete structured GenAI input and/or output messages atomically.
+
+        Args:
+            input: Input messages to replace, or ``None`` to leave them unchanged.
+            output: Output messages to replace, or ``None`` to leave them unchanged.
+            redact: Optional callback applied to each complete supplied collection.
+
+        Raises:
+            ValueError: If neither side is supplied or either collection is invalid.
+            RuntimeError: If the span context is not active.
+        """
+        if input is None and output is None:
+            raise ValueError("input or output messages are required")
+        attributes: dict[str, str] = {}
+        if input is not None:
+            attributes[GEN_AI_INPUT_MESSAGES] = serialize_messages(
+                input, self._max_capture_bytes, redact=redact
+            )
+        if output is not None:
+            attributes[GEN_AI_OUTPUT_MESSAGES] = serialize_messages(
+                output, self._max_capture_bytes, redact=redact
+            )
+        current = self._current()
+        for name, value in attributes.items():
+            current.set_attribute(name, value)
+
+    @property
+    def trace_id(self) -> str:
+        """Return the active OpenTelemetry trace ID as 32 lowercase hex characters."""
+        return f"{self._current().get_span_context().trace_id:032x}"
+
+    @property
+    def span_id(self) -> str:
+        """Return the active OpenTelemetry span ID as 16 lowercase hex characters."""
+        return f"{self._current().get_span_context().span_id:016x}"
 
     def set_context(self, chunks: Iterable[Chunk | Mapping[str, object]]) -> None:
         """Set complete standard and flattened retrieval context attributes."""

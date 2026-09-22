@@ -339,6 +339,110 @@ def test_span_helper_writes_scorable_content_context_and_reference(
     assert attributes["gen_ai.usage.output_tokens"] == 5
 
 
+def test_span_set_messages_captures_structured_content_and_active_ids(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize(capture=False)
+    input_messages: list[assay.Message] = [
+        {"role": "user", "parts": [{"type": "text", "content": "What is Assay?"}]}
+    ]
+    output_messages: list[assay.Message] = [
+        {
+            "role": "assistant",
+            "parts": [{"type": "text", "content": "An eval tool."}],
+        }
+    ]
+
+    with assay.span("chat", scorable=True) as current:
+        current.set_messages(input=input_messages, output=output_messages)
+        trace_id = current.trace_id
+        span_id = current.span_id
+
+    attributes = _attributes(_span_named(exporter, "chat").attributes)
+    assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == input_messages
+    assert json.loads(cast(str, attributes["gen_ai.output.messages"])) == output_messages
+    assert len(trace_id) == 32
+    assert trace_id == trace_id.lower()
+    assert len(span_id) == 16
+    assert span_id == span_id.lower()
+
+
+def test_span_set_messages_validates_both_sides_before_writing(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+    original: list[assay.Message] = [
+        {"role": "user", "parts": [{"type": "text", "content": "original"}]}
+    ]
+    replacement: list[assay.Message] = [
+        {"role": "user", "parts": [{"type": "text", "content": "replacement"}]}
+    ]
+
+    with assay.span("chat") as current:
+        current.set_messages(input=original)
+        with pytest.raises(ValueError, match="structured messages are invalid"):
+            current.set_messages(
+                input=replacement,
+                output=cast(list[assay.Message], [{"role": "assistant", "parts": "bad"}]),
+            )
+        oversized: list[assay.Message] = [
+            {"role": "user", "parts": [{"type": "text", "content": "x" * 70_000}]}
+        ]
+        with pytest.raises(ValueError, match="capture byte limit"):
+            current.set_messages(input=oversized)
+        current.set_messages(output=[])
+
+    attributes = _attributes(_span_named(exporter, "chat").attributes)
+    assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == original
+    assert json.loads(cast(str, attributes["gen_ai.output.messages"])) == []
+
+
+def test_span_set_messages_requires_a_side_and_active_context(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+    current = assay.span("chat")
+
+    with current, pytest.raises(ValueError, match="input or output"):
+        current.set_messages()
+
+    with pytest.raises(RuntimeError, match="not active"):
+        _ = current.trace_id
+    with pytest.raises(RuntimeError, match="not active"):
+        _ = current.span_id
+    assert len(exporter.get_finished_spans()) == 1
+
+
+def test_async_nested_spans_keep_task_local_trace_context(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+
+    async def branch(label: str) -> tuple[str, str, str]:
+        with assay.span(f"outer-{label}") as outer:
+            await asyncio.sleep(0)
+            with assay.span(f"inner-{label}") as inner:
+                await asyncio.sleep(0)
+                return outer.trace_id, outer.span_id, inner.span_id
+
+    async def run() -> list[tuple[str, str, str]]:
+        return list(await asyncio.gather(branch("a"), branch("b")))
+
+    first, second = asyncio.run(run())
+
+    assert first[0] != second[0]
+    assert len({first[1], first[2], second[1], second[2]}) == 4
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    for label in ("a", "b"):
+        inner = spans[f"inner-{label}"]
+        outer = spans[f"outer-{label}"]
+        assert inner.context is not None
+        assert outer.context is not None
+        assert inner.context.trace_id == outer.context.trace_id
+        assert inner.parent is not None
+        assert inner.parent.span_id == outer.context.span_id
+
+
 def test_span_context_validation_writes_no_partial_chunk_attributes(
     exporter: InMemorySpanExporter,
 ) -> None:

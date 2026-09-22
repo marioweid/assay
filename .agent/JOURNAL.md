@@ -60,3 +60,35 @@
 
 [OUTCOME] Run cases now open URL-backed direct detail through the scoped item endpoint, showing original input/context/reference, recorded versus generated output, execution errors, score rationale, provenance, and raw details.
 [VERIFY] Focused run tests and all 142 web tests, lint, format, typecheck, production build, and `git diff --check` passed.
+
+## 2026-09-20T14:07Z — M7D2 bounded item polling
+
+[OUTCOME] Run detail pagination now replaces the visible cursor page instead of accumulating every prior page. Active run updates refresh that page, including one final terminal refresh, while page navigation retains back/forward cursor state.
+[VERIFY] Focused polling and pagination regressions plus all 144 web tests, lint, format, typecheck, production build, and `git diff --check` passed. pnpm reported the known Node 24 versus required Node 22 engine warning.
+
+## 2026-09-20T14:14Z — M7D2 run lifecycle and export
+
+[OUTCOME] Terminal runs now support typed-name deletion with 409 state refresh, current-state reruns through the existing prefilled creation form, and complete JSONL evidence export. Browser export follows cursors and stops on repeated cursors, 10,000 cases, or 50 MiB; larger runs direct users to the CLI.
+[OUTCOME] Direct case detail now labels snapshot provenance and includes generated context alongside original and generated evidence.
+[VERIFY] Focused lifecycle, rerun, pagination, and export tests passed with lint and typecheck. Independent review found item polling tied to a non-advancing parent timestamp, unsafe retries after uncertain create/delete outcomes, and non-exact whitespace confirmation. Polling now uses every successful parent poll as a page refresh generation; uncertain mutations remain disabled pending list reconciliation; confirmation is byte-for-byte exact. Focused recheck found create uncertainty could be erased by dialog dismissal, so in-flight/uncertain dialogs now block dismissal and provide an explicit parent-owned run-list reconciliation action. Regressions cover each repair.
+
+## 2026-09-21T07:46Z — M7D3 paired run comparison
+
+[OUTCOME] Terminal runs can be compared by immutable dataset item ID and a shared scorer. One set-based Postgres read selects deterministic latest scores, classifies matched/changed/one-sided/unscored cases, computes all-page paired delta aggregates, and reports context or judge-configuration mismatches. Bound cursors prevent reuse across another pair/scorer and retain full per-case evidence.
+[OUTCOME] The runs UI selects explicit terminal baseline/candidate/scorer values, preserves them in the URL, supports swapping, explains the denominator and exclusions, and exposes responsive keyboard-expandable side-by-side evidence.
+[VERIFY] Domain classification tests, Docker-backed store/API integration tests, sequential race tests, backend vet/golangci-lint, 158 web tests, frontend lint/typecheck/format/build, generated client stability, and `git diff --check` pass. Independent review found optional generated query parameters and unbounded pre-page evidence JSON construction. The parameters are now required end to end, and SQL materializes scalar classification data before joining and encoding only the bounded evidence page. Focused recheck approved both repairs with no remaining findings.
+
+## 2026-09-21T08:22Z — M7D4 structured Python capture
+
+[OUTCOME] The SDK exports typed OpenTelemetry GenAI text/tool messages and an explicit `AssaySpan.set_messages` helper. Complete input/output arrays are redacted, recursively JSON-validated, size-checked including their envelopes, and serialized before any attribute is changed. Active spans expose lowercase 32/16-character trace/span IDs without replacing the global provider or enabling decorator capture.
+[VERIFY] Structured-message, tracing, conventions, exporter, and package regressions pass on Python 3.13 and the declared Python 3.10 floor. The installed-package suite passes 182 tests with one opt-in live test skipped; ruff, ty, the backend text-parts/tool-only scorer regression, domain race tests, and `git diff --check` pass. Independent review identified a secret-bearing custom-collection exception path; normalization now converts every ordinary exception to a content-free error. Focused recheck confirmed the repair and verified that explicit null participant names/tool IDs match the pinned official schema.
+
+## 2026-09-22T05:45Z — M7D5 typed client and CLI parity
+
+[OUTCOME] The Python SDK now strictly parses immutable run-item snapshots and scores, paired run comparisons, trace score summaries, and scoring eligibility. Typed resources cover dataset mutation/item lifecycle, run inspection/comparison/deletion, and trace filtering/eligibility/deletion with project-key-preferred trace auth and explicit admin fallback. The CLI now exposes the complete project, key, application, dataset/item, scorer, run, and trace workflow matrix; file-backed settings stay out of argv, exports follow guarded cursors as JSONL, and every delete/revoke/endpoint-clear requires `--yes`.
+[VERIFY] The installed Python 3.13 package suite passes 238 tests with one opt-in live test skipped. Python 3.10 passes the 70 focused D5/CLI tests; ruff and ty pass against the declared 3.10 target, console-script help smoke passes, and `git diff --check` is clean. Independent review found required-nullable comparison fields were treated as optional; dedicated nullable parsers now reject omission while preserving explicit JSON null, with regressions for row evidence and summary delta.
+
+## 2026-09-22T05:53Z — M7D6 prerequisite confirmed missing
+
+[DISCOVERY] M7D6 cannot be executed honestly yet: its required E1 disposable acceptance harness, isolated Compose project, and deterministic fake judge/target have not been implemented. The repository has no `tests/acceptance`, acceptance fixture command, or Playwright harness. The paid opt-in M6 live test is intentionally not a substitute and no destructive test will default to localhost.
+[NEXT] Implement E1 before creating or claiming the D6 end-to-end acceptance result.

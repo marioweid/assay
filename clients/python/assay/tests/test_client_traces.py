@@ -80,6 +80,7 @@ TRACE = {
     "total_cost": None,
     "reference_answer": "expected",
     "attributes": {"environment": "test"},
+    "score_summaries": [],
     "spans": [ROOT_SPAN],
     "scores": [SCORE],
     "scoring_tasks": [TASK],

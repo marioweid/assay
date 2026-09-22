@@ -67,6 +67,7 @@ func TestManagementRoutesRequireAdminToken(t *testing.T) {
 		{method: http.MethodPost, path: "/v1/runs", body: `{}`},
 		{method: http.MethodGet, path: "/v1/runs"},
 		{method: http.MethodGet, path: "/v1/runs/" + id},
+		{method: http.MethodGet, path: "/v1/runs/" + id + "/comparison"},
 		{method: http.MethodGet, path: "/v1/runs/" + id + "/items"},
 		{method: http.MethodGet, path: "/v1/runs/" + id + "/items/" + id},
 		{method: http.MethodGet, path: "/v1/runs/" + id + "/scores"},
@@ -167,6 +168,7 @@ type apiFixture struct {
 	service     *domain.Service
 	traces      *domain.TraceService
 	evaluations *domain.EvaluationService
+	comparisons *domain.RunComparisonService
 	database    *store.Database
 }
 
@@ -255,7 +257,11 @@ func hasProjectSecurity(security []map[string][]string) bool {
 }
 
 type openOperation struct {
-	Security []map[string][]string `json:"security"`
+	Security   []map[string][]string `json:"security"`
+	Parameters []struct {
+		Name     string `json:"name"`
+		Required bool   `json:"required"`
+	} `json:"parameters"`
 }
 
 var managementPaths = []string{
@@ -275,6 +281,7 @@ var managementPaths = []string{
 	"/v1/datasets/{id}/items/{itemId}",
 	"/v1/runs",
 	"/v1/runs/{id}",
+	"/v1/runs/{id}/comparison",
 	"/v1/runs/{id}/items",
 	"/v1/runs/{id}/items/{itemId}",
 	"/v1/runs/{id}/scores",
@@ -306,15 +313,16 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		database, service, evaluations,
 		domain.JudgeDefaults{BaseURL: "http://judge.test", Model: "test"}, 3,
 	)
+	comparisons := domain.NewRunComparisonService(database)
 	mux := httpserver.NewMux(database, logger)
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(database),
 		Service:   service, Traces: traceService, Evaluations: evaluations,
-		AdminToken: adminToken, Logger: logger,
+		Comparisons: comparisons, AdminToken: adminToken, Logger: logger,
 	})
 	return &apiFixture{
 		t: t, handler: mux, service: service, traces: traceService,
-		evaluations: evaluations, database: database,
+		evaluations: evaluations, comparisons: comparisons, database: database,
 	}
 }
 
@@ -331,7 +339,8 @@ func newDocumentationHandler(t *testing.T) http.Handler {
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(nil),
 		Service:   service, Traces: traceService, Evaluations: evaluations,
-		AdminToken: adminToken, Logger: logger,
+		Comparisons: domain.NewRunComparisonService(nil),
+		AdminToken:  adminToken, Logger: logger,
 	})
 	return mux
 }

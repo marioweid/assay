@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from opentelemetry.trace import (
 )
 
 from assay._exporter import AssaySpanExporter, build_export_request
+from assay.messages import Message, serialize_messages
 
 TRACE_ID = 0x00112233445566778899AABBCCDDEEFF
 SPAN_ID = 0x0102030405060708
@@ -145,6 +147,31 @@ def test_build_export_request_maps_complete_public_span() -> None:
             "droppedAttributesCount": 0,
         }
     ]
+
+
+def test_build_export_request_preserves_structured_message_json() -> None:
+    source = make_span()
+    messages: list[Message] = [
+        {"role": "assistant", "parts": [{"type": "text", "content": "An eval tool."}]}
+    ]
+    span = ReadableSpan(
+        name="structured",
+        context=source.context,
+        resource=source.resource,
+        attributes={"gen_ai.output.messages": serialize_messages(messages, 1_024)},
+        start_time=1,
+        end_time=2,
+    )
+
+    request = build_export_request((span,))
+    resources = cast(list[dict[str, object]], request["resourceSpans"])
+    scopes = cast(list[dict[str, object]], resources[0]["scopeSpans"])
+    spans = cast(list[dict[str, object]], scopes[0]["spans"])
+    attributes = cast(list[dict[str, object]], spans[0]["attributes"])
+    item = next(item for item in attributes if item["key"] == "gen_ai.output.messages")
+    value = cast(dict[str, str], item["value"])
+
+    assert json.loads(value["stringValue"]) == messages
 
 
 def test_build_export_request_groups_matching_resources_and_scopes() -> None:

@@ -8,31 +8,45 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { fieldControlClass } from "@/components/ui/field";
 
+type RunDefaults = {
+  datasetID: string;
+  mode: "score_existing" | "generate_then_score";
+  name: string;
+  scorers: string[];
+};
+
 type CreateRunDialogProps = {
   appID: string;
+  initial?: RunDefaults;
   datasets: DatasetResponse[];
   loadingDatasets: boolean;
   nextDatasetCursor: string | null;
   onClose: () => void;
   onLoadMoreDatasets: () => Promise<void>;
+  onUncertainOutcome: () => void;
 };
 
 export function CreateRunDialog({
   appID,
   datasets,
+  initial,
   loadingDatasets,
   nextDatasetCursor,
   onClose,
   onLoadMoreDatasets,
+  onUncertainOutcome,
 }: CreateRunDialogProps) {
   const navigate = useNavigate();
   const activeRequest = useRef<AbortController | null>(null);
-  const [name, setName] = useState("");
-  const [datasetID, setDatasetID] = useState("");
-  const [mode, setMode] = useState<"score_existing" | "generate_then_score">("score_existing");
-  const [scorers, setScorers] = useState<string[]>([]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [datasetID, setDatasetID] = useState(initial?.datasetID ?? "");
+  const [mode, setMode] = useState<"score_existing" | "generate_then_score">(
+    initial?.mode ?? "score_existing",
+  );
+  const [scorers, setScorers] = useState<string[]>(initial?.scorers ?? []);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
 
   useEffect(() => () => activeRequest.current?.abort(), []);
 
@@ -60,10 +74,16 @@ export function CreateRunDialog({
       });
       navigate(`/apps/${appID}/runs/${response.data.id}`);
     } catch (reason) {
-      if (!controller.signal.aborted)
-        setError(
-          reason instanceof Problem ? (reason.detail ?? reason.title) : "Unable to create run",
-        );
+      if (!controller.signal.aborted) {
+        if (!(reason instanceof Problem) || reason.status === 0) {
+          setUncertain(true);
+          setError(
+            "Creation outcome is unknown. Close this dialog and refresh the run list before trying again.",
+          );
+        } else {
+          setError(reason.detail ?? reason.title);
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -72,16 +92,30 @@ export function CreateRunDialog({
   return (
     <Dialog
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !submitting && !uncertain) onClose();
       }}
       open
-      title="New evaluation run"
+      title={initial === undefined ? "New evaluation run" : "Run evaluation again"}
     >
       <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
-        {error !== null && (
-          <p className="border border-danger/30 bg-danger/10 p-3 text-sm text-danger" role="alert">
-            {error}
+        {initial !== undefined && (
+          <p className="text-sm text-muted">
+            Uses the current dataset and current application/scorer configuration. This does not
+            replay the old snapshot or retry only failed cases.
           </p>
+        )}
+        {error !== null && (
+          <div
+            className="border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+            role="alert"
+          >
+            <p>{error}</p>
+            {uncertain && (
+              <Button className="mt-3" onClick={onUncertainOutcome}>
+                Refresh run list
+              </Button>
+            )}
+          </div>
         )}
         <label className="block text-sm">
           <span className="font-medium text-ink">Run name</span>
@@ -100,6 +134,10 @@ export function CreateRunDialog({
             value={datasetID}
           >
             <option value="">Select a dataset</option>
+            {initial !== undefined &&
+              !datasets.some((dataset) => dataset.id === initial.datasetID) && (
+                <option value={initial.datasetID}>Current dataset ({initial.datasetID})</option>
+              )}
             {datasets.map((dataset) => (
               <option key={dataset.id} value={dataset.id}>
                 {dataset.name}
@@ -144,8 +182,10 @@ export function CreateRunDialog({
           ))}
         </fieldset>
         <div className="flex justify-end gap-3">
-          <Button onClick={onClose}>Close</Button>
-          <Button disabled={submitting} type="submit" variant="primary">
+          <Button disabled={submitting || uncertain} onClick={onClose}>
+            Close
+          </Button>
+          <Button disabled={submitting || uncertain} type="submit" variant="primary">
             Create run
           </Button>
         </div>

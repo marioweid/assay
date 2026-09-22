@@ -26,10 +26,13 @@ from assay._parsing import (
     parse_metric,
     parse_page,
     parse_project,
+    parse_run_comparison,
     parse_score,
     parse_scorer_config,
+    parse_scoring_eligibility,
     parse_scoring_task,
     parse_trace,
+    parse_trace_summary,
 )
 from assay.exceptions import (
     AssayAPIError,
@@ -56,14 +59,16 @@ from assay.models import (
     MetricPoint,
     Page,
     Project,
+    RunComparisonPage,
     Score,
     ScorerConfig,
+    ScoringEligibility,
     ScoringTask,
     TargetEndpoint,
     Trace,
 )
 
-AuthMode = Literal["none", "admin", "project"]
+AuthMode = Literal["none", "admin", "project", "trace"]
 JsonObject = dict[str, object]
 USER_AGENT = "assay-sdk/0.3.0"
 _INVALID_JSON = object()
@@ -137,9 +142,13 @@ class _Transport:
             if not self._admin_token:
                 raise AssayConfigurationError("admin credential is required")
             return {"Authorization": f"Bearer {self._admin_token}"}
-        if not self._api_key:
-            raise AssayConfigurationError("project credential is required")
-        return {"X-API-Key": self._api_key}
+        if self._api_key:
+            return {"X-API-Key": self._api_key}
+        if auth == "trace" and self._admin_token:
+            return {"Authorization": f"Bearer {self._admin_token}"}
+        if auth == "trace":
+            raise AssayConfigurationError("project or admin credential is required")
+        raise AssayConfigurationError("project credential is required")
 
 
 class Client:
@@ -327,6 +336,10 @@ class ProjectsResource:
         judge_config: JudgeConfig | None = None,
         clear_judge_config: bool = False,
     ) -> Project:
+        if judge_config is not None and clear_judge_config:
+            raise AssayConfigurationError(
+                "judge_config and clear_judge_config cannot be used together"
+            )
         body: dict[str, object] = {}
         if name is not None:
             body["name"] = _required_text(name, "project name")
@@ -545,6 +558,35 @@ class DatasetsResource:
         )
         return parse_dataset(operation, _payload(operation, payload))
 
+    def update(
+        self,
+        dataset_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        clear_description: bool = False,
+    ) -> Dataset:
+        if description is not None and clear_description:
+            raise AssayConfigurationError(
+                "description and clear_description cannot be used together"
+            )
+        body: dict[str, object] = {}
+        if name is not None:
+            body["name"] = _required_text(name, "dataset name")
+        if description is not None:
+            body["description"] = description
+        if clear_description:
+            body["clear_description"] = True
+        operation = "update dataset"
+        payload = self._transport.request(
+            operation,
+            "PATCH",
+            f"/v1/datasets/{_segment(dataset_id, 'dataset ID')}",
+            auth="admin",
+            json=body,
+        )
+        return parse_dataset(operation, _payload(operation, payload))
+
     def delete(self, dataset_id: str) -> None:
         self._transport.request(
             "delete dataset",
@@ -629,6 +671,41 @@ class DatasetsResource:
             params=_page_params(limit, cursor, maximum=500),
         )
         return parse_page(operation, _payload(operation, payload), parse_dataset_item)
+
+    def get_item(self, dataset_id: str, item_id: str) -> DatasetItem:
+        operation = "get dataset item"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            _dataset_item_path(dataset_id, item_id),
+            auth="admin",
+        )
+        return parse_dataset_item(operation, _payload(operation, payload))
+
+    def replace_item(
+        self,
+        dataset_id: str,
+        item_id: str,
+        *,
+        item: DatasetItemInput,
+    ) -> DatasetItem:
+        operation = "replace dataset item"
+        payload = self._transport.request(
+            operation,
+            "PUT",
+            _dataset_item_path(dataset_id, item_id),
+            auth="admin",
+            json=_replacement_item_body(item),
+        )
+        return parse_dataset_item(operation, _payload(operation, payload))
+
+    def delete_item(self, dataset_id: str, item_id: str) -> None:
+        self._transport.request(
+            "delete dataset item",
+            "DELETE",
+            _dataset_item_path(dataset_id, item_id),
+            auth="admin",
+        )
 
     def iter_all_datasets(
         self,
@@ -839,6 +916,40 @@ class RunsResource:
         )
         return parse_page(operation, _payload(operation, payload), parse_eval_run_item)
 
+    def get_item(self, run_id: str, item_id: str) -> EvalRunItem:
+        operation = "get eval run item"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            f"/v1/runs/{_segment(run_id, 'run ID')}/items/{_segment(item_id, 'item ID')}",
+            auth="admin",
+        )
+        return parse_eval_run_item(operation, _payload(operation, payload))
+
+    def compare(
+        self,
+        run_id: str,
+        other_run_id: str,
+        *,
+        scorer: str,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> RunComparisonPage:
+        params = _page_params(limit, cursor, maximum=500)
+        if params is None:
+            params = httpx.QueryParams()
+        params = params.set("other_run_id", _required_text(other_run_id, "other run ID"))
+        params = params.set("scorer", _scorer(scorer))
+        operation = "compare eval runs"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            f"/v1/runs/{_segment(run_id, 'run ID')}/comparison",
+            auth="admin",
+            params=params,
+        )
+        return parse_run_comparison(operation, _payload(operation, payload))
+
     def list_scores(
         self,
         run_id: str,
@@ -862,6 +973,14 @@ class RunsResource:
             "POST",
             f"/v1/runs/{_segment(run_id, 'run ID')}/cancel",
             {},
+        )
+
+    def delete(self, run_id: str) -> None:
+        self._transport.request(
+            "delete eval run",
+            "DELETE",
+            f"/v1/runs/{_segment(run_id, 'run ID')}",
+            auth="admin",
         )
 
     def iter_all_runs(
@@ -941,6 +1060,9 @@ class TracesResource:
         start: datetime | None = None,
         end: datetime | None = None,
         status: str | None = None,
+        q: str | None = None,
+        scorer: str | None = None,
+        passed: bool | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> Page[Trace]:
@@ -951,13 +1073,12 @@ class TracesResource:
             params = _with_raw_param(params, "start", _query_timestamp(start, "start"))
         if end is not None:
             params = _with_raw_param(params, "end", _query_timestamp(end, "end"))
-        if status is not None:
-            params = _with_param(params, "status", status, "trace status")
+        params = _trace_filters(params, status, q, scorer, passed)
         operation = "list traces"
         payload = self._transport.request(
-            operation, "GET", "/v1/traces", auth="project", params=params
+            operation, "GET", "/v1/traces", auth="trace", params=params
         )
-        return parse_page(operation, _payload(operation, payload), parse_trace)
+        return parse_page(operation, _payload(operation, payload), parse_trace_summary)
 
     def get(self, trace_id: str) -> Trace:
         operation = "get trace"
@@ -965,7 +1086,7 @@ class TracesResource:
             operation,
             "GET",
             f"/v1/traces/{_segment(trace_id, 'trace ID')}",
-            auth="project",
+            auth="trace",
         )
         return parse_trace(operation, _payload(operation, payload))
 
@@ -980,7 +1101,7 @@ class TracesResource:
         }
         operation = "score traces"
         payload = self._transport.request(
-            operation, "POST", "/v1/traces/score", auth="project", json=body
+            operation, "POST", "/v1/traces/score", auth="trace", json=body
         )
         return parse_collection(operation, _payload(operation, payload), parse_scoring_task)
 
@@ -990,10 +1111,32 @@ class TracesResource:
             operation,
             "PATCH",
             f"/v1/traces/{_segment(trace_id, 'trace ID')}/reference",
-            auth="project",
+            auth="trace",
             json={"reference_answer": _required_text(reference_answer, "reference answer")},
         )
         return parse_trace(operation, _payload(operation, payload))
+
+    def delete(self, trace_id: str) -> None:
+        self._transport.request(
+            "delete trace",
+            "DELETE",
+            f"/v1/traces/{_segment(trace_id, 'trace ID')}",
+            auth="admin",
+        )
+
+    def eligibility(self, trace_id: str) -> tuple[ScoringEligibility, ...]:
+        operation = "get trace scoring eligibility"
+        payload = self._transport.request(
+            operation,
+            "GET",
+            f"/v1/traces/{_segment(trace_id, 'trace ID')}/scoring-eligibility",
+            auth="admin",
+        )
+        return parse_collection(
+            operation,
+            _payload(operation, payload),
+            parse_scoring_eligibility,
+        )
 
     def iter_all_traces(
         self,
@@ -1149,6 +1292,29 @@ def _with_param(
     return httpx.QueryParams(values)
 
 
+def _trace_filters(
+    params: httpx.QueryParams | None,
+    status: str | None,
+    query: str | None,
+    scorer: str | None,
+    passed: bool | None,
+) -> httpx.QueryParams | None:
+    if status is not None:
+        params = _with_param(params, "status", status, "trace status")
+    if query is not None:
+        query = _required_text(query, "trace query")
+        if len(query) > 200:
+            raise AssayConfigurationError("trace query must not exceed 200 characters")
+        params = _with_raw_param(params, "q", query)
+    if scorer is not None:
+        params = _with_raw_param(params, "scorer", _scorer(scorer))
+    if passed is not None:
+        if scorer is None:
+            raise AssayConfigurationError("passed requires scorer")
+        params = _with_raw_param(params, "passed", str(passed).lower())
+    return params
+
+
 def _with_raw_param(
     params: httpx.QueryParams | None,
     key: str,
@@ -1160,7 +1326,7 @@ def _with_raw_param(
 
 
 def _dataset_item_body(item: DatasetItemInput) -> dict[str, object]:
-    body: dict[str, object] = {"input": _mutable_mapping(item.input)}
+    body: dict[str, object] = {"input": _dataset_input(item.input)}
     if item.external_id is not None:
         body["external_id"] = _required_text(item.external_id, "external ID")
     if item.output is not None:
@@ -1168,16 +1334,46 @@ def _dataset_item_body(item: DatasetItemInput) -> dict[str, object]:
     if item.expected_output is not None:
         body["expected_output"] = item.expected_output
     if item.context:
-        body["context"] = [
-            {
-                "id": _required_text(chunk.id, "chunk ID"),
-                "text": _required_text(chunk.text, "chunk text"),
-            }
-            for chunk in item.context
-        ]
+        body["context"] = _chunk_bodies(item)
     if item.metadata:
         body["metadata"] = _mutable_mapping(item.metadata)
     return body
+
+
+def _replacement_item_body(item: DatasetItemInput) -> dict[str, object]:
+    return {
+        "external_id": item.external_id,
+        "input": _dataset_input(item.input),
+        "output": item.output,
+        "expected_output": item.expected_output,
+        "context": _chunk_bodies(item),
+        "metadata": _mutable_mapping(item.metadata),
+    }
+
+
+def _dataset_input(value: Mapping[str, JSONValue]) -> dict[str, object]:
+    question = value.get("question")
+    if not isinstance(question, str) or not question.strip():
+        raise AssayConfigurationError("dataset item input.question must not be blank")
+    result = _mutable_mapping(value)
+    result["question"] = question.strip()
+    return result
+
+
+def _chunk_bodies(item: DatasetItemInput) -> list[dict[str, str]]:
+    return [
+        {
+            "id": _required_text(chunk.id, "chunk ID"),
+            "text": _required_text(chunk.text, "chunk text"),
+        }
+        for chunk in item.context
+    ]
+
+
+def _dataset_item_path(dataset_id: str, item_id: str) -> str:
+    dataset = _segment(dataset_id, "dataset ID")
+    item = _segment(item_id, "item ID")
+    return f"/v1/datasets/{dataset}/items/{item}"
 
 
 def _scorer(value: str) -> str:

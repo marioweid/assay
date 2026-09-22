@@ -157,6 +157,7 @@ type m3RunResponse struct {
 func verifyM3Flow(t *testing.T, baseURL string, judge *fakeJudge) {
 	t.Helper()
 	client := &http.Client{Timeout: time.Second}
+	defer client.CloseIdleConnections()
 	applicationID := createM3Application(t, client, baseURL)
 	datasetID := createM3Dataset(t, client, baseURL, applicationID)
 	run := createM3Run(t, client, baseURL, applicationID, datasetID)
@@ -339,6 +340,7 @@ type traceDetailResponse struct {
 func verifyM2Flow(t *testing.T, baseURL string) {
 	t.Helper()
 	client := &http.Client{Timeout: time.Second}
+	defer client.CloseIdleConnections()
 	assertManagementRequiresAuth(t, client, baseURL)
 	key := createM2Resources(t, client, baseURL)
 	verifyTraceRoundTrip(t, client, baseURL, key)
@@ -578,6 +580,7 @@ func waitUntilReady(t *testing.T, endpoint string) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	client := &http.Client{Timeout: time.Second}
+	defer client.CloseIdleConnections()
 
 	for {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

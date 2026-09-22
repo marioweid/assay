@@ -89,6 +89,11 @@ D1 → D2 → D3 → D4 → D5 → D6
 E2 → E3 → E4
 ```
 
+**Execution update (2026-09-22):** Finish the remaining functional/delivery work (E2–E3) before
+expanding browser workflow coverage. E4's visual redesign, full browser scenarios, accessibility,
+and performance gates begin only after the user approves the finished UI direction; E1's existing
+smoke/security guardrail remains in place meanwhile.
+
 Independent work, if desired:
 
 - B1–B2 can follow A1 while A2–A6 are developed elsewhere; merge the auth/catalog changes first.

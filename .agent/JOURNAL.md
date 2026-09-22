@@ -113,3 +113,14 @@
 
 [OUTCOME] With explicit approval, rebuilt only the source-Compose `assayd` container against current `main`; the existing Postgres volume was preserved. A deterministic fake fixture container joined the Compose network as `fixtures`, and the complete synthetic D6 project was retained in the localhost dashboard.
 [VERIFY] The first localhost attempt exposed the old container's pre-D5 eligibility response shape; the incomplete project was removed. The rebuilt service passed `tests/test_product_acceptance.py` against `http://127.0.0.1:8080` with `ASSAY_ACCEPTANCE_KEEP=1`, using a project-scoped fake judge and target rather than configured paid providers.
+
+## 2026-09-22 — UI sequencing updated
+
+[DECISION] Finish the remaining functional/delivery milestones before redesigning the UI with the user. Defer broad frontend E2E workflows, visual baselines, accessibility expansion, and performance acceptance until that redesign is approved; retain E1 smoke/security coverage until then.
+[NEXT] E2 and E3 proceed before the final E4 UI lock and acceptance gates.
+
+## 2026-09-22 — E2 container delivery implementation complete
+
+[OUTCOME] Added OCI-labelled cross-platform Docker builds, loopback-only source Compose, a no-build published Compose, a protected GHCR release workflow, and a disposable image smoke test. Semantic version validation, serialized publication, overwrite refusal, SBOM/provenance-aware manifest verification, and anonymous digest pull are enforced in the release path.
+[VERIFY] Local amd64 labelled image smoke passed: embedded hashed assets/icon/font, readiness, SPA deep link, protected API, distroless healthcheck, tracing-only boot, and Linux host-gateway mapping. Source/published Compose validate with synthetic values; missing published variables fail; YAML parsing, Bash syntax, and `git diff --check` pass. An arm64 image cross-build passed, but local runtime smoke is blocked because this Docker daemon lacks arm64 binfmt; the protected workflow installs QEMU and runs that smoke.
+[BLOCKED] No image was published or anonymously pulled: maintainer approval, GHCR public visibility, and a release tag are required.

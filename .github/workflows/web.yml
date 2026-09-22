@@ -14,8 +14,10 @@ on:
       - ".dockerignore"
       - ".env.example"
       - "docker-compose.yml"
+      - "compose.published.yaml"
       - "tests/acceptance/**"
       - ".github/workflows/web.yml"
+      - ".github/workflows/container-publish.yml"
   push:
     branches: [main]
     paths:
@@ -30,8 +32,10 @@ on:
       - ".dockerignore"
       - ".env.example"
       - "docker-compose.yml"
+      - "compose.published.yaml"
       - "tests/acceptance/**"
       - ".github/workflows/web.yml"
+      - ".github/workflows/container-publish.yml"
 
 permissions:
   contents: read
@@ -90,9 +94,24 @@ jobs:
       - name: Prepare Compose environment
         run: cp .env.example .env
       - name: Validate Compose configuration
+        env:
+          ASSAY_POSTGRES_PASSWORD: acceptance-password
+          ASSAY_ADMIN_TOKEN: acceptance-admin-token
+          ASSAY_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: docker compose config --quiet
+      - name: Validate published Compose configuration
+        env:
+          ASSAY_IMAGE: assay-web-ci
+          ASSAY_POSTGRES_PASSWORD: acceptance-password
+          ASSAY_ADMIN_TOKEN: acceptance-admin-token
+          ASSAY_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: docker compose -f compose.published.yaml config --quiet
       - name: Install Playwright browser
         working-directory: web
         run: pnpm exec playwright install --with-deps chromium
       - name: Run embedded acceptance
         run: tests/acceptance/run.sh
+      - name: Smoke the release image
+        run: |
+          docker build --file assayd/Dockerfile --tag assay-web-ci .
+          tests/acceptance/container-smoke.sh assay-web-ci

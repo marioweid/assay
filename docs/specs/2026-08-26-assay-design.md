@@ -5,10 +5,13 @@
 For the implemented backend layers, dependency direction, and an API-key request walkthrough,
 see [`docs/architecture.md`](../architecture.md).
 
-**Implementation status (2026-09-01):** M0-M5.5 are implemented. M5 adds opt-in Python tracing, the
-typed API client, dataset import workflows, and CLI orchestration with run gates. M5.5 adds the
-embedded single-user web UI. Binary OTLP/protobuf, OTLP/gRPC, score export/filter commands,
-`trace_selection` runs, and M6 metrics/trends remain deferred.
+**Implementation status (2026-09-22):** M0-M6 are implemented. M5 adds opt-in Python tracing, the
+typed API client, dataset import workflows, and CLI orchestration with run gates; M5.5 adds the
+embedded single-user web UI; M6 adds score filtering/export, trace-to-regression imports, daily
+metrics, score trends, and opt-in span retention. M7 structured capture, lifecycle evidence, and
+disposable acceptance are implemented, but final UI redesign and E4 browser/visual/accessibility/
+performance approval remain. Binary OTLP/protobuf, OTLP/gRPC, and `trace_selection` runs remain
+deferred.
 
 ---
 

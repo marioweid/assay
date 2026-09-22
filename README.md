@@ -2,256 +2,160 @@
   <img src="assets/assay_gopher.png" alt="Assay gopher and wordmark" width="480">
 </p>
 
-**LLM tracing + evaluation in one Go binary and a Postgres.** OTLP-native, judges built in, agent-operable — the self-host that isn't a six-container science project.
+**LLM tracing and evaluation in one Go binary plus Postgres.** Assay accepts JSON OTLP/HTTP traces,
+stores them in Postgres, and runs built-in groundedness and correctness evaluators. It includes an
+embedded single-user UI, a typed Python SDK, and a CLI.
 
-Assay ingests traces over OpenTelemetry (OTLP), stores them in Postgres, and runs LLM-as-judge scorers (**groundedness** + **correctness** in v1) both **online** (on live traces) and **offline** (on datasets) — with a Python client, a CLI, and a Claude Code skill so an agent can drive the whole loop.
+- Two services: `assayd` (API, worker, embedded UI) and Postgres.
+- JSON OTLP/HTTP only. Binary protobuf and OTLP/gRPC are not implemented.
+- One admin credential for management and UI; one project key for trace ingestion.
+- Apache-2.0. Built for individual developers and small self-hosted teams, not SSO/RBAC/HA estates.
 
-- **Two components, forever:** `assayd` (single Go binary — API + embedded worker) + Postgres. No ClickHouse, Redis, S3, or Kafka.
-- **OTLP-native:** send from any OpenTelemetry SDK (or the ergonomic `assay` Python library). Zero lock-in — plain, exportable Postgres at rest.
-- **Judges where your data lives:** groundedness (claim-decomposition) and correctness (reference-based), computed with no extra infrastructure, CI-gate-able.
-- **Agent-native:** CLI + Claude Code skill turn a production failure into a regression test.
-- **Batteries-included UI:** a minimal React SPA is embedded in the binary (served at `/`) — no extra container. (v1 is a single-user test UI; real login comes later.)
-- **License:** Apache-2.0.
+## Start Assay
 
-> Built for individual developers, small teams, and self-hosters running under ~1M spans/day. **Not** for billion-span enterprises needing SSO/RBAC/HA — that's what the heavy platforms are for.
+The published-image path is first, but **no image has been published yet**. Do not invent an image
+tag from the Python package version. After a maintainer publishes and anonymously pull-tests a
+release, set `ASSAY_IMAGE` to that recorded tag or digest and use the following exact Compose file
+in a clean directory as `compose.yaml`:
 
-## Status
+<!-- BEGIN compose.published.yaml -->
+```yaml
+# Published Assay deployment. Set every required value in a private .env file first.
+# ASSAY_IMAGE must be a verified released GHCR tag or digest; this file never builds source.
 
-Tracing, evaluation, the Python client, CLI orchestration, and the embedded web UI are
-implemented. Assay accepts JSON OTLP/HTTP traces, queues groundedness/correctness scoring, supports
-reference attachment, and runs offline evaluations against persisted or generated outputs. Binary
-protobuf, OTLP/gRPC, and `trace_selection` runs remain deferred. M6 adds score filtering/export,
-trace-to-regression imports, daily metrics, a score-trends screen, and opt-in span retention.
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: assay
+      POSTGRES_PASSWORD: ${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}
+      POSTGRES_DB: assay
+    volumes:
+      - assay-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assay -d assay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
-The implementation follows these references:
+  assayd:
+    image: ${ASSAY_IMAGE:?Set the verified Assay release image tag or digest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASSAY_HTTP_ADDR: ":8080"
+      ASSAY_DATABASE_URL: postgres://assay:${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}@postgres:5432/assay?sslmode=disable
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:?Set the admin token}
+      ASSAY_ENCRYPTION_KEY: ${ASSAY_ENCRYPTION_KEY:?Set a base64-encoded 32-byte key}
+      ASSAY_JUDGE_BASE_URL: ${ASSAY_JUDGE_BASE_URL:-}
+      ASSAY_JUDGE_MODEL: ${ASSAY_JUDGE_MODEL:-}
+      ASSAY_JUDGE_API_KEY: ${ASSAY_JUDGE_API_KEY:-}
+      ASSAY_UI_ENABLED: "true"
+      ASSAY_TRACE_RETENTION_DAYS: ${ASSAY_TRACE_RETENTION_DAYS:-0}
+    ports:
+      - "127.0.0.1:${ASSAY_HTTP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "/assayd", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-- **Design & build plan:** [`docs/specs/2026-08-26-assay-design.md`](docs/specs/2026-08-26-assay-design.md)
-- **Backend architecture and layer guide:** [`docs/architecture.md`](docs/architecture.md)
-- **Semantic conventions (trace attribute contract):** [`docs/semantic-conventions.md`](docs/semantic-conventions.md)
-- **CI/CD plan (pinned versions):** [`docs/ci-cd.md`](docs/ci-cd.md)
-- **Agent skill:** [`.claude/skills/assay/SKILL.md`](.claude/skills/assay/SKILL.md)
+volumes:
+  assay-pgdata:
+```
+<!-- END compose.published.yaml -->
+
+Then create a private `.env` beside it and run:
+
+```bash
+docker compose up --build --force-recreate -d
+```
+
+`--build` is harmless because this file has no build stanza. With the checked-in filename, run
+`docker compose -f compose.published.yaml up --build --force-recreate -d`. Do not combine it with
+`docker-compose.yml`.
+
+For a source checkout, follow the [Linux quickstart](docs/quickstart-linux.md): it creates `.env`
+without overwriting existing secrets, builds the image, creates an app/key, sends a real SDK trace,
+and optionally runs an evaluation. Windows users have complete
+[PowerShell parity](docs/quickstart-powershell.md).
+
+## Environment
+
+| Variable | Required for | Meaning |
+|---|---|---|
+| `ASSAY_IMAGE` | Published Compose | Verified released tag/digest; no source build |
+| `ASSAY_ADMIN_TOKEN` | Server/UI/admin client | Management credential, not tracing ingest key |
+| `ASSAY_ENCRYPTION_KEY` | Server | Base64 32 bytes, stable across restarts/upgrades |
+| `ASSAY_POSTGRES_PASSWORD` | Published Compose | Generated URL-safe DB password, not a judge key |
+| `ASSAY_DATABASE_URL` | Native/server | Compose overrides/wires internal Postgres host |
+| `ASSAY_JUDGE_BASE_URL` / `ASSAY_JUDGE_MODEL` | Evaluation | OpenAI-compatible judge; optional for tracing |
+| `ASSAY_JUDGE_API_KEY` | Authenticated judge | Provider key; optional for keyless local endpoints |
+| `ASSAY_ENDPOINT` | Host SDK/CLI | `http://localhost:8080`; inside app Compose use `http://assayd:8080` |
+| `ASSAY_API_KEY` | SDK ingest/project operations | One-time project key created in UI/API |
+| `ASSAY_APPLICATION` | SDK | Existing application slug, not UUID/project name |
+| `ASSAY_HTTP_PORT` | Compose host | Optional host port, default 8080 |
+| `ASSAY_TRACE_RETENTION_DAYS` | Server | 0 keeps spans; >0 expires spans, not all score evidence |
+
+Generate separate token/password values with `openssl rand -hex 32`, and the encryption key with
+`openssl rand -base64 32`. Keep the encryption key with the database backup. Tracing works without
+judge credentials. The Compose files bind HTTP to loopback and keep Postgres private.
 
 ## Python SDK
 
-Install the Python distribution from PyPI with uv:
+The distribution is `assay-sdk` and imports as `assay`:
 
 ```bash
 uv add assay-sdk
 ```
 
-The distribution is named `assay-sdk` and imported as `assay`:
-
 ```python
 import assay
 
-print(assay.__version__)
+assay.init(
+    endpoint="http://localhost:8080",
+    api_key="asy_...",
+    application="support-bot",
+    capture=True,
+)
+
+with assay.span("answer", scorable=True) as span:
+    span.set_input({"question": "What is Assay?"})
+    span.set_output("An LLM tracing and evaluation service.")
+assay.flush()
+assay.shutdown()
 ```
 
-Version 0.3.0 provides opt-in tracing, a typed synchronous API client, dataset import workflows,
-and the `assay` CLI. Configure the CLI with `ASSAY_ENDPOINT` and the credential required by the
-operation: `ASSAY_ADMIN_TOKEN` for management and evaluation commands or `ASSAY_API_KEY` for trace
-commands.
+See the [SDK README](clients/python/assay/README.md) for typed client and CLI workflows. The
+[Python Q&A example](examples/python-qa/README.md) is optional and uses a real model provider.
 
-## Try the chat example
+## Operations and status
 
-Configure the root `.env` with your Assay admin token and OpenAI judge credentials, then run:
+M6 functionality—score filters/export, trace-to-regression imports, metrics, trends, and optional
+span retention—is complete. The current M7 delivery remains in acceptance: structured SDK capture,
+run evidence/comparison, and disposable acceptance exist; final UI redesign and E4 browser, visual,
+accessibility, and performance approval remain.
+
+The UI is a single-user admin-token test tool. It stores that token in same-origin `localStorage`;
+use a trusted browser and origin, and choose **Disconnect** to remove it. Cost/provider
+instrumentation, provider auto-instrumentation, session UI, binary protobuf, and gRPC remain
+unimplemented.
+
+Read [deployment and recovery guidance](docs/deployment.md) before upgrades or deletion. In
+particular, `docker compose down -v` destroys data; deleting an individual dataset item preserves
+existing run snapshots, while deleting a dataset cascades its dependent runs.
+
+## Development
 
 ```bash
-docker compose --env-file .env -f examples/python-qa/compose.yaml up --build -d
+cp .env.example .env
+docker compose up --build --force-recreate -d
 ```
 
-Open [the chat app](http://localhost:8090). Each answer links to its trace in
-[Assay](http://localhost:8080), including context, token usage, and automatic groundedness scores.
-The standalone [uv example](examples/python-qa/README.md) uses `assay-sdk==0.3.0` from PyPI.
-
-## Repo layout
-
-```
-assayd/                 # Go 1.27 backend (single binary): API + OTLP receiver + embedded worker + UI
-web/                     # React + Vite + Tailwind + shadcn/ui SPA (embedded into the binary)
-clients/python/assay/   # assay-sdk distribution: tracing, typed client, and CLI
-.claude/skills/assay/    # Claude Code skill wrapping the CLI
-assets/                  # reusable source brand assets
-docs/                    # design spec and supporting documentation
-```
-
-## Deployment
-
-One binary, one Postgres — two ways to run it:
-
-- **Standalone / local:** after creating `.env`, `docker compose up` starts assayd + Postgres;
-  migrations auto-apply on start.
-- **Scale:** assayd container(s) against a managed/separate Postgres; add replicas for worker capacity (the queue lives in Postgres). No SQLite, no object store — Postgres only.
-
-## Web UI
-
-With `ASSAY_UI_ENABLED=true` (the default), open `http://localhost:8080/` and connect with
-`ASSAY_ADMIN_TOKEN`. The UI can inspect applications, traces, spans, scores, and datasets, and can
-create and watch evaluation runs. The Score trends screen shows daily means, pass rates, and
-sample counts for the last 7, 30, or 90 days.
-
-The M5.5 UI is a single-user test tool, not a login system. It stores the admin token in browser
-`localStorage` under `assay.admin-token.v1`, where JavaScript running on the same origin can access
-it. Use a trusted browser and origin. Select **Disconnect** to remove the stored token. Set
-`ASSAY_UI_ENABLED=false` to return 404 for UI routes without disabling the API, OpenAPI document,
-interactive docs, or health endpoints.
-
-For frontend development, run `assayd` on port 8080, then start Vite's proxying development server:
-
-```bash
-cd web
-corepack enable
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Regenerate the committed OpenAPI snapshot and TypeScript client with `pnpm generate:api`. Run
-`pnpm build` to write production assets to `assayd/internal/ui/dist`; subsequent Go builds embed
-those files into the binary. The production Dockerfile performs both builds automatically.
-
-## Development quickstart
-
-```bash
-cp .env.example .env       # PowerShell: Copy-Item .env.example .env
-docker compose up          # assayd + postgres; migrations auto-apply on start
-```
-
-Create the first project, API key, and application from PowerShell:
-
-```powershell
-$adminToken = Read-Host "ASSAY_ADMIN_TOKEN from .env"
-$headers = @{ Authorization = "Bearer $adminToken" }
-$project = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/projects `
-  -Headers $headers -ContentType application/json -Body '{"name":"support"}'
-$key = Invoke-RestMethod -Method Post `
-  -Uri "http://localhost:8080/v1/projects/$($project.id)/keys" `
-  -Headers $headers -ContentType application/json -Body '{"name":"local"}'
-$appBody = @{ project_id = $project.id; name = "Support Bot"; slug = "support-bot" } |
-  ConvertTo-Json
-$application = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/applications `
-  -Headers $headers -ContentType application/json -Body $appBody
-$key.key # Save now: the plaintext key is returned only once.
-```
-
-Export a JSON OTLP trace and read it back:
-
-```powershell
-$otlpHeaders = @{ "x-api-key" = $key.key }
-$trace = @{
-  resourceSpans = @(@{
-    resource = @{ attributes = @(@{
-      key = "assay.application.slug"; value = @{ stringValue = "support-bot" }
-    }) }
-    scopeSpans = @(@{ spans = @(@{
-      traceId = "00112233445566778899aabbccddeeff"
-      spanId = "0102030405060708"
-      name = "answer"
-      startTimeUnixNano = "1787911200000000000"
-      endTimeUnixNano = "1787911201000000000"
-    }) })
-  })
-} | ConvertTo-Json -Depth 10
-Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/traces `
-  -Headers $otlpHeaders -ContentType application/json -Body $trace
-Invoke-RestMethod -Method Get -Uri http://localhost:8080/v1/traces -Headers $otlpHeaders
-```
-
-Assay accepts OTLP's protobuf-defined JSON representation, not binary protobuf payloads. Configure
-emitters for `http/json`; binary `application/x-protobuf` and gRPC are planned after v1.
-
-Create and score an offline dataset after setting `ASSAY_JUDGE_BASE_URL` and
-`ASSAY_JUDGE_MODEL` to an OpenAI-compatible endpoint:
-
-```powershell
-$datasetBody = @{
-  application_id = $application.id
-  name = "support-regression"
-} | ConvertTo-Json
-$dataset = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/datasets `
-  -Headers $headers -ContentType application/json -Body $datasetBody
-
-$itemsBody = @{ items = @(@{
-  external_id = "case-1"
-  input = @{ question = "What is Assay?" }
-  output = "Assay evaluates AI systems."
-  expected_output = "Assay evaluates AI systems."
-  context = @(@{ id = "k0"; text = "Assay evaluates AI systems." })
-}) } | ConvertTo-Json -Depth 8
-Invoke-RestMethod -Method Post `
-  -Uri "http://localhost:8080/v1/datasets/$($dataset.id)/items" `
-  -Headers $headers -ContentType application/json -Body $itemsBody
-
-$runBody = @{
-  application_id = $application.id
-  dataset_id = $dataset.id
-  name = "baseline"
-  mode = "score_existing"
-  scorers = @("groundedness", "correctness")
-} | ConvertTo-Json
-$run = Invoke-RestMethod -Method Post -Uri http://localhost:8080/v1/runs `
-  -Headers $headers -ContentType application/json -Body $runBody
-Invoke-RestMethod -Method Get -Uri "http://localhost:8080/v1/runs/$($run.id)" `
-  -Headers $headers
-Invoke-RestMethod -Method Get -Uri "http://localhost:8080/v1/runs/$($run.id)/scores" `
-  -Headers $headers
-```
-
-The judge adapter calls `/chat/completions` with JSON-object response mode and the model's default
-sampling settings. It omits temperature so models that reject sampling overrides can be used.
-Judge settings resolve from process defaults, then project settings, then per-application scorer
-overrides. Stored API keys are AES-GCM encrypted; REST responses expose only `has_api_key`.
-
-OpenAPI is available at `http://localhost:8080/openapi.json`; interactive docs are at
-`http://localhost:8080/docs`.
-
-## Trace-to-regression workflow
-
-With `ASSAY_ENDPOINT` and `ASSAY_ADMIN_TOKEN` configured, inspect failed scores and import one
-trace's captured scoring evidence into an existing dataset. For these M6 commands, use the CLI
-from this checkout (`uv run --project clients/python/assay assay ...` from the repository root);
-the currently published package may not include them yet.
-
-```bash
-assay scores list <APP_ID> --failed --scorer groundedness
-assay scores export <APP_ID> --failed --format jsonl > failed-scores.jsonl
-assay datasets from-trace <DATASET_ID> <TRACE_ID> --scorer groundedness
-assay run create <APP_ID> --dataset <DATASET_ID> --scorers groundedness
-assay run watch <RUN_ID> --gate groundedness:0.8
-assay metrics <APP_ID> --scorer groundedness
-```
-
-Find dataset IDs in the UI or in the result of `assay datasets import`. The trace and dataset must
-belong to the same application. Imports use the latest score for the selected scorer, including
-its input, output, context, and optional reference. Add `--expected-output` for a corrected
-reference. Duplicate imports return a conflict without replacing the existing item. To evaluate
-corrected answers, import them into a new dataset or use `generate_then_score` with a target endpoint.
-
-Metrics and score filters default to the last 30 days. `--start` and `--end` accept timestamps with
-timezones; start is inclusive, end exclusive, and ranges may span at most 366 days. Metrics use UTC
-days, omit days without scores, and combine online and offline scores. Pass rates use each score's
-recorded threshold. REST endpoints are `GET /v1/applications/{id}/metrics` and `GET /v1/scores`.
-
-Set `ASSAY_TRACE_RETENTION_DAYS` to a positive number to expire spans; `0` keeps all spans.
-Maintenance runs at startup and hourly, creates monthly partitions, and removes expired span
-partitions and boundary rows. Scores, captured judge evidence, and trace summaries remain available
-for regression imports. Maintenance uses a transaction and an advisory lock across replicas.
-
-The opt-in live acceptance test uses a running server's configured judge with synthetic data and
-deletes its temporary project. It makes six judge calls in the normal path:
-
-```powershell
-cd clients/python/assay
-$env:ASSAY_LIVE_TEST_ENDPOINT = "http://localhost:8080"
-# Set ASSAY_ADMIN_TOKEN in the process environment without printing it.
-uv run pytest -q tests/test_live_workflow.py
-```
-
-```python
-import assay
-assay.init(endpoint="http://localhost:8080", api_key="asy_...",
-           application="support-bot", capture=True)
-
-@assay.trace
-def answer(q: str) -> str:
-    ...
-```
+For architecture, semantics, and CI references, see [architecture](docs/architecture.md),
+[semantic conventions](docs/semantic-conventions.md), and [CI/CD](docs/ci-cd.md).

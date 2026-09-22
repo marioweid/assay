@@ -7,7 +7,9 @@ tracing and evaluation platform.
 uv add assay-sdk
 ```
 
-The distribution is named `assay-sdk` and imported as `assay`.
+The distribution is named `assay-sdk` and imported as `assay`. The checkout contains the current
+SDK workflow; until its next release, use `uv run --project clients/python/assay ...` for the
+structured-message, typed lifecycle, and CLI examples in the Linux and PowerShell quickstarts.
 
 ## Tracing
 
@@ -116,7 +118,10 @@ require admin authentication and default to 30 days. `--start` and `--end` accep
 timestamps for ranges up to 366 days. Trace imports preserve the selected scorer's latest evidence
 and reject duplicate trace/scorer pairs without overwriting existing items.
 
-`tests/test_product_acceptance.py` runs through `tests/acceptance/run.sh` against disposable fake
-judge/target services; it never calls a paid provider. Set `ASSAY_ACCEPTANCE_KEEP=1` when running that
-script to retain the synthetic project and stack for dashboard inspection. The optional
-`tests/test_live_workflow.py` instead requires `ASSAY_LIVE_TEST_ENDPOINT` and makes real judge calls.
+`tests/test_product_acceptance.py` and `tests/acceptance/docs-smoke.sh` run through
+`tests/acceptance/run.sh` against disposable fake judge/target services; they never call a paid
+provider. Set `ASSAY_ACCEPTANCE_KEEP=1` when running that script to retain the synthetic project and
+stack for dashboard inspection. The optional `tests/test_live_workflow.py` instead requires
+`ASSAY_LIVE_TEST_ENDPOINT` and makes real judge calls. See the runnable
+[Linux](../../../docs/quickstart-linux.md) and [PowerShell](../../../docs/quickstart-powershell.md)
+guides for setup and credential roles.

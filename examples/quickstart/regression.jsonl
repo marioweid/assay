@@ -1,0 +1,1 @@
+{"external_id":"what-is-assay","input":{"question":"What is Assay?"},"output":"Assay stores traces and evaluation evidence in Postgres.","expected_output":"Assay stores traces and evaluation evidence in Postgres.","context":[{"id":"docs","text":"Assay stores traces and evaluation evidence in Postgres."}]}

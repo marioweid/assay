@@ -2,6 +2,8 @@
 
 A small uv project using the published `assay-sdk==0.3.0` and OpenAI. Ask a question about Assay;
 the app answers from three built-in context snippets and sends a trace to your local Assay instance.
+This optional example is separate from the current-checkout SDK workflow in the
+[Linux quickstart](../../docs/quickstart-linux.md), which needs no paid provider just to trace.
 
 The server creates or reuses the **Python Q&A example** application, records each chat turn with
 context-loading and generation spans, and enables automatic groundedness scoring. Traces contain
@@ -10,7 +12,9 @@ in Assay; its temporary ingestion key is revoked on graceful shutdown. No key is
 
 ## Setup
 
-Use the repository root `.env`. If you do not already have it, copy `.env.example` there and set:
+Use the repository root `.env`. Follow the [Linux](../../docs/quickstart-linux.md) or
+[PowerShell](../../docs/quickstart-powershell.md) setup first; if you do not already have `.env`,
+copy `.env.example` there and set:
 
 - `ASSAY_ADMIN_TOKEN`: the token used by the local server.
 - `ASSAY_JUDGE_API_KEY`: your OpenAI API key.

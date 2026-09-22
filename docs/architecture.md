@@ -112,9 +112,10 @@ determines lease validity and retry eligibility. Worker state changes lock and v
 job lease before mutating a run, item, trace score, or evaluation event, fencing paused workers from
 writing after ownership is lost. Cancellation, exhaustion, and completion acquire the same
 job-first lock and apply their transitions atomically.
-Run creation acquires a job-table write lock before reading dataset membership. Cascading project,
-application, and dataset deletion acquires an exclusive job-table lock first, preventing a run from
-being inserted or worked while its parent is being removed.
+Run creation and destructive project, application, dataset, trace, and run operations acquire
+ordered locks on their affected parent rows before changing jobs or evidence. This prevents a run
+from being inserted or worked while its target is being removed without serializing unrelated
+workspaces behind a global jobs-table lock.
 
 The repository is an interface, not another runtime service. At runtime it contains the concrete
 Postgres store, so calling a repository method calls the matching store method.

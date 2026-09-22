@@ -244,6 +244,11 @@ only for non-prereleases, and attaches BuildKit SBOM/provenance. It then checks 
 the digest through an empty Docker configuration before rerunning the smoke test. The GHCR package
 must be made public by a maintainer before that anonymous pull can pass.
 
+`tests/acceptance/docs-smoke.sh` verifies that README embeds the exact published Compose file, checks
+local Markdown links, validates Linux credential generation, and sends the quickstart SDK trace through
+the E1 disposable fixture stack. `tests/acceptance/run.sh` invokes it before the SDK lifecycle
+acceptance. PowerShell syntax requires a Windows runner before it can be recorded as executed.
+
 ## `assayd/Dockerfile` (multi-stage shape)
 
 ```dockerfile

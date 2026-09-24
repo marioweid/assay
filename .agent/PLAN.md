@@ -3,12 +3,15 @@
 - E2 delivery implementation is complete locally: reproducible amd64/arm64 builds, separate published Compose, guarded smoke coverage, and a protected GHCR workflow. Actual publication and anonymous-pull evidence remain an approval gate.
 - E1 is complete on `feat/e1-acceptance-harness`: an isolated Compose stack, deterministic fake judge/target, and embedded Playwright/axe suite run without paid services and clean up only their prefixed project.
 - M7D6 is complete on `feat/m7d6-sdk-acceptance`: its disposable SDK acceptance covers trace capture, scoring, retained evidence, evaluation lifecycle, and failure paths without paid services.
-- E3 implementation is complete locally: Linux and PowerShell guides, deployment/recovery guidance, current-checkout SDK examples, and E1-only docs smoke are in place. Web CI now provisions the pinned `uv` required by E1's SDK/doc checks; GitHub-run evidence is pending. The dynamic E1 docs workflow needs a runnable local Python/Playwright environment, and PowerShell still needs Windows-runner evidence.
+- E3 local workflows are now exercised: Linux Docker docs smoke and Windows PowerShell 7.6.6 credential/bootstrap/trace/import checks pass. Optional documented real-judge evaluation and GitHub-run evidence remain unverified.
+- 2026-09-23 persistent validation of `aa30031`: Assay at `http://127.0.0.1:18080`, interactive SDK dummy at `http://127.0.0.1:18090`, Compose project `assay-acceptance-persistent`. Workspace/report: `C:/Users/mario/sources/assay-local-validation/REPORT.md`; the admin credential is in its private `.env`. Original port-8080 stack untouched. Projects, agent runs, screenshots, backup, and restored check database are retained; forced recreation preserved all data.
+- Core checks pass: 323 Linux Go race tests, 158 web tests, 239 Python tests (one real-judge skip), 9 E1 browser tests after the follow-up, dummy HTTP/SDK workflows, and a separate skill agent's 37 CLI outcomes. The three populated-page accessibility defects were fixed on 2026-09-24; 48/48 pages now pass axe and browser errors remain zero. The persistent stack now runs rebuilt `assay-local-validation:a11y-fix` without replacing its Postgres volume. Follow-up: `C:/Users/mario/sources/assay-local-validation/FOLLOWUP-2026-09-24.md`.
 
 ## Next
 
-- Record E3's disposable Linux workflow and Windows PowerShell verification when their environments are available.
-- Then redo the UI with the user and lock the approved state through E4 browser/accessibility/visual/performance acceptance.
+- Keep the persistent validation stack/data for user inspection; do not remove its named volume. See the workspace report for start/stop commands and exact evidence.
+- Keep the populated-page accessibility regression; remaining UI redesign and E4 cross-browser/visual/performance acceptance require user approval. The Assay skill guidance was refreshed and its live CLI workflow was rechecked read-only on 2026-09-24.
+- Obtain remaining GitHub/release evidence, then lock the user-approved UI through E4 browser/accessibility/visual/performance acceptance. Local validation is not an E4 sign-off.
 
 ## Done
 

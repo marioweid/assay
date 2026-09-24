@@ -21,7 +21,8 @@ and gate changes.
 
 ### 1. Inspect traces
 ```
-assay traces list <APP_ID> --status error
+assay traces list <APP_ID> --status error   # execution failures, not low-quality answers
+assay traces list <APP_ID> --scorer groundedness --failed  # scored quality failures
 assay traces get <TRACE_ID>          # span tree, attributes, scores + rationales
 ```
 Read the scorer `rationale` and the per-claim/per-fact `details` to explain why it scored low.
@@ -55,9 +56,14 @@ assay run compare <BASELINE_RUN_ID> <CANDIDATE_RUN_ID> --scorer groundedness
 ```
 
 A comparison reports matched, changed-case, one-sided, and unscored rows; its mean excludes rows
-without a paired score. Attach a trace reference before requesting correctness. Project keys emit
-and inspect project traces; admin credentials manage projects, datasets, runs, eligibility, and
-trace deletion.
+without a paired score. Attach a trace reference before requesting correctness (a UTF-8 text file):
+
+```bash
+assay traces reference <TRACE_ID> --file reference.txt
+```
+
+Project keys emit and inspect project traces; admin credentials manage projects, datasets, runs,
+eligibility, and trace deletion.
 
 ### 4. Gate a change (CI / pre-merge)
 ```
@@ -95,7 +101,7 @@ Pass rates use the threshold recorded when each score was computed.
 | `assay datasets from-trace <DATASET_ID> <TRACE_ID> --scorer S` | create a case from retained score evidence |
 | `assay scores list/export <APP_ID> [--failed] [--scorer S]` | filter scores or export JSONL |
 | `assay metrics <APP_ID> [--scorer S]` | daily score trends |
-| `assay scorers set <APP_ID> <SCORER> --threshold N` | configure a scorer threshold |
+| `assay scorers set <APP_ID> <SCORER> --threshold N` | configure a threshold; also supports `--enabled`/`--disabled`, `--judge-config-file`, `--prompt-template-id` |
 | `assay traces list <APP_ID> [--status STATUS]` | list traces for an application |
 | `assay traces get <TRACE_ID>` | full trace: spans, attributes, scores, rationales |
 | `assay traces score --scorer S <TRACE_ID>…` | on-demand scoring |
@@ -106,7 +112,10 @@ Pass rates use the threshold recorded when each score was computed.
 
 - Present low scores as signals to investigate and surface the rationale; the number alone does
   not establish that an answer is wrong.
-- Prefer **cross-family judges** (a judge model from a different provider than the one that generated the answer) to avoid self-preference bias when configuring scorers.
+- Prefer **cross-family judges** (a judge model from a different provider than the one that generated
+  the answer) to avoid self-preference bias when configuring scorers.
 - Before creating many runs, check the effective judge settings (scorer override, project override,
-  then process defaults); runs cost judge tokens. `scorers set` configures thresholds only.
-- Correctness needs a reference; include `expected_output` in imported dataset items or run groundedness only.
+  then process defaults); runs cost judge tokens. `scorers set` can change judge and prompt overrides
+  as well as thresholds and enabled state.
+- Correctness needs a reference; include `expected_output` in imported dataset items or run
+  groundedness only.

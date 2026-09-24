@@ -202,7 +202,12 @@ function RunSummary({ run }: { run: EvalRunResponse }) {
         {Object.keys(run.aggregates).length === 0 ? (
           <p className="mt-3 text-sm text-muted">No aggregate scores yet.</p>
         ) : (
-          <div className="mt-3 overflow-x-auto border border-line bg-surface">
+          <div
+            aria-label="Score aggregates table"
+            className="mt-3 overflow-x-auto border border-line bg-surface focus-visible:ring-2 focus-visible:ring-accent"
+            role="region"
+            tabIndex={0}
+          >
             <table className="w-full text-left text-sm">
               <thead className="bg-canvas">
                 <tr>

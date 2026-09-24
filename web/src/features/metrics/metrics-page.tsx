@@ -80,7 +80,12 @@ export function MetricsPage() {
 
 function TrendTable({ items }: { items: MetricPoint[] }) {
   return (
-    <div className="overflow-x-auto border border-line bg-surface">
+    <div
+      aria-label="Daily score trends table"
+      className="overflow-x-auto border border-line bg-surface focus-visible:ring-2 focus-visible:ring-accent"
+      role="region"
+      tabIndex={0}
+    >
       <table aria-label="Daily score trends" className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-line">

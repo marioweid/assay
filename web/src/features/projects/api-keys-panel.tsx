@@ -229,7 +229,9 @@ function KeyList({
               <th className="px-4 py-3">Prefix</th>
               <th className="px-4 py-3">Last used</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-3" scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>

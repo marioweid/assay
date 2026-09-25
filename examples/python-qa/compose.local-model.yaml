@@ -1,0 +1,24 @@
+# Optional local-only model overlay: combine with compose.yaml; Ollama is private to Compose.
+services:
+  ollama:
+    image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  chat:
+    environment:
+      OPENAI_API_KEY: ollama
+      OPENAI_MODEL: qwen3:4b
+      OPENAI_BASE_URL: http://ollama:11434/v1
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama-models:

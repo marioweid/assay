@@ -2,10 +2,12 @@
 
 import argparse
 import os
+import re
 import sys
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 import assay
 from openai import APIError, OpenAI
@@ -28,6 +30,7 @@ class Settings:
     model: str
     admin_token: str = field(repr=False)
     openai_key: str = field(repr=False)
+    base_url: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -48,11 +51,15 @@ class Settings:
             raise ValueError("Set ASSAY_ADMIN_TOKEN to the token used by your local Assay server.")
         if not key:
             raise ValueError("Set OPENAI_API_KEY or ASSAY_JUDGE_API_KEY in your .env file.")
+        model = (env.get("OPENAI_MODEL") or env.get("ASSAY_JUDGE_MODEL") or "").strip()
+        if not model:
+            raise ValueError("Set OPENAI_MODEL or ASSAY_JUDGE_MODEL in your .env file.")
         return cls(
             endpoint=env.get("ASSAY_ENDPOINT", "http://localhost:8080").rstrip("/"),
-            model=env.get("OPENAI_MODEL") or env.get("ASSAY_JUDGE_MODEL") or "gpt-5.6-luna",
+            model=model,
             admin_token=token,
             openai_key=key,
+            base_url=env.get("OPENAI_BASE_URL") or None,
         )
 
 
@@ -120,14 +127,22 @@ class TraceSession:
     client: assay.Client
 
 
+def uses_assay_context(question: str) -> bool:
+    return re.search(r"\bAssay\b", question) is not None
+
+
 @assay.trace(name="answer-question", capture=False)
-def answer_question(question: str, client: OpenAI, model: str) -> str:
-    """Answer from built-in context and capture a scorable generation span.
+def answer_question(
+    question: str, client: OpenAI, model: str, *, scorable: bool | None = None
+) -> str:
+    """Answer with optional Assay grounding while capturing the model's generation span.
 
     Args:
-        question: User's question about Assay.
-        client: OpenAI client used for generation.
-        model: OpenAI model name.
+        question: Conversation transcript or standalone question.
+        client: OpenAI-compatible client used for generation.
+        model: Configured generator model name.
+        scorable: Whether to score against Assay context; infer from a standalone question
+            when not explicitly supplied.
 
     Returns:
         The generated answer.
@@ -138,20 +153,28 @@ def answer_question(question: str, client: OpenAI, model: str) -> str:
     with assay.span("load-knowledge") as context_span:
         context_span.set_attribute("example.context_count", len(KNOWLEDGE))
         context = "\n".join(chunk.text for chunk in KNOWLEDGE)
-    with assay.span("generate-answer", scorable=True) as span:
+    with assay.span(
+        "generate-answer",
+        scorable=uses_assay_context(question) if scorable is None else scorable,
+    ) as span:
         span.set_input(question)
         span.set_context(KNOWLEDGE)
-        span.set_attribute("gen_ai.provider.name", "openai")
+        provider = "ollama" if urlsplit(str(client.base_url)).hostname == "ollama" else "openai"
+        span.set_attribute("gen_ai.provider.name", provider)
         span.set_attribute("gen_ai.request.model", model)
         response = client.responses.create(
             model=model,
-            instructions="Answer briefly using only this context. Say if it cannot answer.\n"
-            + context,
+            instructions=(
+                "Answer general questions clearly and briefly. For questions about Assay, use "
+                "the following context and say when it does not support an answer. For unrelated "
+                "questions, answer from general knowledge rather than restricting yourself to "
+                "the Assay context. Say when uncertain.\n" + context
+            ),
             input=question,
         )
         answer = response.output_text.strip()
         if not answer:
-            raise ValueError("OpenAI returned an empty answer; try another question or model.")
+            raise ValueError("Model returned an empty answer; try another question or model.")
         span.set_output(answer)
         if response.usage is not None:
             span.set_attribute("gen_ai.usage.input_tokens", response.usage.input_tokens)
@@ -172,14 +195,21 @@ def main() -> int:
             traced_session(settings) as session,
             OpenAI(
                 api_key=settings.openai_key,
-                timeout=60,
+                base_url=settings.base_url,
+                timeout=120,
                 max_retries=1,
             ) as client,
         ):
             print(answer_question(args.question, client, settings.model))
         ui_url = os.getenv("ASSAY_UI_URL", settings.endpoint).rstrip("/")
         print(f"\nTraces: {ui_url}/apps/{session.application.id}/traces")
-        print("Connect with your ASSAY_ADMIN_TOKEN. Groundedness scores appear asynchronously.")
+        if uses_assay_context(args.question):
+            print("Connect with your ASSAY_ADMIN_TOKEN. Groundedness scores appear asynchronously.")
+        else:
+            print(
+                "Connect with your ASSAY_ADMIN_TOKEN. General questions are traced "
+                "without groundedness scoring."
+            )
         return 0
     except APIError as error:
         print(

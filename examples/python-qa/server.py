@@ -15,7 +15,7 @@ from openai import APIError, OpenAI
 from opentelemetry.trace import get_current_span
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-from app import Settings, TraceSession, answer_question, traced_session
+from app import Settings, TraceSession, answer_question, traced_session, uses_assay_context
 
 
 class Message(BaseModel):
@@ -64,7 +64,12 @@ class ChatService:
         with assay.span("chat-turn"):
             trace_id = f"{get_current_span().get_span_context().trace_id:032x}"
             transcript = "\n\n".join(f"{m.role}: {m.content}" for m in request.messages)
-            answer = answer_question(transcript, self.client, self.model)
+            answer = answer_question(
+                transcript,
+                self.client,
+                self.model,
+                scorable=uses_assay_context(request.messages[-1].content),
+            )
         exported = assay.flush()
         trace_url = self.traces_url
         if exported:
@@ -113,7 +118,7 @@ def respond(request: ChatRequest, chat: ChatDependency) -> ChatReply:
         return chat.respond(request)
     except APIError as error:
         raise HTTPException(
-            502, "Model request failed. Check server credentials and model."
+            502, "Model request failed. Check the configured provider, model, and connection."
         ) from error
     except (ValueError, assay.AssayError) as error:
         raise HTTPException(502, str(error)) from error
@@ -132,7 +137,8 @@ def create_app(service: ChatService | None = None) -> FastAPI:
             traced_session(settings) as session,
             OpenAI(
                 api_key=settings.openai_key,
-                timeout=60,
+                base_url=settings.base_url,
+                timeout=120,
                 max_retries=1,
             ) as client,
         ):

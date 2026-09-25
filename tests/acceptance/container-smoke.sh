@@ -14,7 +14,7 @@ COMPOSE_FILE="$TEMP_DIR/compose.yaml"
 ENV_FILE="$TEMP_DIR/.env"
 umask 077
 
-for command in base64 curl docker od rg; do
+for command in base64 curl docker grep od; do
   command -v "$command" >/dev/null || {
     echo "container smoke: required command not found: $command" >&2
     exit 1
@@ -100,15 +100,15 @@ compose up --detach --wait --wait-timeout 180
 compose exec --no-TTY postgres getent hosts host.docker.internal >/dev/null
 ENDPOINT="http://$(compose port assayd 8080)"
 INDEX=$(curl --fail --silent --show-error "$ENDPOINT/")
-printf '%s' "$INDEX" | rg 'src="/assets/index-[A-Za-z0-9_-]+\.js"' >/dev/null
+printf '%s' "$INDEX" | grep -E 'src="/assets/index-[A-Za-z0-9_-]+\.js"' >/dev/null
 curl --fail --silent --show-error "$ENDPOINT/assay-icon.png" >/dev/null
-STYLE_PATH=$(printf '%s' "$INDEX" | rg -o '/assets/index-[A-Za-z0-9_-]+\.css' | head -1)
+STYLE_PATH=$(printf '%s' "$INDEX" | grep -oE '/assets/index-[A-Za-z0-9_-]+\.css' | head -1)
 STYLE=$(curl --fail --silent --show-error "$ENDPOINT$STYLE_PATH")
-FONT_PATH=$(printf '%s' "$STYLE" | rg -o '/assets/[A-Za-z0-9_-]+\.woff2' | head -1)
+FONT_PATH=$(printf '%s' "$STYLE" | grep -oE '/assets/[A-Za-z0-9_-]+\.woff2' | head -1)
 curl --fail --silent --show-error "$ENDPOINT$FONT_PATH" >/dev/null
 curl --fail --silent --show-error "$ENDPOINT/readyz" >/dev/null
 DEEP_LINK=$(curl --fail --silent --show-error "$ENDPOINT/apps")
-printf '%s' "$DEEP_LINK" | rg 'id="root"' >/dev/null
+printf '%s' "$DEEP_LINK" | grep -F 'id="root"' >/dev/null
 if [[ $(curl --silent --output /dev/null --write-out '%{http_code}' "$ENDPOINT/v1/projects") != "401" ]]; then
   echo "container smoke: unauthenticated API request was not rejected" >&2
   exit 1

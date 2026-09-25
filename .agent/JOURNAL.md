@@ -169,3 +169,9 @@
 [VERIFY] Playwright rendered the file at 1440px, 390px and 320px with no horizontal overflow or browser errors. Selecting either turn updates the trace summary and timing. oxfmt and `git diff --check` passed.
 [DECISION] The user approved the preview's design, then requested the `mokeup/` folder be removed rather than kept in Git. Removed its four untracked files and the folder; recorded the approved direction in the durable plan. No product implementation began.
 [DECISION] The user later allowed temporary mockups during implementation in a hidden, locally gitignored folder. Do not recreate or commit the deleted preview unless a new working mockup is useful.
+
+## 2026-09-25 — PR #19 CI runner and merge conflict follow-up
+
+[CAUSE] GitHub run `35960176507` failed in `tests/acceptance/container-smoke.sh` before its asset tests: ubuntu-latest lacks `rg`. PR #19 also conflicted with current `main` in `.agent/PLAN.md` and `.agent/JOURNAL.md` after the chat PR merged.
+[OUTCOME] Merged current `main` into `fix/populated-accessibility-assay-skill`, preserving both branches' notes. Swapped the smoke script's four `rg` matches for equivalent `grep -E`, `grep -oE`, and `grep -F` checks, without adding an external dependency. No running persistent stack or volume was changed.
+[VERIFY] Frontend lint, formatting, typecheck, and 158 Vitest tests pass after the merge; Bash syntax and diff checks pass. A PATH without `rg` includes `grep`, and the CSS/font/entrypoint patterns match live assets. Disposable smoke booted healthy and passed its first grep check locally, then Windows curl exited 23 writing the PNG; its prefixed containers/volume were cleaned up. Linux GitHub CI is the remaining end-to-end gate, not yet claimed.

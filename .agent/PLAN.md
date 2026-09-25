@@ -2,7 +2,7 @@
 
 - New feature plan proposed in `docs/plans/2026-09-25-session-explorer-and-ui.md`: OTel `session.id`-tagged cross-trace Sessions view, scoped SDK helper, backend-issued persistent demo-chat session plus pseudonymous browser ID, conversation-first trace/session/Gantt UI, and midnight-slate/teal dark-first redesign. The user chose persistence until New Chat, backend-issued IDs, Traces retaining all data, and this palette. The user approved the small desktop/mobile visual preview, then requested its folder be removed; the design direction is recorded in the plan. Future working mockups may live in a hidden, locally gitignored folder during implementation, but should not be committed. No session feature implementation or migration applied. Start feature work separately after this chat branch is pushed.
 - The existing `python-qa-example` project and chat now run locally at `127.0.0.1:8080` and `127.0.0.1:8090` on `feat/local-general-chat`. General and Assay-specific replies are traced; only explicit Assay questions are eligible for local Mistral judging (one repeat score failed strict JSON validation). Private Ollama generates with Qwen3 on CPU, containers are healthy, and the project/Postgres/model volumes persist. The chat code and tests are committed as `8ccb3f6`; see `../assay-local-validation/CHAT-2026-09-25.md` for local validation.
-- Previously pushed accessibility PR #19 has a failing `test` check: GitHub runner lacks `rg` for container smoke. This separate follow-up is not part of the chat branch.
+- Accessibility PR #19's `test` failure came from requiring `rg` on the GitHub runner. On its branch, current `main` was merged to resolve note conflicts and the container smoke now uses portable `grep`; the Linux CI rerun must pass before merging.
 - E2 delivery implementation is complete locally: reproducible amd64/arm64 builds, separate published Compose, guarded smoke coverage, and a protected GHCR workflow. Actual publication and anonymous-pull evidence remain an approval gate.
 - E1 is complete on `feat/e1-acceptance-harness`: an isolated Compose stack, deterministic fake judge/target, and embedded Playwright/axe suite run without paid services and clean up only their prefixed project.
 - M7D6 is complete on `feat/m7d6-sdk-acceptance`: its disposable SDK acceptance covers trace capture, scoring, retained evidence, evaluation lifecycle, and failure paths without paid services.
@@ -13,7 +13,7 @@
 ## Next
 
 - Keep the persistent validation stack/data for user inspection; do not remove its named volume. See the workspace report for start/stop commands and exact evidence.
-- Repair PR #19's missing CI runner prerequisite and verify its merge conflicts are resolved.
+- Confirm PR #19's updated Linux CI and mergeability; do not claim success from the Windows-local partial container smoke.
 - Review/approve the remaining session explorer contract and signed anonymous history cookie; implement in small verified phases on a separate branch. Check empty/error and light-theme states during implementation.
 - Ask before revoking seven historical active `temporary-example-run` project keys from ungraceful shutdowns; improve the local judge's intermittent structured-output reliability.
 - Retain the populated-page accessibility regression and Assay skill guidance. Obtain remaining GitHub/release evidence, then lock the approved UI through E4 browser/accessibility/visual/performance acceptance. Local validation is not E4 sign-off.

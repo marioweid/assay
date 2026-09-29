@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 
 const storageKey = "assay.admin-token.v1";
 const application = {
@@ -18,7 +19,7 @@ const application = {
   created_at: "2026-09-01T10:00:00Z",
   updated_at: "2026-09-01T10:00:00Z",
 };
-const server = setupServer();
+const server = setupServer(tokenModeServerInfo);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.clear());
@@ -36,7 +37,7 @@ test("validates once and seeds the application catalog for a protected deep link
   renderApp("/apps/019d11d2-cbd3-7a5e-ae83-9b791c9329de/traces");
   const user = userEvent.setup();
 
-  await user.type(screen.getByLabelText("Admin token"), "admin-secret");
+  await user.type(await screen.findByLabelText("Admin token"), "admin-secret");
   await user.click(screen.getByRole("button", { name: "Connect" }));
 
   expect(await screen.findByRole("heading", { name: "Traces" })).toBeInTheDocument();
@@ -88,7 +89,7 @@ test("keeps request errors in the connection gate", async () => {
   renderApp("/apps");
   const user = userEvent.setup();
 
-  await user.type(screen.getByLabelText("Admin token"), "admin-secret");
+  await user.type(await screen.findByLabelText("Admin token"), "admin-secret");
   await user.click(screen.getByRole("button", { name: "Connect" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Unavailable");

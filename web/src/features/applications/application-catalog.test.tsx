@@ -4,13 +4,14 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 import {
   ApplicationCatalogProvider,
   useApplicationCatalog,
 } from "@/features/applications/application-catalog";
 
 const storageKey = "assay.admin-token.v1";
-const server = setupServer();
+const server = setupServer(tokenModeServerInfo);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.setItem(storageKey, "admin-secret"));

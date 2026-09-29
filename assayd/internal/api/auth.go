@@ -13,7 +13,7 @@ import (
 )
 
 func (h *handler) requireAdmin(ctx huma.Context, next func(huma.Context)) {
-	if !auth.ValidAdminAuthorization(ctx.Header("Authorization"), h.adminToken) {
+	if !h.isAdmin(ctx.Header("Authorization"), ctx.Header("x-api-key")) {
 		if err := huma.WriteErr(h.api, ctx, http.StatusUnauthorized, "Unauthorized"); err != nil {
 			h.logger.Error("write unauthorized response", "error", err)
 		}
@@ -22,7 +22,11 @@ func (h *handler) requireAdmin(ctx huma.Context, next func(huma.Context)) {
 	next(ctx)
 }
 
-func (h *handler) isAdmin(authorization string) bool {
+func (h *handler) isAdmin(authorization string, apiKey string) bool {
+	// Explicit credentials never gain the anonymous local administrator's scope.
+	if h.localMode && authorization == "" && apiKey == "" {
+		return true
+	}
 	return auth.ValidAdminAuthorization(authorization, h.adminToken)
 }
 

@@ -35,6 +35,7 @@
     "e2e",
     "openapi-ts.config.ts",
     "playwright.config.ts",
+    "playwright.sessions.config.ts",
     "vite.config.ts",
     "vitest.config.ts"
   ]

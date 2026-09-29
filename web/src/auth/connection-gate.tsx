@@ -14,13 +14,27 @@ export function ConnectionGate(): ReactNode {
     return (
       <main className="grid min-h-screen place-items-center bg-canvas px-6 text-ink">
         <p role="status" className="text-sm text-muted">
-          Connecting to Assay...
+          Connecting to Assay…
         </p>
       </main>
     );
   }
   if (auth.status === "connected") {
     return <Outlet />;
+  }
+
+  if (auth.localMode !== false) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-canvas px-6 text-ink">
+        <section className="max-w-md space-y-4 rounded-xl border border-line bg-surface p-6">
+          <h1 className="text-xl font-semibold">Unable to connect to Assay</h1>
+          <p role="alert" className="text-sm text-danger">
+            {auth.error}
+          </p>
+          <Button onClick={() => void auth.retry()}>Retry connection</Button>
+        </section>
+      </main>
+    );
   }
 
   function submit(event: FormEvent<HTMLFormElement>): void {

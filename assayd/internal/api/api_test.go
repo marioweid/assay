@@ -318,6 +318,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	api.Register(mux, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(database),
 		Service:   service, Traces: traceService, Evaluations: evaluations,
+		Sessions:    domain.NewSessionService(database),
 		Comparisons: comparisons, AdminToken: adminToken, Logger: logger,
 	})
 	return &apiFixture{

@@ -16,10 +16,7 @@ export function ConversationView({
   const visibleCalls =
     selectedSpanKey === null ? calls : calls.filter((call) => call.spanKey === selectedSpanKey);
   if (visibleCalls.length === 0) return <p className="text-sm text-muted">Content not captured</p>;
-  const scorableCalls = visibleCalls.filter((call) => call.span.is_scorable);
-  const expandedKey =
-    selectedSpanKey ??
-    (scorableCalls.length === 1 ? scorableCalls[0]?.spanKey : visibleCalls[0]?.spanKey);
+  const expandedKey = selectedSpanKey ?? visibleCalls[0]?.spanKey;
   return (
     <section aria-label="Conversation" className="space-y-4">
       {visibleCalls.map((call) => (

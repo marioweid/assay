@@ -16,6 +16,8 @@ import { ProjectsPage } from "@/features/projects/projects-page";
 import { RunComparison } from "@/features/runs/run-comparison";
 import { RunDetail } from "@/features/runs/run-detail";
 import { RunsPage } from "@/features/runs/runs-page";
+import { SessionDetail } from "@/features/sessions/session-detail";
+import { SessionsPage } from "@/features/sessions/sessions-page";
 import { TraceDetail } from "@/features/traces/trace-detail";
 import { TracesPage } from "@/features/traces/traces-page";
 
@@ -31,6 +33,8 @@ export function AppRoutes(): ReactNode {
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route path="/apps/:appId" element={<AppShell />}>
               <Route index element={<Navigate replace to="traces" />} />
+              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="sessions/detail" element={<SessionDetail />} />
               <Route path="traces" element={<TracesPage />} />
               <Route path="traces/:traceId" element={<TraceDetail />} />
               <Route path="datasets" element={<DatasetsPage />} />

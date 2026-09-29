@@ -1,128 +1,138 @@
-# Linux quickstart
+# First run: Linux and macOS
 
-This guide has two supported paths. The published-image path is for a release; the source path is
-for a checkout. Both run Assay and Postgres on loopback-only ports.
+[Documentation](index.md) / Getting started · [Windows instructions](quickstart-powershell.md)
 
-## Before you start
+**Goal:** open Assay, create a workspace, and see a real SDK trace. No paid model or judge is needed.
 
-Install Docker Engine with the Compose plugin, OpenSSL, and (for the SDK examples) [uv](https://docs.astral.sh/uv/).
-Assay needs an admin token, a database password, and an encryption key. Generate each separately:
+## 1. Prerequisites
+
+Install Git, Docker with Compose, OpenSSL, and [uv](https://docs.astral.sh/uv/).
+Start Docker, then work from a fresh source checkout:
 
 ```bash
-openssl rand -hex 32     # admin token or URL-safe Postgres password; generate separately
-openssl rand -base64 32  # encryption key; save once and retain with the database backup
+git clone https://github.com/marioweid/assay.git
+cd assay
 ```
 
-Put the values in a private `.env` file. Do not put expanded secrets in shell history. The encryption
-key must decode to 32 bytes and must survive restarts and upgrades; losing it prevents Assay from
-decrypting stored judge and target-endpoint secrets.
+Use the checkout containing local-mode support. There is no published Assay container image yet;
+new SDK features are also checkout-only. If you already have a database, read
+[upgrade and rollback](deployment.md#upgrade-and-rollback) before starting a newer checkout:
+server startup automatically applies migrations.
 
-## 1. Published image (release only)
+## 2. Create a private local configuration
 
-**No image has been published yet.** Wait for the release notes to name an anonymously pull-tested
-tag or digest; do not substitute the Python package version. In a new directory, save the exact
-[`compose.published.yaml`](../compose.published.yaml) from this repository as `compose.yaml`, create
-`.env` with `ASSAY_IMAGE` set to that verified release plus the three required credentials, then run:
+This creates `.env` **only if it does not already exist**. It generates the database password and
+stable encryption key directly into the file, without displaying either:
 
 ```bash
-umask 077
-docker compose up --build --force-recreate -d
+(
+  set -euo pipefail
+  umask 077
+  set -o noclobber
+  {
+    printf 'ASSAY_LOCAL_MODE=true\n'
+    printf 'ASSAY_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)"
+    printf 'ASSAY_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)"
+  } > .env
+)
+```
+
+Already have `.env`? **Do not regenerate the encryption key or database password.** Add/change only
+`ASSAY_LOCAL_MODE=true` in your own trusted configuration. Changing a Postgres environment password
+does not change the password inside an initialized database. Keep the encryption key with backups.
+
+Local mode skips the admin token, not the project ingest key. It is unsafe on a public/network-facing
+instance. Keep the checked-in `127.0.0.1` port bindings. See [configuration](configuration.md).
+
+## 3. Start and open Assay
+
+```bash
+docker compose up --build -d
 docker compose ps
 curl --fail http://localhost:8080/readyz
+curl --fail http://localhost:8080/v1/server-info
 ```
 
-`--build` is harmless here: published Compose deliberately has no `build` stanza. If you keep the
-repository filename instead, run the same command with
-`docker compose -f compose.published.yaml up --build --force-recreate -d`. Do not combine the source
-and published Compose files.
+Open **<http://localhost:8080/>**. The UI opens directly and displays **Local mode**;
+`/v1/server-info` reports `"local_mode": true`. No admin token or judge credential is needed.
+A cold image build takes longer than a restart.
 
-## 2. Source checkout
+If the UI still asks for a token, check [local-mode troubleshooting](troubleshooting.md).
+To stop later, use `docker compose down` — **without `-v`**, which would delete your data.
 
-Clone the repository and enter it. Refuse to replace an existing secrets file, then start the source
-Compose stack:
+## 4. Create a project, key and application
 
-```bash
-umask 077
-if [ -e .env ]; then
-  printf '%s\n' '.env already exists; refusing to overwrite it' >&2
-  exit 1
-fi
-cp .env.example .env
-# Edit .env: set ASSAY_ADMIN_TOKEN and ASSAY_ENCRYPTION_KEY; use a fresh database password.
-docker compose up --build --force-recreate -d
-```
+Choose either path:
 
-`--force-recreate` recreates containers, not the named `assay-pgdata` volume. Check the service with
-`docker compose ps` and `curl --fail http://localhost:8080/readyz`, then open
-<http://localhost:8080/>. Connect the single-user UI with `ASSAY_ADMIN_TOKEN` from `.env`.
-
-## 3. Create an application and send a trace
-
-In the UI, create a project, create its one-time ingest key, then create an application. The UI shows
-the raw key once; save it in a password manager. An agent can do the equivalent with the current
-checkout SDK without retyping IDs or keys:
+- **UI:** Projects → New project → create an API key → save its one-time value →
+  Applications → New application, selecting that project. The application slug is the SDK name.
+- **CLI/SDK bootstrap:** the following creates a new isolated project/application and saves their
+  IDs and one-time key in a private workspace file. It refuses to overwrite that file.
 
 ```bash
-set -a
-. ./.env
-set +a
 export ASSAY_ENDPOINT=http://localhost:8080
+export ASSAY_LOCAL_MODE=true
 uv run --project clients/python/assay python examples/quickstart/bootstrap.py \
   --output .quickstart-workspace.json
+```
+
+`ASSAY_LOCAL_MODE` must be exported for host-side CLI/client commands: Docker's `.env` is not
+implicitly loaded by Python. The workspace file contains a plaintext project key; never commit,
+share, or paste it. On Unix it is created with mode `0600`.
+
+## 5. Send and find a trace
+
+```bash
 TRACE_ID=$(uv run --project clients/python/assay python examples/quickstart/trace.py \
   --workspace .quickstart-workspace.json)
 printf 'OpenTelemetry trace ID: %s\n' "$TRACE_ID"
 ```
 
-The workspace file contains the plaintext ingest key, so it is mode `0600`; delete it when finished.
-The trace example captures only synthetic content, calls `flush`, then shuts down. Find the trace in
-the UI by its OpenTelemetry ID, or query it with the project key:
+Open the new application → **Traces**, then search for that ID. Open the trace to inspect its
+captured question, answer, retrieval context and timing. The example emits synthetic content,
+checks `flush()`, and shuts down cleanly.
+
+For CLI inspection, load the key without printing it:
 
 ```bash
 ASSAY_API_KEY=$(uv run --project clients/python/assay python -c \
   'import json; print(json.load(open(".quickstart-workspace.json"))["api_key"])')
 APP_ID=$(uv run --project clients/python/assay python -c \
   'import json; print(json.load(open(".quickstart-workspace.json"))["application_id"])')
-ASSAY_API_KEY="$ASSAY_API_KEY" uv run --project clients/python/assay \
-  assay traces list "$APP_ID" --query "$TRACE_ID"
+export ASSAY_API_KEY
+uv run --project clients/python/assay assay traces list "$APP_ID" --query "$TRACE_ID"
 ```
 
-Trace ingestion needs the project API key. Creating projects, datasets, scorers, and runs needs the
-admin token. The SDK uses JSON OTLP/HTTP; binary protobuf and OTLP/gRPC are not supported.
+A trace's OpenTelemetry hex ID differs from Assay's database UUID. The UI can search by either;
+management calls such as `traces.get()` use the Assay UUID. See [concepts](concepts.md).
 
-## 4. Run an evaluation (optional)
+## 6. Add your application
 
-Tracing works with no judge configuration. To evaluate, configure an OpenAI-compatible judge in the
-UI (global, project, or scorer settings) with `ASSAY_JUDGE_BASE_URL` and `ASSAY_JUDGE_MODEL`; set
-`ASSAY_JUDGE_API_KEY` only when that judge requires one. After editing `.env`, rerun
-`docker compose up -d` so the server receives it. For a host-local Linux model, Compose maps
-`host.docker.internal` to the host gateway, so a typical URL is
-`http://host.docker.internal:11434/v1`.
+Follow the [Python SDK guide](python-sdk.md). Start with an explicit span around one answer;
+add `assay.session(...)` when multiple requests belong to one conversation. The quickstart trace
+above deliberately remains an ordinary, untagged trace.
 
-After the judge is configured, import the included synthetic case, create a score-existing run, and
-watch it:
+Ready to score answers? Continue with [your first evaluation](evaluations.md).
+Tracing works without a judge; evaluation needs a configured OpenAI-compatible judge.
+
+## Use token authentication instead
+
+For a fresh token-protected setup, set `ASSAY_LOCAL_MODE=false` and generate a separate
+`ASSAY_ADMIN_TOKEN` with `openssl rand -hex 32`, storing it privately in `.env`. Recreate the server
+with `docker compose up -d`, then reload the UI and connect with that token. The host-side CLI needs
+`ASSAY_ADMIN_TOKEN` exported and `ASSAY_LOCAL_MODE=false`. Do not use an ingest key as the admin token.
+
+Network deployments additionally need HTTPS/access controls; see [deployment](deployment.md).
+
+## Published images (future release path)
+
+After a maintainer publishes and verifies an image, use
+[`compose.published.yaml`](../compose.published.yaml) with `ASSAY_IMAGE` set to that verified tag/digest:
 
 ```bash
-DATASET_ID=$(uv run --project clients/python/assay assay datasets import "$APP_ID" \
-  --file examples/quickstart/regression.jsonl | uv run --project clients/python/assay python -c \
-  'import json,sys; print(json.load(sys.stdin)["dataset_id"])')
-RUN_ID=$(uv run --project clients/python/assay assay run create "$APP_ID" --dataset "$DATASET_ID" \
-  --scorers groundedness,correctness | uv run --project clients/python/assay python -c \
-  'import json,sys; print(json.load(sys.stdin)["id"])')
-uv run --project clients/python/assay assay run watch "$RUN_ID"
+docker compose -f compose.published.yaml up -d
 ```
 
-The fake judge in the disposable acceptance harness is for tests only; it is not part of a normal
-deployment. View run items and scores in the UI. Dataset-item edits or deletion do not rewrite an
-existing run's immutable snapshot; deleting the whole dataset cascades its dependent runs.
+Do not combine it with source Compose or invent a container tag from the Python package version.
 
-## URLs and local-network limits
-
-`http://localhost:8080` is for a host SDK, CLI, or browser. Inside another Compose service, use
-`http://assayd:8080`. The Compose database URL uses `postgres` and `sslmode=disable` only on the
-trusted internal Docker network. For a network deployment, put Assay behind a TLS-terminating reverse
-proxy; do not expose Postgres or use this local-only TLS setting across an untrusted network.
-
-For backups, upgrades, retention, and production network guidance, see
-[deployment](deployment.md). Windows users should follow the complete
-[PowerShell guide](quickstart-powershell.md).
+**Next:** [UI tour](concepts.md) · [SDK](python-sdk.md) · [CLI](cli.md) · [Troubleshooting](troubleshooting.md)

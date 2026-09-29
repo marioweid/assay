@@ -6,8 +6,9 @@ import inspect
 import math
 import os
 import threading
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from typing import Literal, ParamSpec, TypeVar, cast, overload
@@ -70,6 +71,75 @@ _state: _State | None = None
 _state_lock = threading.Lock()
 _exporter_factory: _ExporterFactory = AssaySpanExporter
 _processor_factory: _ProcessorFactory = BatchSpanProcessor
+
+
+@dataclass(frozen=True, slots=True)
+class _SessionContext:
+    session_id: str
+    pseudonymous_user_id: str | None
+    conversation_id: str | None
+
+
+_session_context: ContextVar[_SessionContext | None] = ContextVar("assay_session", default=None)
+
+
+@contextmanager
+def session(
+    session_id: str,
+    *,
+    pseudonymous_user_id: str | None = None,
+    conversation_id: str | None = None,
+) -> Iterator[None]:
+    """Tag new Assay spans in this task with an explicit correlation session.
+
+    Args:
+        session_id: Opaque root-span correlation ID, at most 128 characters.
+        pseudonymous_user_id: Optional anonymous browser ID, not authenticated identity.
+        conversation_id: Optional GenAI conversation ID; only attached to GenAI spans.
+
+    Yields:
+        A task-local scope. Nested scopes replace then restore their parent's IDs.
+    """
+    values = _SessionContext(
+        session_id=_correlation_id(session_id, "session ID"),
+        pseudonymous_user_id=_optional_correlation_id(pseudonymous_user_id, "pseudonymous user ID"),
+        conversation_id=_optional_correlation_id(conversation_id, "conversation ID"),
+    )
+    token = _session_context.set(values)
+    try:
+        yield
+    finally:
+        _session_context.reset(token)
+
+
+def _correlation_id(value: str, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 128
+        or value != value.strip(" ")
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise ValueError(f"{label} must be a nonblank opaque ID of at most 128 characters")
+    return value
+
+
+def _optional_correlation_id(value: str | None, label: str) -> str | None:
+    return None if value is None else _correlation_id(value, label)
+
+
+def _session_attributes(
+    attributes: Mapping[str, AttributeValue] | None,
+) -> dict[str, AttributeValue]:
+    result: dict[str, AttributeValue] = dict(attributes) if attributes is not None else {}
+    current = _session_context.get()
+    if current is None:
+        return result
+    result["session.id"] = current.session_id
+    if current.pseudonymous_user_id is not None:
+        result["enduser.pseudo.id"] = current.pseudonymous_user_id
+    if current.conversation_id is not None and "gen_ai.operation.name" in result:
+        result["gen_ai.conversation.id"] = current.conversation_id
+    return result
 
 
 def init(
@@ -172,7 +242,7 @@ def trace(
                 state = _required_state()
                 with state.tracer.start_as_current_span(
                     span_name,
-                    attributes=dict(attributes or {}),
+                    attributes=_session_attributes(attributes),
                 ) as current:
                     _capture_input(
                         current,
@@ -200,7 +270,7 @@ def trace(
             state = _required_state()
             with state.tracer.start_as_current_span(
                 span_name,
-                attributes=dict(attributes or {}),
+                attributes=_session_attributes(attributes),
             ) as current:
                 _capture_input(
                     current,
@@ -250,20 +320,28 @@ def span(
         reference=reference,
         attributes=attributes,
     )
+    current = _session_context.get()
     return AssaySpan(
         state.tracer.start_as_current_span(
             _non_blank(name, "span name"), attributes=span_attributes
         ),
         state.config.max_capture_bytes,
+        current.conversation_id if current is not None else None,
     )
 
 
 class AssaySpan(AbstractContextManager["AssaySpan"]):
     """Active span wrapper exposing Assay semantic-convention setters."""
 
-    def __init__(self, context: AbstractContextManager[Span], max_capture_bytes: int) -> None:
+    def __init__(
+        self,
+        context: AbstractContextManager[Span],
+        max_capture_bytes: int,
+        conversation_id: str | None = None,
+    ) -> None:
         self._context = context
         self._max_capture_bytes = max_capture_bytes
+        self._conversation_id = conversation_id
         self._span: Span | None = None
 
     @override
@@ -358,7 +436,10 @@ class AssaySpan(AbstractContextManager["AssaySpan"]):
         """Set one validated primitive OpenTelemetry attribute."""
         attribute_name = _non_blank(name, "attribute name")
         _validate_attribute(value)
-        self._current().set_attribute(attribute_name, value)
+        current = self._current()
+        current.set_attribute(attribute_name, value)
+        if attribute_name == "gen_ai.operation.name" and self._conversation_id is not None:
+            current.set_attribute("gen_ai.conversation.id", self._conversation_id)
 
     def _set_message(
         self,
@@ -480,7 +561,7 @@ def _span_attributes(
     for name, value in optional_values.items():
         if value is not None:
             result[name] = value
-    return result
+    return _session_attributes(result)
 
 
 def _validate_attribute(value: AttributeValue) -> None:

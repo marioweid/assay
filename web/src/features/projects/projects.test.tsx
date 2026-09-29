@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 
 const projectID = "019d11d2-cbd3-7a5e-ae83-9b791c932911";
 const project = {
@@ -15,7 +16,7 @@ const project = {
   created_at: "2026-09-01T10:00:00Z",
   updated_at: "2026-09-01T10:00:00Z",
 };
-const server = setupServer();
+const server = setupServer(tokenModeServerInfo);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.setItem("assay.admin-token.v1", "admin-secret"));

@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -86,21 +87,70 @@ def test_chat_scores_only_explicit_assay_questions(
     session = Mock()
     session.application.id = "app-id"
     session.client.traces.list.return_value = SimpleNamespace(items=[])
-    chat = server.ChatService(session, cast(OpenAI, client), "local-model", "http://localhost:8080")
-    reply = chat.respond(
-        server.ChatRequest(
-            messages=[
-                server.Message(role="user", content="Tell me about Assay."),
-                server.Message(role="assistant", content="It records traces."),
-                server.Message(role="user", content=latest_question),
-            ]
-        )
+    session.client.sessions.recent.return_value = ()
+    chat = server.ChatService(
+        session,
+        cast(OpenAI, client),
+        "local-model",
+        "http://localhost:8080",
+        server.SessionSigner(b"s" * 32),
     )
+    reply = chat.respond(latest_question, chat.signer.create())
     assert reply.answer == "Answer."
     generation = next(span for span in spans.get_finished_spans() if span.name == "generate-answer")
     assert generation.attributes is not None
     assert generation.attributes.get("assay.scorable", False) is scorable
     assert generation.attributes["gen_ai.provider.name"] == "ollama"
+
+
+def test_chat_rehydrates_model_context_without_repeating_history_on_root(
+    spans: InMemorySpanExporter,
+) -> None:
+    client = Mock(spec=OpenAI)
+    client.base_url = "http://ollama:11434/v1"
+    client.responses = Mock()
+    client.responses.create.return_value = SimpleNamespace(output_text="Next answer", usage=None)
+    session = Mock()
+    session.application.id = "app-id"
+    session.client.traces.list.return_value = SimpleNamespace(items=[])
+    session.client.sessions.recent.return_value = (
+        SimpleNamespace(
+            attributes={
+                "gen_ai.input.messages": json.dumps([{"role": "user", "content": "first"}]),
+                "gen_ai.output.messages": json.dumps(
+                    [{"role": "assistant", "content": "first answer"}]
+                ),
+            }
+        ),
+    )
+    chat = server.ChatService(
+        session,
+        cast(OpenAI, client),
+        "local-model",
+        "http://localhost:8080",
+        server.SessionSigner(b"s" * 32),
+    )
+    identity = chat.signer.create()
+    reply = chat.respond("second", identity)
+    assert reply.answer == "Next answer"
+    assert session.client.sessions.recent.call_args.args == ("app-id", identity.session_id)
+    prompt = client.responses.create.call_args.kwargs["input"]
+    assert "user: first\nassistant: first answer" in prompt
+    assert prompt.endswith("user: second")
+    root = next(item for item in spans.get_finished_spans() if item.name == "chat-turn")
+    generation = next(item for item in spans.get_finished_spans() if item.name == "generate-answer")
+    assert root.attributes is not None and generation.attributes is not None
+    assert root.attributes["session.id"] == identity.session_id
+    assert root.attributes["enduser.pseudo.id"] == identity.browser_id
+    assert "gen_ai.conversation.id" not in root.attributes
+    assert generation.attributes["gen_ai.conversation.id"] == identity.session_id
+    assert json.loads(cast(str, root.attributes["gen_ai.input.messages"])) == [
+        {"role": "user", "content": "second"}
+    ]
+    assert json.loads(cast(str, root.attributes["gen_ai.output.messages"])) == [
+        {"role": "assistant", "content": "Next answer"}
+    ]
+    assert "assay.scorable" not in generation.attributes
 
 
 def test_cli_general_question_does_not_schedule_assay_groundedness(

@@ -15,6 +15,9 @@ if (!(["127.0.0.1", "localhost"].includes(url.hostname) && url.port !== "8080"))
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: project.startsWith("assay-acceptance-local-")
+    ? "**/sessions/**"
+    : ["**/sessions/**", "**/local-mode-real.spec.ts"], // Local mode needs its own disposable stack.
   outputDir: "./e2e-results",
   fullyParallel: false,
   workers: 1,

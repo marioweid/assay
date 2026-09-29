@@ -105,3 +105,8 @@ if [[ -f clients/python/assay/tests/test_product_acceptance.py ]]; then
   uv run --project clients/python/assay pytest -q \
     clients/python/assay/tests/test_product_acceptance.py
 fi
+
+if [[ -f examples/python-qa/tests/test_live_sessions.py ]]; then
+  uv run --project examples/python-qa pytest -q \
+    examples/python-qa/tests/test_live_sessions.py
+fi

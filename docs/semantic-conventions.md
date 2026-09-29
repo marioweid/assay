@@ -25,6 +25,37 @@ On ingest, Assay resolves the owning `Application` from **resource attributes**,
 
 If unresolved and `ASSAY_AUTO_CREATE_APPS=true`, the app is auto-created; otherwise those spans are rejected via OTLP `partial_success`. The API key (header `Authorization: Bearer asy_…` or `x-api-key`) determines the project; the resolved app must belong to it.
 
+## Session correlation (opt-in)
+
+Set `session.id` on the **root span** of each turn's trace to group those traces into a
+Sessions view. Each turn remains a separate OTLP trace. Session IDs are opaque, nonblank,
+strings of at most 128 characters without leading/trailing ASCII spaces or control characters. Child-only values do
+not establish membership, including when a partial export arrives before its root. Existing
+untagged traces remain in Traces; no session is inferred from content, user IDs, or time.
+
+For a conversation that lasts exactly one session, GenAI spans may additionally carry
+`gen_ai.conversation.id` with the same value. For a browser, use `enduser.pseudo.id`, **not**
+`user.id` (which implies verified identity). Do not put email addresses, tokens, or other
+personal data in these IDs: URLs, API requests, telemetry, and logs can expose identifiers.
+Captured messages and session IDs can link activity over time. Keep content capture opt-in,
+redact before export, restrict project credentials, and apply appropriate retention controls.
+These OTel attribute names are Development-status conventions.
+
+`GET /v1/sessions?application_id=<uuid>` returns latest-activity cursor pages; optional `limit`
+(1–200) and `cursor` continue the list. `GET /v1/session-turns?application_id=<uuid>&session_id=<id>`
+returns chronological cursor pages with root messages in `attributes`. The opaque ID travels
+in a query parameter, not a URL path, so literal percent sequences and dot-only IDs stay intact. Fetch individual spans,
+scores, and context through `GET /v1/traces/{id}`. Both session reads require project-key or
+admin authentication; the server scopes membership by project **and** application. `GET /v1/session-turns/recent?application_id=<uuid>&session_id=<id>` returns up to 19
+latest turns in chronological order for server-side model context. The Python management
+client exposes `client.sessions.list(application_id)`,
+`client.sessions.turns(application_id, session_id, cursor=...)`, and
+`client.sessions.recent(application_id, session_id)`. A session ID is a correlation key,
+**not** permission to read a transcript. The checkout Python tracing helper
+`assay.session(...)` scopes new spans using task-local context; its separate demo chat uses a
+signed browser capability for transcript reads. Neither is in published `assay-sdk==0.3.0`,
+and persistent migration/rollout remains gated on database verification.
+
 ## Baseline: `gen_ai.*` attributes Assay reads
 
 **LLM / generation spans** (span name `"{gen_ai.operation.name} {gen_ai.request.model}"`, kind CLIENT):

@@ -6,10 +6,11 @@ const messages = document.querySelector("#messages");
 const welcome = document.querySelector("#welcome");
 const error = document.querySelector("#error");
 const conversation = document.querySelector("#conversation");
-let history = [];
-let busy = false;
+let busy = true;
+let sessionReady = false;
+clear.disabled = true;
 
-function message(role, content) {
+function message(role, content, traceUrl, exported = true) {
   const element = document.createElement("article");
   element.className = `message ${role}`;
   const label = document.createElement("div");
@@ -18,12 +19,56 @@ function message(role, content) {
   const text = document.createElement("p");
   text.textContent = content;
   element.append(label, text);
+  if (traceUrl) {
+    const link = document.createElement("a");
+    link.className = "trace-link";
+    link.href = traceUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = exported ? "View trace in Assay ↗" : "Trace export failed · Open Assay ↗";
+    element.append(link);
+  }
   messages.append(element);
   return element;
 }
 
+function showError(reason) {
+  error.textContent =
+    reason instanceof Error ? reason.message : "Request failed. Please try again.";
+  error.hidden = false;
+}
+
 function scroll() {
   conversation.scrollTop = conversation.scrollHeight;
+}
+
+async function loadSession() {
+  let cursor = null;
+  const seen = new Set();
+  do {
+    const url =
+      cursor === null ? "/api/session" : `/api/session?cursor=${encodeURIComponent(cursor)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error("Unable to restore the chat. Refresh to retry.");
+    for (const turn of data.turns) {
+      if (turn.question) message("user", turn.question, turn.trace_url);
+      if (turn.answer) message("assistant", turn.answer, turn.trace_url);
+      if (!turn.question && !turn.answer) {
+        message(
+          "assistant",
+          "This turn has no captured messages. Open its trace for details.",
+          turn.trace_url,
+        );
+      }
+    }
+    cursor = data.next_cursor;
+    if (cursor !== null && seen.has(cursor))
+      throw new Error("Chat history returned a repeated page.");
+    if (cursor !== null) seen.add(cursor);
+  } while (cursor !== null);
+  welcome.hidden = messages.childElementCount > 0;
+  scroll();
 }
 
 async function submit() {
@@ -42,12 +87,11 @@ async function submit() {
   pending.textContent = "Thinking, then recording the trace…";
   messages.append(pending);
   scroll();
-  const nextHistory = [...history, { role: "user", content: question }].slice(-19);
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: nextHistory }),
+      body: JSON.stringify({ message: question }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -55,23 +99,11 @@ async function submit() {
         typeof data.detail === "string" ? data.detail : "Unable to send this message.",
       );
     }
-    const reply = message("assistant", data.answer);
-    const link = document.createElement("a");
-    link.className = "trace-link";
-    link.href = data.trace_url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = data.trace_exported
-      ? "View trace in Assay ↗"
-      : "Trace export failed · Open Assay ↗";
-    reply.append(link);
-    history = [...nextHistory, { role: "assistant", content: data.answer }];
+    message("assistant", data.answer, data.trace_url, data.trace_exported);
   } catch (reason) {
     userMessage.remove();
     input.value = question;
-    error.textContent =
-      reason instanceof Error ? reason.message : "Request failed. Please try again.";
-    error.hidden = false;
+    showError(reason);
   } finally {
     pending.remove();
     busy = false;
@@ -100,11 +132,24 @@ for (const button of document.querySelectorAll(".suggestions button")) {
 }
 clear.addEventListener("click", () => {
   if (busy) return;
-  history = [];
-  messages.replaceChildren();
-  welcome.hidden = false;
+  busy = true;
+  clear.disabled = true;
+  send.disabled = true;
   error.hidden = true;
-  input.focus();
+  void fetch("/api/session", { method: "POST" })
+    .then((response) => {
+      if (!response.ok) throw new Error("Unable to start a new chat. Try again.");
+      messages.replaceChildren();
+      sessionReady = true;
+      welcome.hidden = false;
+      input.focus();
+    })
+    .catch(showError)
+    .finally(() => {
+      busy = false;
+      clear.disabled = false;
+      send.disabled = !sessionReady;
+    });
 });
 
 try {
@@ -113,8 +158,12 @@ try {
   const config = await response.json();
   document.querySelector("#model").textContent = config.model;
   document.querySelector("#assay-link").href = config.traces_url;
+  await loadSession();
+  sessionReady = true;
   send.disabled = false;
 } catch (reason) {
-  error.textContent = reason instanceof Error ? reason.message : "Unable to connect.";
-  error.hidden = false;
+  showError(reason);
+} finally {
+  busy = false;
+  clear.disabled = false;
 }

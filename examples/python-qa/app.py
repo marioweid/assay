@@ -160,6 +160,7 @@ def answer_question(
         span.set_input(question)
         span.set_context(KNOWLEDGE)
         provider = "ollama" if urlsplit(str(client.base_url)).hostname == "ollama" else "openai"
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.provider.name", provider)
         span.set_attribute("gen_ai.request.model", model)
         response = client.responses.create(

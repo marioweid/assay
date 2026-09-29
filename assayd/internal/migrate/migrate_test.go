@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"bytes"
 	"database/sql"
 	"io"
 	"log/slog"
@@ -41,6 +42,12 @@ func TestEvalRunSnapshotMigrationIsEmbedded(t *testing.T) {
 	}
 }
 
+func TestSessionsMigrationIsEmbedded(t *testing.T) {
+	if _, err := migrations.Files.ReadFile("00007_sessions.sql"); err != nil {
+		t.Fatalf("read embedded session migration: %v", err)
+	}
+}
+
 func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	database := openDatabase(t, testutil.Postgres(t))
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -48,15 +55,15 @@ func TestUpAppliesMigrationAndIsIdempotent(t *testing.T) {
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 6 {
-		t.Fatalf("migration version = %d, want 6", version)
+	if version := migrationVersion(t, database); version != 7 {
+		t.Fatalf("migration version = %d, want 7", version)
 	}
 	assertScoringTables(t, database)
 	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	if version := migrationVersion(t, database); version != 6 {
-		t.Fatalf("migration version after reapply = %d, want 6", version)
+	if version := migrationVersion(t, database); version != 7 {
+		t.Fatalf("migration version after reapply = %d, want 7", version)
 	}
 }
 
@@ -74,6 +81,120 @@ func TestEvalRunSnapshotMigrationBackfillsProcessableHistory(t *testing.T) {
 	}
 	assertMigratedRunItem(t, database, fixture, "legacy_backfill")
 	processMigratedRun(t, database, fixture)
+}
+
+func TestSessionsMigrationBackfillsOnlyValidRootTags(t *testing.T) {
+	database := openDatabase(t, testutil.Postgres(t))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	provider := newTestMigrationProvider(t, database.MigrationDB(), logger)
+	if _, err := provider.UpTo(t.Context(), 6); err != nil {
+		t.Fatalf("apply migrations through version 6: %v", err)
+	}
+	ids, cases := seedLegacySessionsForMigration(t, database.MigrationDB())
+	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
+		t.Fatalf("apply session migration: %v", err)
+	}
+	assertBackfilledSessionIDs(t, database.MigrationDB(), ids, cases)
+}
+
+type legacySessionCase struct {
+	name       string
+	root       string
+	child      string
+	rootExists bool
+	want       string
+}
+
+func seedLegacySessionsForMigration(t *testing.T, db *sql.DB) ([]uuid.UUID, []legacySessionCase) {
+	t.Helper()
+	cases := []legacySessionCase{
+		{"tagged root", `{"session.id":"existing"}`, `{"session.id":"spoof"}`, true, "existing"},
+		{"child tag only", `{}`, `{"session.id":"spoof"}`, true, ""},
+		{"no root", `{}`, `{"session.id":"spoof"}`, false, ""},
+		{"whitespace tag", `{"session.id":" padded "}`, `{}`, true, ""},
+		{"non-string tag", `{"session.id":42}`, `{}`, true, ""},
+	}
+	projectID := uuid.Must(uuid.NewV7())
+	applicationID := uuid.Must(uuid.NewV7())
+	if _, err := db.ExecContext(
+		t.Context(), `INSERT INTO projects (id, name) VALUES ($1, 'legacy-sessions')`, projectID,
+	); err != nil {
+		t.Fatalf("seed legacy project: %v", err)
+	}
+	if _, err := db.ExecContext(t.Context(),
+		`INSERT INTO applications (id, project_id, name, slug)
+		 VALUES ($1, $2, 'Legacy sessions', 'legacy-sessions')`, applicationID, projectID,
+	); err != nil {
+		t.Fatalf("seed legacy application: %v", err)
+	}
+	ids := make([]uuid.UUID, len(cases))
+	for i, testCase := range cases {
+		ids[i] = seedLegacySessionTrace(t, db, applicationID, legacySessionTrace{
+			marker: byte(i + 1), root: testCase.root,
+			child: testCase.child, rootExists: testCase.rootExists,
+		})
+	}
+	return ids, cases
+}
+
+func assertBackfilledSessionIDs(
+	t *testing.T, db *sql.DB, ids []uuid.UUID, cases []legacySessionCase,
+) {
+	t.Helper()
+	for i, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var got sql.NullString
+			if err := db.QueryRowContext(t.Context(),
+				"SELECT session_id FROM traces WHERE id = $1", ids[i],
+			).Scan(&got); err != nil {
+				t.Fatalf("read backfilled session ID: %v", err)
+			}
+			if got.Valid != (testCase.want != "") || got.String != testCase.want {
+				t.Fatalf("backfilled session ID = %#v, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+type legacySessionTrace struct {
+	marker     byte
+	root       string
+	child      string
+	rootExists bool
+}
+
+func seedLegacySessionTrace(
+	t *testing.T, db *sql.DB, applicationID uuid.UUID, fixture legacySessionTrace,
+) uuid.UUID {
+	t.Helper()
+	traceID := uuid.Must(uuid.NewV7())
+	started := time.Date(2026, time.September, 1, 10, 0, 0, 0, time.UTC)
+	finished := started.Add(time.Second)
+	if _, err := db.ExecContext(t.Context(),
+		`INSERT INTO traces (id, application_id, otel_trace_id, root_name,
+		 start_time, end_time, status)
+		 VALUES ($1, $2, $3, 'legacy', $4, $5, 'ok')`,
+		traceID, applicationID, bytes.Repeat([]byte{fixture.marker}, 16), started, finished,
+	); err != nil {
+		t.Fatalf("seed legacy trace: %v", err)
+	}
+	insertSpan := func(spanID byte, parentID []byte, attributes string) {
+		t.Helper()
+		if _, err := db.ExecContext(t.Context(),
+			`INSERT INTO spans (trace_id, application_id, otel_span_id, parent_span_id,
+			 name, kind, start_time, end_time, duration_ms, status_code, attributes)
+			 VALUES ($1, $2, $3, $4, 'legacy', 'internal', $5, $6, 1000, 'ok', $7::jsonb)`,
+			traceID, applicationID, bytes.Repeat([]byte{spanID}, 8), parentID,
+			started, finished, attributes,
+		); err != nil {
+			t.Fatalf("seed legacy span: %v", err)
+		}
+	}
+	if fixture.rootExists {
+		insertSpan(1, nil, fixture.root)
+	}
+	insertSpan(2, bytes.Repeat([]byte{1}, 8), fixture.child)
+	return traceID
 }
 
 func newTestMigrationProvider(
@@ -281,8 +402,8 @@ func TestUpSerializesConcurrentReplicas(t *testing.T) {
 			t.Errorf("concurrent migration: %v", err)
 		}
 	}
-	if version := migrationVersion(t, first); version != 6 {
-		t.Fatalf("migration version = %d, want 6", version)
+	if version := migrationVersion(t, first); version != 7 {
+		t.Fatalf("migration version = %d, want 7", version)
 	}
 }
 

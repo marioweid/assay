@@ -567,6 +567,54 @@ export type ScoringTaskResponse = {
   trace_id: string;
 };
 
+export type ServerInfoResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  local_mode: boolean;
+};
+
+export type SessionCollectionResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  items: Array<SessionResponse>;
+  next_cursor?: string;
+};
+
+export type SessionResponse = {
+  end_time: string;
+  first_operation: string;
+  id: string;
+  last_trace_id: string;
+  start_time: string;
+  turn_count: number;
+};
+
+export type SessionTurnResponse = {
+  attributes: {
+    [key: string]: unknown;
+  };
+  end_time: string;
+  id: string;
+  root_name: string;
+  span_count: number;
+  start_time: string;
+  status: string;
+  total_tokens: number;
+};
+
+export type SessionTurnsResultBody = {
+  /**
+   * A URL to the JSON Schema for this object.
+   */
+  readonly $schema?: string;
+  items: Array<SessionTurnResponse>;
+  next_cursor?: string;
+};
+
 export type SpanEvent = {
   attributes: {
     [key: string]: unknown;
@@ -1018,6 +1066,20 @@ export type ScoringEligibilityResultBodyWritable = {
 
 export type ScoringTaskCollectionResultBodyWritable = {
   items: Array<ScoringTaskResponse> | null;
+};
+
+export type ServerInfoResultBodyWritable = {
+  local_mode: boolean;
+};
+
+export type SessionCollectionResultBodyWritable = {
+  items: Array<SessionResponse>;
+  next_cursor?: string;
+};
+
+export type SessionTurnsResultBodyWritable = {
+  items: Array<SessionTurnResponse>;
+  next_cursor?: string;
 };
 
 export type TargetEndpointInputWritable = {
@@ -2631,6 +2693,177 @@ export type ListApplicationScoresResponses = {
 
 export type ListApplicationScoresResponse =
   ListApplicationScoresResponses[keyof ListApplicationScoresResponses];
+
+export type GetServerInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/server-info";
+};
+
+export type GetServerInfoErrors = {
+  /**
+   * Error
+   */
+  default: ErrorModel;
+};
+
+export type GetServerInfoError = GetServerInfoErrors[keyof GetServerInfoErrors];
+
+export type GetServerInfoResponses = {
+  /**
+   * OK
+   */
+  200: ServerInfoResultBody;
+};
+
+export type GetServerInfoResponse = GetServerInfoResponses[keyof GetServerInfoResponses];
+
+export type ListSessionTurnsData = {
+  body?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path?: never;
+  query: {
+    application_id: string;
+    limit?: number;
+    cursor?: string;
+    session_id: string;
+  };
+  url: "/v1/session-turns";
+};
+
+export type ListSessionTurnsErrors = {
+  /**
+   * Bad Request
+   */
+  400: ErrorModel;
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ListSessionTurnsError = ListSessionTurnsErrors[keyof ListSessionTurnsErrors];
+
+export type ListSessionTurnsResponses = {
+  /**
+   * OK
+   */
+  200: SessionTurnsResultBody;
+};
+
+export type ListSessionTurnsResponse = ListSessionTurnsResponses[keyof ListSessionTurnsResponses];
+
+export type ListRecentSessionTurnsData = {
+  body?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path?: never;
+  query: {
+    application_id: string;
+    session_id: string;
+    limit?: number;
+  };
+  url: "/v1/session-turns/recent";
+};
+
+export type ListRecentSessionTurnsErrors = {
+  /**
+   * Bad Request
+   */
+  400: ErrorModel;
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Not Found
+   */
+  404: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ListRecentSessionTurnsError =
+  ListRecentSessionTurnsErrors[keyof ListRecentSessionTurnsErrors];
+
+export type ListRecentSessionTurnsResponses = {
+  /**
+   * OK
+   */
+  200: SessionTurnsResultBody;
+};
+
+export type ListRecentSessionTurnsResponse =
+  ListRecentSessionTurnsResponses[keyof ListRecentSessionTurnsResponses];
+
+export type ListSessionsData = {
+  body?: never;
+  headers?: {
+    Authorization?: string;
+    "x-api-key"?: string;
+  };
+  path?: never;
+  query: {
+    application_id: string;
+    limit?: number;
+    cursor?: string;
+  };
+  url: "/v1/sessions";
+};
+
+export type ListSessionsErrors = {
+  /**
+   * Bad Request
+   */
+  400: ErrorModel;
+  /**
+   * Unauthorized
+   */
+  401: ErrorModel;
+  /**
+   * Unprocessable Entity
+   */
+  422: ErrorModel;
+  /**
+   * Internal Server Error
+   */
+  500: ErrorModel;
+};
+
+export type ListSessionsError = ListSessionsErrors[keyof ListSessionsErrors];
+
+export type ListSessionsResponses = {
+  /**
+   * OK
+   */
+  200: SessionCollectionResultBody;
+};
+
+export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
 
 export type ListTracesData = {
   body?: never;

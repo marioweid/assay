@@ -478,6 +478,35 @@ class ScoringEligibility:
 
 
 @dataclass(frozen=True, slots=True)
+class Session:
+    """Root-tagged session summary scoped to an application."""
+
+    id: str
+    start_time: datetime
+    end_time: datetime
+    turn_count: int
+    first_operation: str
+    last_trace_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class SessionTurn:
+    """One root capture, excluding child-span repeated model history."""
+
+    id: str
+    root_name: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+    span_count: int
+    total_tokens: int
+    attributes: Mapping[str, JSONValue]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attributes", _freeze_mapping(self.attributes))
+
+
+@dataclass(frozen=True, slots=True)
 class Trace:
     """Project-scoped trace summary or complete detail tree."""
 

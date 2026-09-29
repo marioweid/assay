@@ -443,6 +443,98 @@ def test_async_nested_spans_keep_task_local_trace_context(
         assert inner.parent.span_id == outer.context.span_id
 
 
+def test_session_context_attaches_only_to_new_spans_and_restores_nested_scopes(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+    with assay.session("first", pseudonymous_user_id="browser-1", conversation_id="chat-1"):
+        with assay.span("outer", attributes={"gen_ai.operation.name": "chat"}):
+            pass
+        with assay.session("second"), assay.span("inner"):
+            pass
+        with assay.span("restored"):
+            pass
+    with assay.span("outside"):
+        pass
+
+    outer = _attributes(_span_named(exporter, "outer").attributes)
+    inner = _attributes(_span_named(exporter, "inner").attributes)
+    restored = _attributes(_span_named(exporter, "restored").attributes)
+    outside = _attributes(_span_named(exporter, "outside").attributes)
+    assert outer["session.id"] == "first"
+    assert outer["enduser.pseudo.id"] == "browser-1"
+    assert outer["gen_ai.conversation.id"] == "chat-1"
+    assert inner["session.id"] == "second"
+    assert "enduser.pseudo.id" not in inner
+    assert "gen_ai.conversation.id" not in inner
+    assert restored["session.id"] == "first"
+    assert "gen_ai.conversation.id" not in restored
+    assert "session.id" not in outside
+    assert "enduser.pseudo.id" not in outside
+
+
+def test_session_context_is_async_safe_and_keeps_decorators_scoped(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+
+    @assay.trace(name="scoped-sync")
+    def sync() -> None:
+        pass
+
+    @assay.trace(name="scoped-async")
+    async def async_traced() -> None:
+        await asyncio.sleep(0)
+        with assay.span("generation") as current:
+            current.set_attribute("gen_ai.operation.name", "chat")
+
+    async def branch(label: str) -> None:
+        with assay.session(label, conversation_id=f"conv-{label}"):
+            await asyncio.sleep(0)
+            sync()
+            await async_traced()
+
+    async def run() -> None:
+        await asyncio.gather(branch("a"), branch("b"))
+
+    asyncio.run(run())
+    assert assay.flush()
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 6
+    for span in spans:
+        attributes = _attributes(span.attributes)
+        label = cast(str, attributes["session.id"])
+        if span.name == "generation":
+            assert attributes["gen_ai.conversation.id"] == f"conv-{label}"
+        else:
+            assert "gen_ai.conversation.id" not in attributes
+
+
+def test_session_context_rejects_invalid_ids_and_unwinds_on_error(
+    exporter: InMemorySpanExporter,
+) -> None:
+    initialize()
+    for invalid in ("", " ", " spaced", "bad\n", "x" * 129):
+        with pytest.raises(ValueError, match="session ID"), assay.session(invalid):
+            pass
+    with assay.session("good"):
+        with (
+            pytest.raises(ValueError, match="pseudonymous user ID"),
+            assay.session("bad-scope", pseudonymous_user_id=" "),
+        ):
+            pass
+        with (
+            pytest.raises(ValueError, match="conversation ID"),
+            assay.session("bad-conversation", conversation_id="bad\n"),
+        ):
+            pass
+        with pytest.raises(RuntimeError, match="abort"), assay.session("temporary"):
+            raise RuntimeError("abort")
+        with assay.span("retained"):
+            pass
+    assert _span_named(exporter, "retained").attributes["session.id"] == "good"
+
+
 def test_span_context_validation_writes_no_partial_chunk_attributes(
     exporter: InMemorySpanExporter,
 ) -> None:

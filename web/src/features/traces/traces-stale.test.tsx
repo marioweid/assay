@@ -10,6 +10,7 @@ const appID = "019d11d2-cbd3-7a5e-ae83-9b791c9329de";
 const otherAppID = "019d11d2-cbd3-7a5e-ae83-9b791c9329df";
 const api = vi.hoisted(() => ({
   getTrace: vi.fn(),
+  getServerInfo: vi.fn().mockResolvedValue({ data: { local_mode: false } }),
   listApplications: vi.fn(),
   listTraces: vi.fn(),
 }));

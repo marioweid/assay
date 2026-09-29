@@ -270,7 +270,7 @@ func (h *handler) queueTraceScores(
 	input *scoreTracesInput,
 	traceIDs []uuid.UUID,
 ) ([]domain.Job, error) {
-	if h.isAdmin(input.Authorization) {
+	if h.isAdmin(input.Authorization, input.XAPIKey) {
 		return h.traces.QueueScoresAdmin(ctx, traceIDs, input.Body.Scorers)
 	}
 	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
@@ -300,7 +300,7 @@ func (h *handler) attachReference(
 	input *attachTraceReferenceInput,
 	traceID uuid.UUID,
 ) (domain.Trace, error) {
-	if h.isAdmin(input.Authorization) {
+	if h.isAdmin(input.Authorization, input.XAPIKey) {
 		return h.traces.AttachReferenceAdmin(ctx, traceID, input.Body.ReferenceAnswer)
 	}
 	projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
@@ -357,7 +357,7 @@ func (h *handler) traceListProjectID(
 	input *listTracesInput,
 	query domain.TraceQuery,
 ) (uuid.UUID, error) {
-	if !h.isAdmin(input.Authorization) {
+	if !h.isAdmin(input.Authorization, input.XAPIKey) {
 		projectID, err := h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
 		if err != nil {
 			return uuid.Nil, h.responseError("list traces", err)
@@ -380,7 +380,7 @@ func (h *handler) getTrace(
 	ctx context.Context,
 	input *traceIDInput,
 ) (*traceResult, error) {
-	admin := h.isAdmin(input.Authorization)
+	admin := h.isAdmin(input.Authorization, input.XAPIKey)
 	var projectID uuid.UUID
 	var err error
 	if !admin {

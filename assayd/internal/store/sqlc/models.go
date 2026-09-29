@@ -246,4 +246,5 @@ type Trace struct {
 	Attributes      json.RawMessage
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	SessionID       pgtype.Text
 }

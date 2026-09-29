@@ -2,21 +2,113 @@
   <img src="assets/assay_gopher.png" alt="Assay gopher and wordmark" width="480">
 </p>
 
-**LLM tracing and evaluation in one Go binary plus Postgres.** Assay accepts JSON OTLP/HTTP traces,
-stores them in Postgres, and runs built-in groundedness and correctness evaluators. It includes an
-embedded single-user UI, a typed Python SDK, and a CLI.
+# See the conversation. Understand the answer.
 
-- Two services: `assayd` (API, worker, embedded UI) and Postgres.
-- JSON OTLP/HTTP only. Binary protobuf and OTLP/gRPC are not implemented.
-- One admin credential for management and UI; one project key for trace ingestion.
-- Apache-2.0. Built for individual developers and small self-hosted teams, not SSO/RBAC/HA estates.
+**Assay is a self-hosted workspace for LLM tracing and evaluation.** Follow multi-turn conversations,
+inspect model/tool/context evidence, score answers, and turn failures into regression datasets.
+One Go service with an embedded UI, plus Postgres. A typed Python SDK and CLI are included.
 
-## Start Assay
+[Documentation](docs/index.md) · [Linux / macOS quickstart](docs/quickstart-linux.md) ·
+[Windows quickstart](docs/quickstart-powershell.md) · [Python SDK](docs/python-sdk.md)
 
-The published-image path is first, but **no image has been published yet**. Do not invent an image
-tag from the Python package version. After a maintainer publishes and anonymously pull-tests a
-release, set `ASSAY_IMAGE` to that recorded tag or digest and use the following exact Compose file
-in a clean directory as `compose.yaml`:
+## Start locally
+
+Use a source checkout; **published Assay container images are not available yet**.
+The quickstarts generate private database/encryption credentials, preserve existing files,
+and walk through your first trace without a paid model.
+
+In your private `.env`, enable:
+
+```dotenv
+ASSAY_LOCAL_MODE=true
+```
+
+Keep your existing `ASSAY_POSTGRES_PASSWORD` and `ASSAY_ENCRYPTION_KEY`, or generate them using the
+[Linux](docs/quickstart-linux.md#2-create-a-private-local-configuration) or
+[PowerShell](docs/quickstart-powershell.md) instructions for a fresh install. Then:
+
+```bash
+docker compose up --build -d
+```
+
+Open **http://localhost:8080**. Local mode opens the UI directly — **no admin token**.
+Create a project, save its one-time ingest key, and create an application.
+
+> **Local means trusted.** Anyone who can reach a local-mode server has management access,
+> including deletion. Keep the Compose loopback binding and trust its Docker network.
+> Project keys are still required for SDK ingestion. Local mode defaults to **off**;
+> normal mode requires `ASSAY_ADMIN_TOKEN`. Database and encryption secrets remain required.
+>
+> Already have data? Startup applies migrations automatically. Read
+> [upgrade and recovery](docs/deployment.md) before running a newer checkout.
+
+## Instrument one answer
+
+For this checkout's session/local-mode features, use the checkout SDK rather than the older
+published `assay-sdk==0.3.0` package. In your application's uv project:
+
+```bash
+uv add --editable /absolute/path/to/assay/clients/python/assay
+```
+
+Set `ASSAY_ENDPOINT`, `ASSAY_API_KEY`, and `ASSAY_APPLICATION` in the application's environment.
+The application value is its **slug**, not its UUID. Then run:
+
+```python
+import assay
+
+assay.init()  # reads endpoint, project key, and application slug from the environment
+try:
+    with assay.span("answer", scorable=True) as current:
+        # Explicit setters intentionally capture these synthetic values.
+        current.set_input("What is Assay?")
+        current.set_output("A tracing and evaluation workspace.")
+    if not assay.flush():
+        raise RuntimeError("Assay export did not finish")
+finally:
+    assay.shutdown()
+```
+
+Find the result in **Traces**. Use [`assay.session(...)`](docs/python-sdk.md#sessions-across-multiple-requests)
+to group separate request traces into **Sessions**. Content capture is off by default for decorators;
+explicit setters export the values you supply. Redact sensitive content before export.
+
+## What you can do
+
+| Workflow | Start here |
+|---|---|
+| Follow a conversation and inspect its source traces | [Concepts and UI tour](docs/concepts.md) |
+| Capture sync/async calls, messages, tools and retrieval context | [Python SDK guide](docs/python-sdk.md) |
+| Grade groundedness/correctness and inspect retained evidence | [Evaluation guide](docs/evaluations.md) |
+| Automate project setup, exports, comparisons and CI gates | [CLI cookbook](docs/cli.md) |
+| Configure local mode, a judge or Docker networking | [Configuration reference](docs/configuration.md) |
+| Recover from connection, tracing or scoring problems | [Troubleshooting](docs/troubleshooting.md) |
+| Back up, restore, retain data and upgrade safely | [Deployment guide](docs/deployment.md) |
+
+The live API reference is at `/docs`; `/openapi.json` is machine-readable.
+The [Python chat example](examples/python-qa/README.md) is optional and uses a real model provider.
+
+## Scope and status
+
+- JSON OTLP/HTTP ingestion, explicit trace/session capture, project-scoped keys, datasets, evaluation
+  runs, score evidence, comparisons and trends are implemented in this checkout.
+- Binary protobuf, OTLP/gRPC, provider auto-instrumentation, SSO/RBAC and HA deployment are not.
+- Local mode is a trusted-machine convenience, not a multi-user security boundary.
+- Normal UI authentication stores the admin token in same-origin `localStorage`; **Disconnect**
+  removes it. Local mode stores no dummy admin credential and displays its mode visibly.
+- New SDK features and container delivery remain subject to release/acceptance gates. Do not
+  infer a container release from a Python package version. Final human visual signoff remains open.
+- Apache-2.0. Designed for individual developers and small self-hosted teams.
+
+## Published-image deployment
+
+<details>
+<summary>Release-only Compose reference (no image published yet)</summary>
+
+After an image is published and anonymously pull-tested, set `ASSAY_IMAGE` to its verified tag or
+digest. Use this as `compose.yaml` in a clean deployment directory, not alongside source Compose.
+Set a private database password and a stable base64 32-byte encryption key. Token authentication
+is the default; `ASSAY_LOCAL_MODE=true` is an explicit opt-in for trusted local use only.
 
 <!-- BEGIN compose.published.yaml -->
 ```yaml
@@ -33,7 +125,7 @@ services:
     volumes:
       - assay-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U assay -d assay"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U assay -d assay"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -47,7 +139,8 @@ services:
     environment:
       ASSAY_HTTP_ADDR: ":8080"
       ASSAY_DATABASE_URL: postgres://assay:${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}@postgres:5432/assay?sslmode=disable
-      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:?Set the admin token}
+      ASSAY_LOCAL_MODE: ${ASSAY_LOCAL_MODE:-false}
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:-}
       ASSAY_ENCRYPTION_KEY: ${ASSAY_ENCRYPTION_KEY:?Set a base64-encoded 32-byte key}
       ASSAY_JUDGE_BASE_URL: ${ASSAY_JUDGE_BASE_URL:-}
       ASSAY_JUDGE_MODEL: ${ASSAY_JUDGE_MODEL:-}
@@ -70,92 +163,15 @@ volumes:
 ```
 <!-- END compose.published.yaml -->
 
-Then create a private `.env` beside it and run:
+With the repository filename: `docker compose -f compose.published.yaml up -d`.
+Never use `down -v` unless you deliberately intend to destroy the database.
 
-```bash
-docker compose up --build --force-recreate -d
-```
-
-`--build` is harmless because this file has no build stanza. With the checked-in filename, run
-`docker compose -f compose.published.yaml up --build --force-recreate -d`. Do not combine it with
-`docker-compose.yml`.
-
-For a source checkout, follow the [Linux quickstart](docs/quickstart-linux.md): it creates `.env`
-without overwriting existing secrets, builds the image, creates an app/key, sends a real SDK trace,
-and optionally runs an evaluation. Windows users have complete
-[PowerShell parity](docs/quickstart-powershell.md).
-
-## Environment
-
-| Variable | Required for | Meaning |
-|---|---|---|
-| `ASSAY_IMAGE` | Published Compose | Verified released tag/digest; no source build |
-| `ASSAY_ADMIN_TOKEN` | Server/UI/admin client | Management credential, not tracing ingest key |
-| `ASSAY_ENCRYPTION_KEY` | Server | Base64 32 bytes, stable across restarts/upgrades |
-| `ASSAY_POSTGRES_PASSWORD` | Published Compose | Generated URL-safe DB password, not a judge key |
-| `ASSAY_DATABASE_URL` | Native/server | Compose overrides/wires internal Postgres host |
-| `ASSAY_JUDGE_BASE_URL` / `ASSAY_JUDGE_MODEL` | Evaluation | OpenAI-compatible judge; optional for tracing |
-| `ASSAY_JUDGE_API_KEY` | Authenticated judge | Provider key; optional for keyless local endpoints |
-| `ASSAY_ENDPOINT` | Host SDK/CLI | `http://localhost:8080`; inside app Compose use `http://assayd:8080` |
-| `ASSAY_API_KEY` | SDK ingest/project operations | One-time project key created in UI/API |
-| `ASSAY_APPLICATION` | SDK | Existing application slug, not UUID/project name |
-| `ASSAY_HTTP_PORT` | Compose host | Optional host port, default 8080 |
-| `ASSAY_TRACE_RETENTION_DAYS` | Server | 0 keeps spans; >0 expires spans, not all score evidence |
-
-Generate separate token/password values with `openssl rand -hex 32`, and the encryption key with
-`openssl rand -base64 32`. Keep the encryption key with the database backup. Tracing works without
-judge credentials. The Compose files bind HTTP to loopback and keep Postgres private.
-
-## Python SDK
-
-The distribution is `assay-sdk` and imports as `assay`:
-
-```bash
-uv add assay-sdk
-```
-
-```python
-import assay
-
-assay.init(
-    endpoint="http://localhost:8080",
-    api_key="asy_...",
-    application="support-bot",
-    capture=True,
-)
-
-with assay.span("answer", scorable=True) as span:
-    span.set_input({"question": "What is Assay?"})
-    span.set_output("An LLM tracing and evaluation service.")
-assay.flush()
-assay.shutdown()
-```
-
-See the [SDK README](clients/python/assay/README.md) for typed client and CLI workflows. The
-[Python Q&A example](examples/python-qa/README.md) is optional and uses a real model provider.
-
-## Operations and status
-
-M6 functionality—score filters/export, trace-to-regression imports, metrics, trends, and optional
-span retention—is complete. The current M7 delivery remains in acceptance: structured SDK capture,
-run evidence/comparison, and disposable acceptance exist; final UI redesign and E4 browser, visual,
-accessibility, and performance approval remain.
-
-The UI is a single-user admin-token test tool. It stores that token in same-origin `localStorage`;
-use a trusted browser and origin, and choose **Disconnect** to remove it. Cost/provider
-instrumentation, provider auto-instrumentation, session UI, binary protobuf, and gRPC remain
-unimplemented.
-
-Read [deployment and recovery guidance](docs/deployment.md) before upgrades or deletion. In
-particular, `docker compose down -v` destroys data; deleting an individual dataset item preserves
-existing run snapshots, while deleting a dataset cascades its dependent runs.
+</details>
 
 ## Development
 
-```bash
-cp .env.example .env
-docker compose up --build --force-recreate -d
-```
+[Architecture](docs/architecture.md) · [Semantic conventions](docs/semantic-conventions.md) ·
+[CI/CD and isolated acceptance](docs/ci-cd.md)
 
-For architecture, semantics, and CI references, see [architecture](docs/architecture.md),
-[semantic conventions](docs/semantic-conventions.md), and [CI/CD](docs/ci-cd.md).
+Use the quickstart for configuration, then build from source. Keep tests on disposable databases;
+never apply experimental migrations to a persistent database without a backup and approval.

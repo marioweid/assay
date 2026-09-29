@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { Problem } from "@/api/errors";
 import { deleteApplication } from "@/api/generated/sdk.gen";
 import type { ApplicationResponse } from "@/api/generated/types.gen";
-import { useAuth } from "@/auth/auth-context";
+import { ConnectionControl } from "@/auth/connection-control";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { fieldControlClass } from "@/components/ui/field";
@@ -17,7 +17,6 @@ import { useApplicationCatalog } from "@/features/applications/application-catal
 import { ApplicationForm } from "@/features/applications/application-form";
 
 export function ApplicationsPage(): ReactNode {
-  const { disconnect } = useAuth();
   const { applications, error, loading, refresh } = useApplicationCatalog();
   const [editing, setEditing] = useState<ApplicationResponse | "new" | null>(null);
   const [deleting, setDeleting] = useState<ApplicationResponse | null>(null);
@@ -41,9 +40,7 @@ export function ApplicationsPage(): ReactNode {
             Projects
           </Link>
         </div>
-        <button className="text-sm font-medium text-muted hover:text-ink" onClick={disconnect}>
-          Disconnect
-        </button>
+        <ConnectionControl />
       </header>
       <div className="mt-6 flex items-start justify-between gap-4">
         <PageHeading

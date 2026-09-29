@@ -6,11 +6,12 @@ import { MemoryRouter } from "react-router";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 
 const appID = "019d11d2-cbd3-7a5e-ae83-9b791c9329de";
 const otherAppID = "019d11d2-cbd3-7a5e-ae83-9b791c9329df";
 const datasetID = "019d11d2-cbd3-7a5e-ae83-9b791c932911";
-const server = setupServer();
+const server = setupServer(tokenModeServerInfo);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.setItem("assay.admin-token.v1", "admin-secret"));

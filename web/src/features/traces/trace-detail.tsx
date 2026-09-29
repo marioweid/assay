@@ -72,6 +72,7 @@ export function TraceDetail() {
       </p>
     );
   if (trace === null) return <p className="text-muted">Loading trace...</p>;
+  const calls = conversationCalls(trace.spans ?? []);
   const scores = (trace.scores ?? []).filter(
     (score) =>
       (selected === null || score.span_id === selected.id) &&
@@ -79,6 +80,49 @@ export function TraceDetail() {
   );
   return (
     <section aria-labelledby="trace-heading">
+      <TraceHeading appId={appId} onRefresh={() => void refreshTrace()} trace={trace} />
+      <TraceActions appId={appId} onChanged={loadTrace} trace={trace} />
+      {calls.length > 0 && (
+        <div className="mt-6 space-y-3">
+          <h2 className="text-lg font-semibold">Captured conversation</h2>
+          <ConversationView
+            calls={calls}
+            onSelectSpan={(key) =>
+              setSelected(key === null ? null : findSpan(trace.spans ?? [], key))
+            }
+            selectedSpanKey={null}
+          />
+        </div>
+      )}
+      {calls.length === 0 && hasGenAISpan(trace.spans ?? []) && (
+        <p className="mt-6 border border-line bg-surface p-4 text-sm text-muted">
+          No messages captured for this model call. Inspect its spans and attributes below.
+        </p>
+      )}
+      <ScoringTasks tasks={trace.scoring_tasks ?? []} />
+      <TraceInspector
+        onSelect={setSelected}
+        onTabChange={setTab}
+        scores={scores}
+        selected={selected}
+        tab={tab}
+        trace={trace}
+      />
+    </section>
+  );
+}
+
+function TraceHeading({
+  appId,
+  onRefresh,
+  trace,
+}: {
+  appId: string;
+  onRefresh: () => void;
+  trace: TraceResponse;
+}) {
+  return (
+    <>
       <Link className="text-sm text-accent hover:underline" to={`/apps/${appId}/traces`}>
         Back to traces
       </Link>
@@ -89,55 +133,66 @@ export function TraceDetail() {
             {trace.root_name}
           </h1>
         </div>
-        <button
-          className="border border-line px-3 py-2 text-sm"
-          onClick={() => void refreshTrace()}
-          type="button"
-        >
+        <button className="border border-line px-3 py-2 text-sm" onClick={onRefresh} type="button">
           Refresh trace
         </button>
       </div>
-      <TraceActions appId={appId} onChanged={loadTrace} trace={trace} />
-      <ScoringTasks tasks={trace.scoring_tasks ?? []} />
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(16rem,0.75fr)_minmax(0,1.5fr)]">
-        <aside className="border border-line bg-surface p-3">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">Span tree</h2>
-            <button className="text-xs text-accent" onClick={() => setSelected(null)}>
-              Trace summary
-            </button>
-          </div>
-          <SpanTree
-            onSelect={setSelected}
-            selectedID={selected?.id ?? null}
-            spans={trace.spans ?? []}
+    </>
+  );
+}
+
+type TraceInspectorProps = {
+  onSelect: (span: SpanResponse | null) => void;
+  onTabChange: (tab: Tab) => void;
+  scores: NonNullable<TraceResponse["scores"]>;
+  selected: SpanResponse | null;
+  tab: Tab;
+  trace: TraceResponse;
+};
+
+function TraceInspector({
+  onSelect,
+  onTabChange,
+  scores,
+  selected,
+  tab,
+  trace,
+}: TraceInspectorProps) {
+  return (
+    <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(16rem,0.75fr)_minmax(0,1.5fr)]">
+      <aside className="border border-line bg-surface p-3">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold">Span tree</h2>
+          <button className="text-xs text-accent" onClick={() => onSelect(null)}>
+            Trace summary
+          </button>
+        </div>
+        <SpanTree onSelect={onSelect} selectedID={selected?.id ?? null} spans={trace.spans ?? []} />
+      </aside>
+      <div className="min-w-0 border border-line bg-surface">
+        <div className="border-b border-line p-4">
+          <p className="text-xs uppercase tracking-wide text-muted">
+            {selected === null ? "Trace" : "Span"}
+          </p>
+          <h2 className="mt-1 font-semibold">{selected?.name ?? trace.root_name}</h2>
+        </div>
+        <TraceTabs onSelect={onTabChange} selected={tab} />
+        <div
+          aria-labelledby={`trace-tab-${tab.toLowerCase()}`}
+          className="p-4"
+          id="trace-tabpanel"
+          role="tabpanel"
+        >
+          <DetailPanel
+            onSelect={onSelect}
+            scores={scores}
+            selected={selected}
+            tab={tab}
+            trace={trace}
           />
-        </aside>
-        <div className="min-w-0 border border-line bg-surface">
-          <div className="border-b border-line p-4">
-            <p className="text-xs uppercase tracking-wide text-muted">
-              {selected === null ? "Trace" : "Span"}
-            </p>
-            <h2 className="mt-1 font-semibold">{selected?.name ?? trace.root_name}</h2>
-          </div>
-          <TraceTabs onSelect={setTab} selected={tab} />
-          <div
-            aria-labelledby={`trace-tab-${tab.toLowerCase()}`}
-            className="p-4"
-            id="trace-tabpanel"
-            role="tabpanel"
-          >
-            <DetailPanel
-              onSelect={setSelected}
-              scores={scores}
-              selected={selected}
-              tab={tab}
-              trace={trace}
-            />
-          </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -192,7 +247,11 @@ function TraceTabs({ onSelect, selected }: { onSelect: (tab: Tab) => void; selec
         <button
           aria-controls="trace-tabpanel"
           aria-selected={selected === name}
-          className={`px-4 py-3 text-sm ${selected === name ? "border-b-2 border-accent text-accent" : "text-muted"}`}
+          className={
+            selected === name
+              ? "border-b-2 border-accent px-4 py-3 text-sm text-accent"
+              : "px-4 py-3 text-sm text-muted"
+          }
           id={`trace-tab-${name.toLowerCase()}`}
           key={name}
           onClick={() => onSelect(name)}
@@ -250,20 +309,29 @@ function DetailPanel({ onSelect, scores, selected, tab, trace }: DetailPanelProp
           }
         />
       </dl>
-      <div className="mt-6 grid gap-5 xl:grid-cols-2">
-        <ConversationView
-          calls={conversationCalls(selected === null ? (trace.spans ?? []) : [selected])}
-          onSelectSpan={(key) => onSelect(key === null ? null : findSpan(trace.spans ?? [], key))}
-          selectedSpanKey={selected === null ? null : spanKey(selected)}
-        />
+      <div className="mt-6">
         <SpanWaterfall
           onSelect={(key) => onSelect(findSpan(trace.spans ?? [], key))}
+          selectedKey={selected === null ? null : spanKey(selected)}
           spans={trace.spans ?? []}
         />
       </div>
-      <RetrievalContext spans={selected === null ? (trace.spans ?? []) : [selected]} />
+      <div className="mt-6">
+        <RetrievalContext spans={selected === null ? (trace.spans ?? []) : [selected]} />
+      </div>
     </>
   );
+}
+
+function hasGenAISpan(spans: readonly SpanResponse[]): boolean {
+  const pending = [...spans];
+  while (pending.length > 0) {
+    const span = pending.pop();
+    if (span === undefined) continue;
+    if (Object.hasOwn(span.attributes, "gen_ai.operation.name")) return true;
+    pending.push(...(span.children ?? []));
+  }
+  return false;
 }
 
 function findSpan(spans: readonly SpanResponse[], key: SpanKey): SpanResponse | null {

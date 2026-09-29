@@ -21,7 +21,7 @@ def main() -> None:
     except FileExistsError as error:
         raise SystemExit(f"workspace already exists: {args.output}") from error
     endpoint = os.environ.get("ASSAY_ENDPOINT", "http://localhost:8080")
-    admin_token = os.environ["ASSAY_ADMIN_TOKEN"]
+    admin_token = os.environ.get("ASSAY_ADMIN_TOKEN")
     suffix = uuid4().hex[:12]
     try:
         with assay.Client(endpoint, admin_token=admin_token) as client:
@@ -62,7 +62,6 @@ def _create_workspace(
                     f"quickstart setup failed; delete project {project_id} in the UI"
                 ) from cleanup_error
         raise
-    print(f"Created {application.slug}; private workspace: {args.output}")
 
 
 if __name__ == "__main__":

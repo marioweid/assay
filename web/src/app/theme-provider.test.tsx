@@ -75,6 +75,7 @@ describe("ThemeProvider", () => {
   });
 
   it("follows the system theme in system mode and updates on change", async () => {
+    localStorage.setItem(storageKey, "system");
     const media = installMatchMedia(true);
     render(
       <ThemeProvider>
@@ -100,7 +101,7 @@ describe("ThemeProvider", () => {
     expect(document.documentElement["dataset"]["theme"]).toBe("dark");
   });
 
-  it("continues in system mode when storage throws", async () => {
+  it("continues with dark preference when storage throws", async () => {
     installMatchMedia(false);
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable");
@@ -128,8 +129,8 @@ describe("ThemeProvider", () => {
         <ThemeProbe />
       </ThemeProvider>,
     );
-    expect(document.documentElement["dataset"]["theme"]).toBe("light");
-    expect(screen.getByTestId("preference")).toHaveTextContent("system");
+    expect(document.documentElement["dataset"]["theme"]).toBe("dark");
+    expect(screen.getByTestId("preference")).toHaveTextContent("dark");
     expect(document.documentElement.innerHTML).not.toContain("onerror");
   });
 });

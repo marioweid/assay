@@ -9,8 +9,9 @@ Postgres, and a Python SDK/CLI. You can start capturing traces without a model p
 > [Windows PowerShell](quickstart-powershell.md)
 >
 > The quickstarts use a source build and opt-in local mode: no admin-token prompt, but project
-> ingest keys remain. Published container images are not available yet. Local-mode/session SDK
-> features are available in published `assay-sdk` 0.4.0 or this checkout; 0.3.0 lacks them.
+> ingest keys remain. A [public server image](deployment.md#start-and-verify) is available without
+> building source; its version is separate from the SDK. Local-mode/session SDK features are in
+> published `assay-sdk` 0.4.0 or this checkout; 0.3.0 lacks them.
 
 ## Your first hour
 
@@ -52,5 +53,5 @@ message/context setters intentionally export the values you supply.
 [Architecture](architecture.md) · [CI/CD and acceptance](ci-cd.md) ·
 [Current UI/session rollout plan](plans/2026-09-25-session-explorer-and-ui.md)
 
-The guides describe the current server checkout and published SDK 0.4.0. A successful source
-build is not evidence that a container image has been published.
+The guides cover source development, the public server image `v0.1.0`, and SDK 0.4.0. The image's
+publication does not waive backup, migration-sizing, or manual UI signoff before persistent rollout.

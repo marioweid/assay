@@ -14,8 +14,9 @@ git clone https://github.com/marioweid/assay.git
 Set-Location assay
 ```
 
-Use the checkout containing local-mode support. No Assay container image is published yet;
-SDK local-mode/session features are in published `assay-sdk` 0.4.0 or this checkout (not 0.3.0).
+This guide builds the checkout containing local-mode support. The public server image can run without
+a source build; see [deployment](deployment.md#start-and-verify). SDK local-mode/session features are
+in published `assay-sdk` 0.4.0 or this checkout (not 0.3.0).
 If reusing an existing database, read [upgrade and rollback](deployment.md#upgrade-and-rollback)
 first: migrations run automatically when the server starts.
 
@@ -121,13 +122,16 @@ For normal token authentication, set `ASSAY_LOCAL_MODE=false` and a separately g
 Set `$env:ASSAY_LOCAL_MODE = 'false'` and supply the admin token privately to the host CLI/client.
 Network deployments also need HTTPS and access controls; see [deployment](deployment.md).
 
-When a container release is published and verified, use
-[`compose.published.yaml`](../compose.published.yaml) with the recorded `ASSAY_IMAGE` tag/digest:
+For a fresh published-image deployment, add the verified server v0.1.0 digest from
+[`.env.example`](../.env.example) as `ASSAY_IMAGE` in your private `.env`. Use
+[`compose.published.yaml`](../compose.published.yaml) under a **separate** Compose project so it
+cannot reuse a source stack's volume:
 
 ```powershell
-docker compose -f compose.published.yaml up -d
+docker compose -p assay-published -f compose.published.yaml up -d
 ```
 
-Do not combine it with source Compose or infer an image tag from the Python package version.
+Do not combine Compose files or infer a server-image tag from the Python package version. Back up
+and follow the [upgrade procedure](deployment.md#upgrade-and-rollback) before reusing any database.
 
 **Next:** [UI tour](concepts.md) · [SDK](python-sdk.md) · [CLI](cli.md) · [Troubleshooting](troubleshooting.md)

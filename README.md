@@ -13,26 +13,30 @@ One Go service with an embedded UI, plus Postgres. A typed Python SDK and CLI ar
 
 ## Start locally
 
-Use a source checkout; **published Assay container images are not available yet**.
-The quickstarts generate private database/encryption credentials, preserve existing files,
-and walk through your first trace without a paid model.
-
-In your private `.env`, enable:
+The public [server image](https://github.com/marioweid/assay/releases/tag/v0.1.0) runs without
+building source. In a **fresh** deployment, use [`compose.published.yaml`](compose.published.yaml)
+and a private `.env`; the [deployment guide](docs/deployment.md#start-and-verify) gives complete
+no-checkout setup commands. Pin the verified image digest:
 
 ```dotenv
-ASSAY_LOCAL_MODE=true
+ASSAY_IMAGE=ghcr.io/marioweid/assay@sha256:ca095432a1cc199e33b5239959faa8b13364841c9c3cd4712c65a15410be297f
 ```
 
-Keep your existing `ASSAY_POSTGRES_PASSWORD` and `ASSAY_ENCRYPTION_KEY`, or generate them using the
-[Linux](docs/quickstart-linux.md#2-create-a-private-local-configuration) or
-[PowerShell](docs/quickstart-powershell.md) instructions for a fresh install. Then:
+Create and preserve separate database, admin-token and encryption-key secrets; then run:
 
 ```bash
-docker compose up --build -d
+docker compose -p assay-published -f compose.published.yaml up -d
 ```
 
-Open **http://localhost:8080**. Local mode opens the UI directly — **no admin token**.
-Create a project, save its one-time ingest key, and create an application.
+The published file binds HTTP to loopback and keeps PostgreSQL private. Token mode is the default;
+for trusted local-only access without an admin prompt, explicitly set `ASSAY_LOCAL_MODE=true` in
+`.env`. Project ingestion keys are **still required**. Open **http://localhost:8080**, create a
+project, save its one-time ingest key, and create an application.
+
+To develop from source instead, follow the [Linux](docs/quickstart-linux.md) or
+[PowerShell](docs/quickstart-powershell.md) quickstart and use `docker compose up --build -d`.
+Do not combine source and published Compose or reuse an existing database without reading the
+[upgrade and recovery guide](docs/deployment.md#upgrade-and-rollback).
 
 > **Local means trusted.** Anyone who can reach a local-mode server has management access,
 > including deletion. Keep the Compose loopback binding and trust its Docker network.
@@ -102,17 +106,18 @@ The [Python chat example](examples/python-qa/README.md) is optional and uses a r
 - Local mode is a trusted-machine convenience, not a multi-user security boundary.
 - Normal UI authentication stores the admin token in same-origin `localStorage`; **Disconnect**
   removes it. Local mode stores no dummy admin credential and displays its mode visibly.
-- New SDK features and container delivery remain subject to release/acceptance gates. Do not
-  infer a container release from a Python package version. Final human visual signoff remains open.
+- The server image `v0.1.0` and SDK `0.4.0` are separate releases. Public image publication was
+  approved before final human UI signoff and representative large-database migration sizing;
+  back up existing data before any upgrade.
 - Apache-2.0. Designed for individual developers and small self-hosted teams.
 
 ## Published-image deployment
 
 <details>
-<summary>Release-only Compose reference (no image published yet)</summary>
+<summary>Published-image Compose reference (Assay server v0.1.0)</summary>
 
-After an image is published and anonymously pull-tested, set `ASSAY_IMAGE` to its verified tag or
-digest. Use this as `compose.yaml` in a clean deployment directory, not alongside source Compose.
+Set `ASSAY_IMAGE` to `ghcr.io/marioweid/assay@sha256:ca095432a1cc199e33b5239959faa8b13364841c9c3cd4712c65a15410be297f`.
+Use this as `compose.yaml` in a clean deployment directory, not alongside source Compose.
 Set a private database password and a stable base64 32-byte encryption key. Token authentication
 is the default; `ASSAY_LOCAL_MODE=true` is an explicit opt-in for trusted local use only.
 
@@ -169,7 +174,8 @@ volumes:
 ```
 <!-- END compose.published.yaml -->
 
-With the repository filename: `docker compose -f compose.published.yaml up -d`.
+With the repository filename, start a separate project:
+`docker compose -p assay-published -f compose.published.yaml up -d`.
 Never use `down -v` unless you deliberately intend to destroy the database.
 
 </details>

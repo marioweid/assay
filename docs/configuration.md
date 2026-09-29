@@ -72,7 +72,7 @@ summaries, scores or retained evaluation evidence. It is not a comprehensive pri
 | `ASSAY_POSTGRES_USER` | `assay` in source Compose | Database user |
 | `ASSAY_POSTGRES_DB` | `assay` in source Compose | Database name |
 | `ASSAY_POSTGRES_PORT` | `5432` in source Compose | Loopback-only host database port; published Compose keeps Postgres private |
-| `ASSAY_IMAGE` | published Compose only | Verified container tag/digest, once a release actually exists |
+| `ASSAY_IMAGE` | published Compose only | Verified server v0.1.0 digest in `.env.example`; pin or update deliberately |
 
 `docker-compose.yml` builds from source. `compose.published.yaml` never builds; do not combine them.
 The published file uses the fixed database user/name `assay`. A Compose `.env` is not automatically

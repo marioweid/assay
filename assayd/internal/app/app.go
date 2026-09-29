@@ -118,7 +118,9 @@ func (a *App) Serve(ctx context.Context) error {
 	a.registerRoutes(mux)
 	var handler http.Handler = mux
 	if a.config.LocalMode {
-		a.logger.Warn("Local mode enabled: no admin token required; restrict access to a trusted host/network")
+		a.logger.Warn(
+			"Local mode enabled: no admin token required; restrict access to a trusted host/network",
+		)
 		handler = httpserver.LocalModeGuard(handler)
 	}
 	if err := httpserver.Serve(serveCtx, a.config.HTTPAddr, handler, a.logger); err != nil {

@@ -90,14 +90,24 @@ func TestSessionsMigrationBackfillsOnlyValidRootTags(t *testing.T) {
 	if _, err := provider.UpTo(t.Context(), 6); err != nil {
 		t.Fatalf("apply migrations through version 6: %v", err)
 	}
+	ids, cases := seedLegacySessionsForMigration(t, database.MigrationDB())
+	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
+		t.Fatalf("apply session migration: %v", err)
+	}
+	assertBackfilledSessionIDs(t, database.MigrationDB(), ids, cases)
+}
 
-	cases := []struct {
-		name       string
-		root       string
-		child      string
-		rootExists bool
-		want       string
-	}{
+type legacySessionCase struct {
+	name       string
+	root       string
+	child      string
+	rootExists bool
+	want       string
+}
+
+func seedLegacySessionsForMigration(t *testing.T, db *sql.DB) ([]uuid.UUID, []legacySessionCase) {
+	t.Helper()
+	cases := []legacySessionCase{
 		{"tagged root", `{"session.id":"existing"}`, `{"session.id":"spoof"}`, true, "existing"},
 		{"child tag only", `{}`, `{"session.id":"spoof"}`, true, ""},
 		{"no root", `{}`, `{"session.id":"spoof"}`, false, ""},
@@ -106,12 +116,12 @@ func TestSessionsMigrationBackfillsOnlyValidRootTags(t *testing.T) {
 	}
 	projectID := uuid.Must(uuid.NewV7())
 	applicationID := uuid.Must(uuid.NewV7())
-	if _, err := database.MigrationDB().ExecContext(
+	if _, err := db.ExecContext(
 		t.Context(), `INSERT INTO projects (id, name) VALUES ($1, 'legacy-sessions')`, projectID,
 	); err != nil {
 		t.Fatalf("seed legacy project: %v", err)
 	}
-	if _, err := database.MigrationDB().ExecContext(t.Context(),
+	if _, err := db.ExecContext(t.Context(),
 		`INSERT INTO applications (id, project_id, name, slug)
 		 VALUES ($1, $2, 'Legacy sessions', 'legacy-sessions')`, applicationID, projectID,
 	); err != nil {
@@ -119,19 +129,22 @@ func TestSessionsMigrationBackfillsOnlyValidRootTags(t *testing.T) {
 	}
 	ids := make([]uuid.UUID, len(cases))
 	for i, testCase := range cases {
-		ids[i] = seedLegacySessionTrace(t, database.MigrationDB(), applicationID,
-			legacySessionTrace{
-				marker: byte(i + 1), root: testCase.root,
-				child: testCase.child, rootExists: testCase.rootExists,
-			})
+		ids[i] = seedLegacySessionTrace(t, db, applicationID, legacySessionTrace{
+			marker: byte(i + 1), root: testCase.root,
+			child: testCase.child, rootExists: testCase.rootExists,
+		})
 	}
-	if err := Up(t.Context(), database.MigrationDB(), logger); err != nil {
-		t.Fatalf("apply session migration: %v", err)
-	}
+	return ids, cases
+}
+
+func assertBackfilledSessionIDs(
+	t *testing.T, db *sql.DB, ids []uuid.UUID, cases []legacySessionCase,
+) {
+	t.Helper()
 	for i, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			var got sql.NullString
-			if err := database.MigrationDB().QueryRowContext(t.Context(),
+			if err := db.QueryRowContext(t.Context(),
 				"SELECT session_id FROM traces WHERE id = $1", ids[i],
 			).Scan(&got); err != nil {
 				t.Fatalf("read backfilled session ID: %v", err)

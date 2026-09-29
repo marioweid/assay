@@ -32,11 +32,13 @@ type SessionTurn struct {
 	Attributes  map[string]any
 }
 
+// SessionCursor resumes a session or turn listing after the last returned item.
 type SessionCursor struct {
 	Time time.Time
 	ID   string
 }
 
+// SessionQuery scopes a page to an application and optionally one session.
 type SessionQuery struct {
 	ApplicationID uuid.UUID
 	SessionID     string
@@ -45,20 +47,24 @@ type SessionQuery struct {
 	Anchor        time.Time
 }
 
+// SessionPage contains a bounded page and the cursor needed to continue it.
 type SessionPage[T any] struct {
 	Items      []T
 	NextCursor *SessionCursor
 	Anchor     time.Time
 }
 
+// SessionRepository reads root-tagged traces within a project boundary.
 type SessionRepository interface {
 	ListSessions(context.Context, uuid.UUID, SessionQuery) ([]Session, error)
 	ListSessionTurns(context.Context, uuid.UUID, SessionQuery) ([]SessionTurn, error)
 	ListRecentSessionTurns(context.Context, uuid.UUID, SessionQuery) ([]SessionTurn, error)
 }
 
+// SessionService validates and pages scoped session reads.
 type SessionService struct{ repository SessionRepository }
 
+// NewSessionService constructs a service over the session repository.
 func NewSessionService(repository SessionRepository) *SessionService {
 	return &SessionService{repository: repository}
 }
@@ -92,6 +98,7 @@ func ValidSessionID(value string) bool {
 	return true
 }
 
+// List returns a stable page of sessions scoped to a project and application.
 func (s *SessionService) List(
 	ctx context.Context, projectID uuid.UUID, query SessionQuery,
 ) (SessionPage[Session], error) {
@@ -139,19 +146,15 @@ func (s *SessionService) RecentTurns(
 	return items, nil
 }
 
+// Turns returns a chronological page of root turns from one session.
 func (s *SessionService) Turns(
 	ctx context.Context, projectID uuid.UUID, query SessionQuery,
 ) (SessionPage[SessionTurn], error) {
 	if err := validateSessionQuery(&query); err != nil {
 		return SessionPage[SessionTurn]{}, err
 	}
-	if !ValidSessionID(query.SessionID) {
-		return SessionPage[SessionTurn]{}, fmt.Errorf("list session turns: %w: invalid session ID", ErrInvalid)
-	}
-	if query.Cursor != nil {
-		if _, err := uuid.Parse(query.Cursor.ID); err != nil {
-			return SessionPage[SessionTurn]{}, fmt.Errorf("list session turns: %w: invalid cursor", ErrInvalid)
-		}
+	if err := validateSessionTurnSelection(query); err != nil {
+		return SessionPage[SessionTurn]{}, err
 	}
 	pageSize := query.Limit
 	query.Limit++
@@ -169,4 +172,16 @@ func (s *SessionService) Turns(
 		page.NextCursor = &SessionCursor{Time: last.StartTime, ID: last.ID.String()}
 	}
 	return page, nil
+}
+
+func validateSessionTurnSelection(query SessionQuery) error {
+	if !ValidSessionID(query.SessionID) {
+		return fmt.Errorf("list session turns: %w: invalid session ID", ErrInvalid)
+	}
+	if query.Cursor != nil {
+		if _, err := uuid.Parse(query.Cursor.ID); err != nil {
+			return fmt.Errorf("list session turns: %w: invalid cursor", ErrInvalid)
+		}
+	}
+	return nil
 }

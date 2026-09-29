@@ -20,6 +20,23 @@ func TestSessionQueriesOnLargeScopedFixture(t *testing.T) {
 	if testing.Short() {
 		t.Skip("large disposable PostgreSQL query-plan fixture")
 	}
+	plans := sessionPlansOnLargeFixture(t)
+	for _, plan := range []string{plans.recent, plans.first, plans.cursor, plans.generic} {
+		if !strings.Contains(plan, "using traces_session_turn_idx") {
+			t.Fatalf("long session must use bounded start-time index:\n%s", plan)
+		}
+	}
+	for _, plan := range []string{plans.cursor, plans.generic} {
+		assertSessionCursorIndexSeek(t, plan)
+	}
+}
+
+type sessionPlans struct {
+	recent, first, cursor, generic string
+}
+
+func sessionPlansOnLargeFixture(t *testing.T) sessionPlans {
+	t.Helper()
 	database, err := sql.Open("pgx", testutil.Postgres(t))
 	if err != nil {
 		t.Fatalf("open disposable database: %v", err)
@@ -40,13 +57,22 @@ func TestSessionQueriesOnLargeScopedFixture(t *testing.T) {
 	anchor := time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)
 	logSessionPlan(t, database, "list sessions", listProjectSessions,
 		false, nil, "", 25, projectID, applicationID, anchor)
-	recent := logSessionPlan(t, database, "recent turns", listRecentSessionTurns,
-		projectID, applicationID, "long-session", 10)
-	first := logSessionPlan(t, database, "first turns", listProjectSessionTurns,
-		projectID, applicationID, "long-session", 10)
 	lateCursor := time.Date(2026, time.September, 1, 10, 0, 9, 0, time.UTC)
-	cursor := logSessionPlan(t, database, "late cursor turns", listProjectSessionTurnsAfterCursor,
-		projectID, applicationID, "long-session", lateCursor, uuid.Nil, 10)
+	return sessionPlans{
+		recent: logSessionPlan(t, database, "recent turns", listRecentSessionTurns,
+			projectID, applicationID, "long-session", 10),
+		first: logSessionPlan(t, database, "first turns", listProjectSessionTurns,
+			projectID, applicationID, "long-session", 10),
+		cursor: logSessionPlan(t, database, "late cursor turns", listProjectSessionTurnsAfterCursor,
+			projectID, applicationID, "long-session", lateCursor, uuid.Nil, 10),
+		generic: genericSessionTurnPlan(t, database, projectID, applicationID, lateCursor),
+	}
+}
+
+func genericSessionTurnPlan(
+	t *testing.T, database *sql.DB, projectID, applicationID uuid.UUID, lateCursor time.Time,
+) string {
+	t.Helper()
 	connection, err := database.Conn(t.Context())
 	if err != nil {
 		t.Fatalf("reserve prepared-plan connection: %v", err)
@@ -56,12 +82,16 @@ func TestSessionQueriesOnLargeScopedFixture(t *testing.T) {
 			t.Errorf("close prepared-plan connection: %v", err)
 		}
 	})
-	if _, err := connection.ExecContext(t.Context(), "SET plan_cache_mode = force_generic_plan"); err != nil {
+	if _, err := connection.ExecContext(
+		t.Context(), "SET plan_cache_mode = force_generic_plan",
+	); err != nil {
 		t.Fatalf("force generic query plan: %v", err)
 	}
 	const prepare = `PREPARE session_turn_plan (uuid, uuid, text,
 		timestamptz, uuid, integer) AS `
-	if _, err := connection.ExecContext(t.Context(), prepare+listProjectSessionTurnsAfterCursor); err != nil {
+	if _, err := connection.ExecContext(
+		t.Context(), prepare+listProjectSessionTurnsAfterCursor,
+	); err != nil {
 		t.Fatalf("prepare turn query: %v", err)
 	}
 	execute := fmt.Sprintf(
@@ -69,24 +99,18 @@ func TestSessionQueriesOnLargeScopedFixture(t *testing.T) {
 		 '%s'::timestamptz, '%s'::uuid, 10)`,
 		projectID, applicationID, lateCursor.Format(time.RFC3339), uuid.Nil,
 	)
-	generic := logSessionPlan(t, connection, "generic late cursor", execute)
-	for _, plan := range []string{recent, first, cursor, generic} {
-		if !strings.Contains(plan, "using traces_session_turn_idx") {
-			t.Fatalf("long session must use bounded start-time index:\n%s", plan)
+	return logSessionPlan(t, connection, "generic late cursor", execute)
+}
+
+func assertSessionCursorIndexSeek(t *testing.T, plan string) {
+	t.Helper()
+	for _, line := range strings.Split(plan, "\n") {
+		if strings.Contains(line, "Index Cond:") &&
+			strings.Contains(line, "ROW(start_time, id) >") {
+			return
 		}
 	}
-	for _, plan := range []string{cursor, generic} {
-		seek := false
-		for _, line := range strings.Split(plan, "\n") {
-			if strings.Contains(line, "Index Cond:") &&
-				strings.Contains(line, "ROW(start_time, id) >") {
-				seek = true
-			}
-		}
-		if !seek {
-			t.Fatalf("late cursor must seek by start-time and ID:\n%s", plan)
-		}
-	}
+	t.Fatalf("late cursor must seek by start-time and ID:\n%s", plan)
 }
 
 func seedLargeSessionFixture(t *testing.T, database *sql.DB) (uuid.UUID, uuid.UUID) {
@@ -127,7 +151,9 @@ func seedLargeSessionFixture(t *testing.T, database *sql.DB) (uuid.UUID, uuid.UU
 		     WHEN n <= 20000 THEN 'session-' || (n % 200)::text
 		     WHEN n > 65000 THEN 'foreign-' || (n % 200)::text END
 		FROM generate_series(1, 100000) AS n`
-	if _, err := database.ExecContext(t.Context(), insert, applicationID, foreignApplication); err != nil {
+	if _, err := database.ExecContext(
+		t.Context(), insert, applicationID, foreignApplication,
+	); err != nil {
 		t.Fatalf("seed 100k session traces: %v", err)
 	}
 	return projectID, applicationID
@@ -147,7 +173,11 @@ func logSessionPlan(
 	if err != nil {
 		t.Fatalf("explain %s: %v", name, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Errorf("close %s plan rows: %v", name, err)
+		}
+	}()
 	var plan strings.Builder
 	for rows.Next() {
 		var line string

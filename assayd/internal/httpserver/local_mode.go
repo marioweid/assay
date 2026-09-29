@@ -12,7 +12,10 @@ import (
 func LocalModeGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !localHost(request.Host) {
-			http.Error(writer, "Local mode requires localhost, a loopback IP, or assayd", http.StatusForbidden)
+			http.Error(
+				writer, "Local mode requires localhost, a loopback IP, or assayd",
+				http.StatusForbidden,
+			)
 			return
 		}
 		// Public assets remain navigable from documentation links; API reads also need protection.

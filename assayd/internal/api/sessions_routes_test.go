@@ -24,8 +24,8 @@ func TestSessionRoutesRequireAuthAndDeclareScopeParameters(t *testing.T) {
 	var document openAPIDocument
 	decodeResponse(t, response, &document)
 	for path, names := range map[string][]string{
-		"/v1/sessions":      {"application_id"},
-		"/v1/session-turns": {"application_id", "session_id"},
+		"/v1/sessions":             {"application_id"},
+		"/v1/session-turns":        {"application_id", "session_id"},
 		"/v1/session-turns/recent": {"application_id", "session_id"},
 	} {
 		required := make(map[string]bool)
@@ -62,7 +62,9 @@ func TestSessionReadRoutesBindOpaqueQueryAndRequireProjectScope(t *testing.T) {
 			foreignKey.Key, http.StatusNotFound},
 		{"/v1/session-turns?application_id=" + application.ID, key.Key, http.StatusUnprocessableEntity},
 	} {
-		response := fixture.perform(requestSpec{method: http.MethodGet, path: test.path, token: test.token})
+		response := fixture.perform(requestSpec{
+			method: http.MethodGet, path: test.path, token: test.token,
+		})
 		if response.Code != test.status {
 			t.Errorf("GET %s status = %d, want %d: %s", test.path, response.Code, test.status,
 				response.Body.String())

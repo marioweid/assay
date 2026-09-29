@@ -101,33 +101,44 @@ func (h *handler) sessionQuery(
 	if err != nil {
 		return uuid.Nil, domain.SessionQuery{}, err
 	}
-	var projectID uuid.UUID
-	if h.isAdmin(input.Authorization, input.XAPIKey) {
-		application, lookupErr := h.service.GetApplication(ctx, applicationID)
-		if lookupErr != nil {
-			return uuid.Nil, domain.SessionQuery{}, lookupErr
-		}
-		projectID = application.ProjectID
-	} else {
-		projectID, err = h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
-		if err != nil {
-			return uuid.Nil, domain.SessionQuery{}, err
-		}
+	projectID, err := h.sessionProject(ctx, input, applicationID)
+	if err != nil {
+		return uuid.Nil, domain.SessionQuery{}, err
 	}
-	query := domain.SessionQuery{ApplicationID: applicationID, SessionID: sessionID, Limit: input.Limit}
+	query := domain.SessionQuery{
+		ApplicationID: applicationID, SessionID: sessionID, Limit: input.Limit,
+	}
 	if input.Cursor != "" {
-		var encoded sessionCursorJSON
-		encoded, err = decodeSessionCursor(input.Cursor)
+		query.Cursor, query.Anchor, err = sessionQueryCursor(input.Cursor, turns)
 		if err != nil {
 			return uuid.Nil, domain.SessionQuery{}, err
 		}
-		if turns && !encoded.Anchor.IsZero() || !turns && encoded.Anchor.IsZero() {
-			return uuid.Nil, domain.SessionQuery{}, fmt.Errorf("session cursor: %w: wrong page type", domain.ErrInvalid)
-		}
-		query.Cursor = &domain.SessionCursor{Time: encoded.Time, ID: encoded.ID}
-		query.Anchor = encoded.Anchor
 	}
 	return projectID, query, nil
+}
+
+func (h *handler) sessionProject(
+	ctx context.Context, input *listSessionsInput, applicationID uuid.UUID,
+) (uuid.UUID, error) {
+	if !h.isAdmin(input.Authorization, input.XAPIKey) {
+		return h.authenticateProject(ctx, input.Authorization, input.XAPIKey)
+	}
+	application, err := h.service.GetApplication(ctx, applicationID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return application.ProjectID, nil
+}
+
+func sessionQueryCursor(value string, turns bool) (*domain.SessionCursor, time.Time, error) {
+	encoded, err := decodeSessionCursor(value)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if turns && !encoded.Anchor.IsZero() || !turns && encoded.Anchor.IsZero() {
+		return nil, time.Time{}, fmt.Errorf("session cursor: %w: wrong page type", domain.ErrInvalid)
+	}
+	return &domain.SessionCursor{Time: encoded.Time, ID: encoded.ID}, encoded.Anchor, nil
 }
 
 func (h *handler) listSessions(

@@ -11,13 +11,33 @@ import (
 )
 
 func TestSessionsRequireRootAndScopeProjectAndApplication(t *testing.T) {
+	fixture := newScopedSessionFixture(t)
+	assertRootSessionMembership(t, fixture)
+	assertRecentSessionTurns(t, fixture)
+	assertSessionTurnCapture(t, fixture)
+	assertSessionProjectAndAppScope(t, fixture)
+	assertTurnCursor(t, fixture)
+	assertTurnDeletion(t, fixture)
+}
+
+type scopedSessionFixture struct {
+	sessions       *domain.SessionService
+	traces         *domain.TraceService
+	projectID      uuid.UUID
+	otherProjectID uuid.UUID
+	otherAppID     uuid.UUID
+	firstID        uuid.UUID
+	secondID       uuid.UUID
+	query          domain.SessionQuery
+}
+
+func newScopedSessionFixture(t *testing.T) scopedSessionFixture {
+	t.Helper()
 	database := openTraceDatabase(t)
 	service, traces := newTraceServices(t, database)
 	project, application := createTraceApplication(t, service, "Sessions")
 	_, otherApp := createApplicationInProject(t, service, project.ID, "Second")
 	otherProject, foreignApp := createTraceApplication(t, service, "Foreign")
-	sessions := domain.NewSessionService(database)
-
 	first := taggedTrace(application.ID, 1, "shared", time.Second)
 	second := taggedTrace(application.ID, 2, "shared", 2*time.Second)
 	untagged := taggedTrace(application.ID, 3, "", 3*time.Second)
@@ -34,49 +54,85 @@ func TestSessionsRequireRootAndScopeProjectAndApplication(t *testing.T) {
 			t.Fatalf("ingest trace: %v", err)
 		}
 	}
-	query := domain.SessionQuery{ApplicationID: application.ID, Anchor: time.Now().Add(time.Hour)}
-	page, err := sessions.List(t.Context(), project.ID, query)
+	return scopedSessionFixture{
+		sessions: domain.NewSessionService(database), traces: traces,
+		projectID: project.ID, otherProjectID: otherProject.ID, otherAppID: otherApp.ID,
+		firstID: first.ID, secondID: second.ID,
+		query: domain.SessionQuery{
+			ApplicationID: application.ID, SessionID: "shared",
+			Anchor: time.Now().Add(time.Hour),
+		},
+	}
+}
+
+func assertRootSessionMembership(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	query := fixture.query
+	query.SessionID = ""
+	page, err := fixture.sessions.List(t.Context(), fixture.projectID, query)
 	if err != nil || len(page.Items) != 1 || page.Items[0].TurnCount != 2 {
 		t.Fatalf("session list = %#v, %v", page, err)
 	}
-	query.SessionID = "shared"
-	recent, err := sessions.RecentTurns(t.Context(), project.ID, query)
-	if err != nil || len(recent) != 2 || recent[0].ID != first.ID || recent[1].ID != second.ID {
+}
+
+func assertRecentSessionTurns(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	recent, err := fixture.sessions.RecentTurns(t.Context(), fixture.projectID, fixture.query)
+	if err != nil || len(recent) != 2 ||
+		recent[0].ID != fixture.firstID || recent[1].ID != fixture.secondID {
 		t.Fatalf("recent chronological turns = %#v, %v", recent, err)
 	}
-	turns, err := sessions.Turns(t.Context(), project.ID, query)
-	if err != nil || len(turns.Items) != 2 || turns.Items[0].ID != first.ID ||
-		turns.Items[1].ID != second.ID {
+}
+
+func assertSessionTurnCapture(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	turns, err := fixture.sessions.Turns(t.Context(), fixture.projectID, fixture.query)
+	if err != nil || len(turns.Items) != 2 ||
+		turns.Items[0].ID != fixture.firstID || turns.Items[1].ID != fixture.secondID {
 		t.Fatalf("session turns = %#v, %v", turns, err)
 	}
 	if _, found := turns.Items[0].Attributes["gen_ai.input.messages"]; !found {
 		t.Fatalf("root capture absent: %#v", turns.Items[0])
 	}
-	if _, err := sessions.Turns(t.Context(), otherProject.ID, query); !errors.Is(err, domain.ErrNotFound) {
+}
+
+func assertSessionProjectAndAppScope(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	if _, err := fixture.sessions.Turns(
+		t.Context(), fixture.otherProjectID, fixture.query,
+	); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("cross-project session: %v", err)
 	}
-	query.ApplicationID = otherApp.ID
-	other, err := sessions.Turns(t.Context(), project.ID, query)
+	query := fixture.query
+	query.ApplicationID = fixture.otherAppID
+	other, err := fixture.sessions.Turns(t.Context(), fixture.projectID, query)
 	if err != nil || len(other.Items) != 1 {
 		t.Fatalf("cross-application isolation = %#v, %v", other, err)
 	}
-	query.ApplicationID = application.ID
+}
+
+func assertTurnCursor(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	query := fixture.query
 	query.Limit = 1
-	firstPage, err := sessions.Turns(t.Context(), project.ID, query)
+	firstPage, err := fixture.sessions.Turns(t.Context(), fixture.projectID, query)
 	if err != nil || firstPage.NextCursor == nil || len(firstPage.Items) != 1 {
 		t.Fatalf("first page = %#v, %v", firstPage, err)
 	}
 	query.Cursor = firstPage.NextCursor
-	secondPage, err := sessions.Turns(t.Context(), project.ID, query)
-	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != second.ID {
+	secondPage, err := fixture.sessions.Turns(t.Context(), fixture.projectID, query)
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != fixture.secondID {
 		t.Fatalf("second page = %#v, %v", secondPage, err)
 	}
-	if err := traces.DeleteAdmin(t.Context(), first.ID); err != nil {
+}
+
+func assertTurnDeletion(t *testing.T, fixture scopedSessionFixture) {
+	t.Helper()
+	if err := fixture.traces.DeleteAdmin(t.Context(), fixture.firstID); err != nil {
 		t.Fatalf("delete turn: %v", err)
 	}
-	query.Cursor = nil
-	turns, err = sessions.Turns(t.Context(), project.ID, query)
-	if err != nil || len(turns.Items) != 1 || turns.Items[0].ID != second.ID {
+	turns, err := fixture.sessions.Turns(t.Context(), fixture.projectID, fixture.query)
+	if err != nil || len(turns.Items) != 1 || turns.Items[0].ID != fixture.secondID {
 		t.Fatalf("turn after delete = %#v, %v", turns, err)
 	}
 }
@@ -148,7 +204,9 @@ func createApplicationInProject(
 	return projectID, application
 }
 
-func taggedTrace(applicationID uuid.UUID, marker byte, sessionID string, offset time.Duration) domain.Trace {
+func taggedTrace(
+	applicationID uuid.UUID, marker byte, sessionID string, offset time.Duration,
+) domain.Trace {
 	trace := traceFixture(applicationID)
 	trace.ID = uuid.Must(uuid.NewV7())
 	trace.OTelTraceID = [16]byte{marker}

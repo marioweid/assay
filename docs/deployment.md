@@ -90,11 +90,54 @@ Readiness proves the server/database are available, not that your judge or evalu
 Verify the UI, create a disposable project key, send a synthetic trace and confirm it appears.
 Test a small evaluation separately if you configured a judge.
 
+## Portainer stack
+
+Use [`compose.portainer.yaml`](../compose.portainer.yaml) with a **Linux Docker Standalone**
+environment in Portainer, not Swarm. It uses the verified public image directly: no checkout,
+image build, registry login or `env_file` is needed.
+
+1. On the **Docker endpoint host** (not your browser machine or the Portainer container), create
+   a dedicated empty directory for a new database, for example `sudo mkdir -p /srv/assay/postgres`.
+   Use local storage writable by the PostgreSQL container; do not make it world-writable.
+2. Open **Stacks → Add stack → Web editor**, name the stack `assay`, and paste the complete file.
+3. Add these values under **Environment variables** (without surrounding quotes):
+
+   | Variable | Value |
+   |---|---|
+   | `ASSAY_POSTGRES_DATA_DIR` | Absolute host path, e.g. `/srv/assay/postgres` |
+   | `ASSAY_POSTGRES_PASSWORD` | Unique URL-safe password; generate with `openssl rand -hex 32` |
+   | `ASSAY_ADMIN_TOKEN` | Separate strong token; generate with another `openssl rand -hex 32` |
+   | `ASSAY_ENCRYPTION_KEY` | Stable key; generate with `openssl rand -base64 32` |
+
+   Generate secrets privately and preserve them outside Portainer in your secret store. Never reuse
+   the sample path for another running database. A missing host directory causes deployment to fail
+   rather than silently creating a new empty database directory.
+4. Select **Deploy the stack**, wait for both services to become healthy, then open
+   `http://<docker-host>:8080` and enter the admin token. Create a project and save its ingestion key.
+
+Optional stack variables include `ASSAY_HTTP_PORT` (default `8080`), `ASSAY_HTTP_BIND_IP` (default
+`0.0.0.0`), and the `ASSAY_JUDGE_*` settings from the [configuration reference](configuration.md).
+Unlike the workstation template, this stack publishes HTTP on **all host IPv4 interfaces** by
+default so it is reachable from your browser. Token authentication is mandatory; PostgreSQL has no
+published port. Restrict access to trusted clients and put HTTPS in front before sending credentials
+across an untrusted network. For a host-based reverse proxy, set `ASSAY_HTTP_BIND_IP=127.0.0.1`.
+Docker-published ports can bypass host firewall rules; enforce restrictions at the Docker/network
+boundary rather than relying only on a host firewall frontend.
+
+The bind mount targets `/var/lib/postgresql`, the PostgreSQL **18** data root. Do not use the old
+`/var/lib/postgresql/data` target or point it at a PostgreSQL 17 directory. Redeploying with the same
+host path and secrets preserves data; deleting the stack does not delete this host directory.
+Changing the path does **not** migrate data. For existing installations, back up and follow the
+[upgrade and recovery procedure](#upgrade-and-rollback), preserving the encryption key and database
+password. Never attach two database containers to the same data directory.
+
 ## Persistent data and secrets
 
-Compose keeps PostgreSQL in a named `assay-pgdata` volume (normally prefixed by the Compose project).
-`docker compose down` preserves it. **`docker compose down -v` deletes it and all Assay data.**
-Never use that command as a repair for startup/credential problems.
+The source and published Compose templates keep PostgreSQL in a named `assay-pgdata` volume
+(normally prefixed by the Compose project). `docker compose down` preserves that named volume.
+**`docker compose down -v` deletes the named volume and all Assay data in it.** Never use that
+command as a repair for startup/credential problems. The Portainer template instead uses the host
+bind mount above; Compose teardown does not delete its directory.
 
 Back up these outside the volume, with restricted access:
 

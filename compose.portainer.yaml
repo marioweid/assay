@@ -1,0 +1,57 @@
+# Portainer Web editor stack for a Linux Docker Standalone environment (not Swarm).
+# Set required variables in the stack's Environment variables section.
+# Create ASSAY_POSTGRES_DATA_DIR on the Docker endpoint host before deploying.
+# See docs/deployment.md#portainer-stack for setup and backup guidance.
+
+services:
+  postgres:
+    image: >-
+      postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: assay
+      POSTGRES_PASSWORD: ${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}
+      POSTGRES_DB: assay
+    volumes:
+      - type: bind
+        source: ${ASSAY_POSTGRES_DATA_DIR:?Set an absolute directory on the Docker host}
+        # PostgreSQL 18 uses a version-specific PGDATA beneath this directory.
+        target: /var/lib/postgresql
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U assay -d assay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  assayd:
+    image: "ghcr.io/marioweid/assay@\
+      sha256:ca095432a1cc199e33b5239959faa8b13364841c9c3cd4712c65a15410be297f"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASSAY_HTTP_ADDR: ":8080"
+      ASSAY_DATABASE_URL: >-
+        postgres://assay:${ASSAY_POSTGRES_PASSWORD:?Required}@postgres:5432/assay?sslmode=disable
+      # Network access always requires the admin token; do not enable local mode here.
+      ASSAY_LOCAL_MODE: "false"
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:?Set a strong admin token}
+      ASSAY_ENCRYPTION_KEY: ${ASSAY_ENCRYPTION_KEY:?Set a base64-encoded 32-byte key}
+      ASSAY_JUDGE_BASE_URL: ${ASSAY_JUDGE_BASE_URL:-}
+      ASSAY_JUDGE_MODEL: ${ASSAY_JUDGE_MODEL:-}
+      ASSAY_JUDGE_API_KEY: ${ASSAY_JUDGE_API_KEY:-}
+      ASSAY_UI_ENABLED: "true"
+      ASSAY_TRACE_RETENTION_DAYS: ${ASSAY_TRACE_RETENTION_DAYS:-0}
+    # LAN-accessible by default. Restrict access and use HTTPS for shared deployments.
+    ports:
+      - "${ASSAY_HTTP_BIND_IP:-0.0.0.0}:${ASSAY_HTTP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "/assayd", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

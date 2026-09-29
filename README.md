@@ -46,6 +46,13 @@ Do not combine source and published Compose or reuse an existing database withou
 > Already have data? Startup applies migrations automatically. Read
 > [upgrade and recovery](docs/deployment.md) before running a newer checkout.
 
+## Deploy with Portainer
+
+Paste [`compose.portainer.yaml`](compose.portainer.yaml) into **Stacks → Add stack → Web editor**
+for a Linux Docker Standalone endpoint. Set `ASSAY_POSTGRES_DATA_DIR` to your PostgreSQL host
+folder, plus the required database password, admin token and encryption key in Portainer's
+**Environment variables**. See the [Portainer setup](docs/deployment.md#portainer-stack) for details.
+
 ## Instrument one answer
 
 Install the published **assay-sdk 0.4.0** for session/local-mode features in your application's

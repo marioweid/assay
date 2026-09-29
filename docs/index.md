@@ -10,8 +10,7 @@ Postgres, and a Python SDK/CLI. You can start capturing traces without a model p
 >
 > The quickstarts use a source build and opt-in local mode: no admin-token prompt, but project
 > ingest keys remain. Published container images are not available yet. Local-mode/session SDK
-> features require `assay-sdk` 0.4.0 or newer, once its release is verified, or this checkout;
-> published 0.3.0 does not include them.
+> features are available in published `assay-sdk` 0.4.0 or this checkout; 0.3.0 lacks them.
 
 ## Your first hour
 
@@ -53,5 +52,5 @@ message/context setters intentionally export the values you supply.
 [Architecture](architecture.md) · [CI/CD and acceptance](ci-cd.md) ·
 [Current UI/session rollout plan](plans/2026-09-25-session-explorer-and-ui.md)
 
-The guides describe the current checkout. A successful source build is not evidence that a
-container image or SDK release has been published; check PyPI for the verified package version.
+The guides describe the current server checkout and published SDK 0.4.0. A successful source
+build is not evidence that a container image has been published.

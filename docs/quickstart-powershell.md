@@ -15,7 +15,7 @@ Set-Location assay
 ```
 
 Use the checkout containing local-mode support. No Assay container image is published yet;
-SDK local-mode/session features require a verified 0.4.0+ release or this checkout (not 0.3.0).
+SDK local-mode/session features are in published `assay-sdk` 0.4.0 or this checkout (not 0.3.0).
 If reusing an existing database, read [upgrade and rollback](deployment.md#upgrade-and-rollback)
 first: migrations run automatically when the server starts.
 

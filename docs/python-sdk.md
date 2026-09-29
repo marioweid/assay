@@ -7,16 +7,23 @@ and provides a synchronous typed management client and CLI. Python 3.10+ is supp
 
 ## Install the right version
 
-Local-mode management and `assay.session(...)` are **checkout features**, not published
-`assay-sdk==0.3.0`. From your own uv project, replace the path below with your actual Assay checkout:
+Local-mode management and `assay.session(...)` require SDK **0.4.0 or newer**; published
+`assay-sdk==0.3.0` does not have them. Once the 0.4.0 PyPI release is verified, install it from your
+own uv project:
+
+```bash
+uv add 'assay-sdk==0.4.0'
+```
+
+Before publication, or to work from the current checkout, replace the path below with your actual
+Assay checkout:
 
 ```bash
 uv add --editable /absolute/path/to/assay/clients/python/assay
 ```
 
 For repository examples, use `uv run --project clients/python/assay ...` from the repository root.
-For released functionality only, `uv add assay-sdk` installs the published package. Do not assume
-that a matching `0.3.0` source version means unreleased checkout additions are on PyPI.
+A matching source version alone does not prove that the release is available on PyPI.
 
 ## Configure your application
 

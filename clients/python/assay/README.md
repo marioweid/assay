@@ -8,20 +8,21 @@ tracing and evaluation workspace. The distribution is `assay-sdk`; the import is
 
 ## Installation and release status
 
+This source tree is version **0.4.0**. For its local-mode management, session context/reads and
+structured conversation features, use a verified PyPI release of at least 0.4.0:
+
 ```bash
-uv add assay-sdk
+uv add 'assay-sdk==0.4.0'
 ```
 
-This installs the **published** package. Local-mode management, session context/reads and other
-current checkout additions are **not in published `assay-sdk==0.3.0`**. Until a new release is
-verified, install the checkout into your application project:
+Published `assay-sdk==0.3.0` does **not** include these features. If 0.4.0 is not yet available on
+PyPI, use the checkout in your application project until the release is verified:
 
 ```bash
 uv add --editable /absolute/path/to/assay/clients/python/assay
 ```
 
 From the repository root, examples and the CLI use `uv run --project clients/python/assay ...`.
-The source version has not been bumped or published by these changes.
 
 ## Trace an answer
 

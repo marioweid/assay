@@ -15,9 +15,9 @@ cd assay
 ```
 
 Use the checkout containing local-mode support. There is no published Assay container image yet;
-new SDK features are also checkout-only. If you already have a database, read
-[upgrade and rollback](deployment.md#upgrade-and-rollback) before starting a newer checkout:
-server startup automatically applies migrations.
+SDK local-mode/session features require a verified 0.4.0+ release or this checkout (not 0.3.0).
+If you already have a database, read [upgrade and rollback](deployment.md#upgrade-and-rollback)
+before starting a newer checkout: server startup automatically applies migrations.
 
 ## 2. Create a private local configuration
 

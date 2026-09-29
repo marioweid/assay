@@ -44,8 +44,9 @@ Create a project, save its one-time ingest key, and create an application.
 
 ## Instrument one answer
 
-For this checkout's session/local-mode features, use the checkout SDK rather than the older
-published `assay-sdk==0.3.0` package. In your application's uv project:
+For session/local-mode features, use SDK **0.4.0 or newer** once its PyPI release is verified.
+Published `assay-sdk==0.3.0` does not include them. To use the current source checkout instead,
+in your application's uv project:
 
 ```bash
 uv add --editable /absolute/path/to/assay/clients/python/assay

@@ -1,5 +1,6 @@
 """Python SDK for Assay tracing and evaluation workflows."""
 
+from assay._version import __version__
 from assay.client import Client
 from assay.exceptions import (
     AssayAPIError,
@@ -47,8 +48,6 @@ from assay.models import (
     TraceScoreSummary,
 )
 from assay.tracing import AssaySpan, flush, init, session, shutdown, span, trace
-
-__version__ = "0.3.0"
 
 __all__ = [
     "APIKey",

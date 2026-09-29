@@ -4,7 +4,7 @@ import assay
 
 
 def test_exposes_functional_release_version() -> None:
-    assert assay.__version__ == "0.3.0"
+    assert assay.__version__ == metadata.version("assay-sdk")
 
 
 def test_package_exports_structured_message_types() -> None:

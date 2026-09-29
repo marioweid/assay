@@ -51,10 +51,11 @@ latest turns in chronological order for server-side model context. The Python ma
 client exposes `client.sessions.list(application_id)`,
 `client.sessions.turns(application_id, session_id, cursor=...)`, and
 `client.sessions.recent(application_id, session_id)`. A session ID is a correlation key,
-**not** permission to read a transcript. The checkout Python tracing helper
-`assay.session(...)` scopes new spans using task-local context; its separate demo chat uses a
-signed browser capability for transcript reads. Neither is in published `assay-sdk==0.3.0`,
-and persistent migration/rollout remains gated on database verification.
+**not** permission to read a transcript. The Python tracing helper `assay.session(...)` in the
+checkout and SDK 0.4.0+ scopes new spans using task-local context; the separate demo chat uses a
+signed browser capability for transcript reads and is not part of the SDK. Published
+`assay-sdk==0.3.0` has no session helper. Persistent migration/rollout remains gated on database
+verification.
 
 ## Baseline: `gen_ai.*` attributes Assay reads
 

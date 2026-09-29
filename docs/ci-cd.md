@@ -238,11 +238,16 @@ and publishes both files to PyPI. Confirm the release with `uv add assay-sdk`.
 ## `container-publish.yml`
 
 `v<semver>` tags and manual dispatches with a validated `version` input first build and smoke both
-linux/amd64 and linux/arm64 images. Only the subsequent `ghcr` environment-protected job receives
-`packages: write`: it publishes `ghcr.io/marioweid/assay:<version>` and `sha-<commit>`, adds `latest`
-only for non-prereleases, and attaches BuildKit SBOM/provenance. It then checks the manifest and pulls
-the digest through an empty Docker configuration before rerunning the smoke test. The GHCR package
-must be made public by a maintainer before that anonymous pull can pass.
+linux/amd64 and linux/arm64 images. Before pushing a release tag, create both `ghcr` and
+`ghcr-public-verify` GitHub environments with a required maintainer reviewer; a workflow's
+`environment:` name alone does **not** enforce approval. Only the `ghcr`-protected publish job
+receives `packages: write`: it pushes `ghcr.io/marioweid/assay:<version>` and `sha-<commit>`, adds `latest`
+for non-prereleases, and attaches BuildKit SBOM/provenance. It passes the digest to a separate,
+read-only `ghcr-public-verify` job. A new GHCR package defaults to **private**, even with a public
+repository. After publication, the maintainer must open the package's **Package settings** on GitHub
+and change its visibility to **Public** (irreversible), then approve `ghcr-public-verify`. That job
+checks both manifest architectures, pulls by digest with an empty Docker configuration, and repeats
+the disposable smoke test. Until it succeeds, do not claim the image is publicly runnable.
 
 `tests/acceptance/docs-smoke.sh` verifies that README embeds the exact published Compose file, checks
 local Markdown links, validates Linux credential generation, and sends the quickstart SDK trace through

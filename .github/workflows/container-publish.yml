@@ -76,6 +76,9 @@ jobs:
     name: Build and smoke test
     needs: prepare
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_CREATED: ${{ needs.prepare.outputs.created }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,12 +91,12 @@ jobs:
           set -euo pipefail
           image="assay-container-ci:${GITHUB_SHA}"
           docker buildx build --load --platform linux/amd64 --tag "$image" \
-            --build-arg "VERSION=${{ needs.prepare.outputs.version }}" \
+            --build-arg "VERSION=$RELEASE_VERSION" \
             --build-arg "REVISION=$GITHUB_SHA" \
-            --build-arg "CREATED=${{ needs.prepare.outputs.created }}" \
+            --build-arg "CREATED=$RELEASE_CREATED" \
             --file assayd/Dockerfile .
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = \
-            "${{ needs.prepare.outputs.version }}"
+            "$RELEASE_VERSION"
           tests/acceptance/container-smoke.sh "$image"
       - name: Build and smoke test linux/arm64
         shell: bash
@@ -101,14 +104,14 @@ jobs:
           set -euo pipefail
           image="assay-container-ci-arm64:${GITHUB_SHA}"
           docker buildx build --load --platform linux/arm64 --tag "$image" \
-            --build-arg "VERSION=${{ needs.prepare.outputs.version }}" \
+            --build-arg "VERSION=$RELEASE_VERSION" \
             --build-arg "REVISION=$GITHUB_SHA" \
-            --build-arg "CREATED=${{ needs.prepare.outputs.created }}" \
+            --build-arg "CREATED=$RELEASE_CREATED" \
             --file assayd/Dockerfile .
           tests/acceptance/container-smoke.sh "$image"
 
   publish:
-    name: Publish verified release
+    name: Publish built release
     needs: [prepare, build]
     runs-on: ubuntu-latest
     environment:
@@ -117,6 +120,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    env:
+      RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,7 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          image="${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version }}"
+          image="$RELEASE_IMAGE:$RELEASE_VERSION"
           if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
             echo "release image already exists: $image" >&2
             exit 1
@@ -152,11 +160,35 @@ jobs:
             CREATED=${{ needs.prepare.outputs.created }}
           sbom: true
           provenance: mode=max
+
+  verify:
+    name: Verify public release
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    # A newly created GHCR package defaults to private. Make it public in package settings,
+    # then approve this environment to prove anonymous pull before declaring the release ready.
+    environment:
+      name: ghcr-public-verify
+      url: https://${{ needs.prepare.outputs.image }}
+    permissions:
+      contents: read
+    env:
+      RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
+      RELEASE_DIGEST: ${{ needs.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Verify published manifest and anonymous pull
         shell: bash
         run: |
           set -euo pipefail
-          image="${{ needs.prepare.outputs.image }}@${{ steps.image.outputs.digest }}"
+          [[ "$RELEASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "publish job did not return a valid image digest" >&2
+            exit 1
+          }
+          image="$RELEASE_IMAGE@$RELEASE_DIGEST"
           docker buildx imagetools inspect "$image" --raw >manifest.json
           python3 - <<'PY'
           import json

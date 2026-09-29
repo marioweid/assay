@@ -21,6 +21,7 @@ from typing_extensions import override
 
 from assay._exporter import AssaySpanExporter
 from assay._serialization import serialize_capture
+from assay._version import __version__
 from assay.conventions import (
     ASSAY_APPLICATION_SLUG,
     ASSAY_CAPTURE_ERROR,
@@ -183,7 +184,7 @@ def init(
             )
         )
         provider.add_span_processor(_processor_factory(exporter))
-        tracer = provider.get_tracer("assay", "0.3.0")
+        tracer = provider.get_tracer("assay", __version__)
         _state = _State(config=config, provider=provider, tracer=tracer)
 
 

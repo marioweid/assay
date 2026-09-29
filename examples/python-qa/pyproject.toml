@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A small OpenAI Q&A app traced and scored by a local Assay instance"
 requires-python = ">=3.13"
 dependencies = [
-    "assay-sdk==0.3.0",
+    "assay-sdk==0.4.0",
     "fastapi==0.141.1",
     "openai==3.8.0",
     "uvicorn==0.52.4",

@@ -1,7 +1,7 @@
 # Traced Python Q&A example
 
-A small uv project using the checkout SDK (the published `assay-sdk==0.3.0` does not yet
-include session context) and an OpenAI-compatible model. Ask about Assay using three built-in
+A small uv project using the checkout SDK (or verified `assay-sdk` 0.4.0+; published 0.3.0
+lacks session context) and an OpenAI-compatible model. Ask about Assay using three built-in
 context snippets, or ask general questions; every reply sends a trace to your local Assay instance.
 This optional example is separate from the current-checkout SDK workflow in the
 [Linux quickstart](../../docs/quickstart-linux.md), which needs no paid provider just to trace.
@@ -49,8 +49,8 @@ docker compose --env-file ../../.env up --build -d
 ```
 
 Open [the chat app](http://localhost:8090) and ask a sample question. Each reply includes a
-**View trace in Assay** link. The chat image builds the checkout SDK; pin a verified new
-published release before deploying this example outside the checkout.
+**View trace in Assay** link. The chat image builds the checkout SDK; pin a verified 0.4.0+
+PyPI release before deploying this example outside the checkout.
 
 This includes the repository's Assay/Postgres stack and waits for Assay to be healthy. It uses the
 same `assay` Compose project and persistent Postgres volume as the root setup. All three services

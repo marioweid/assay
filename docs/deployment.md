@@ -146,6 +146,7 @@ dataset cascades its runs.
 
 Sessions, JSON OTLP/HTTP, manual instrumentation, typed management and the CLI are implemented in
 this checkout. Binary protobuf, OTLP/gRPC, automatic provider instrumentation, SSO and RBAC are not.
-Local mode and new session SDK features require the checkout, not published `assay-sdk==0.3.0`.
+Local mode and session SDK features require the checkout or a verified `assay-sdk` 0.4.0+ PyPI
+release; published 0.3.0 does not include them. This SDK release does not publish a container image.
 
 **Next:** [Configuration reference](configuration.md) · [Troubleshooting](troubleshooting.md)

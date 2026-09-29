@@ -14,8 +14,8 @@ git clone https://github.com/marioweid/assay.git
 Set-Location assay
 ```
 
-Use the checkout containing local-mode support. No Assay container image is published yet, and
-new local-mode/session SDK features are not in published `assay-sdk==0.3.0`.
+Use the checkout containing local-mode support. No Assay container image is published yet;
+SDK local-mode/session features require a verified 0.4.0+ release or this checkout (not 0.3.0).
 If reusing an existing database, read [upgrade and rollback](deployment.md#upgrade-and-rollback)
 first: migrations run automatically when the server starts.
 

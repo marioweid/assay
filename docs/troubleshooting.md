@@ -23,7 +23,7 @@ If discovery itself fails, the UI shows **Retry connection**, not an anonymous f
 
 The CLI runs on your host and does not read Docker's `.env` automatically. Export
 `ASSAY_LOCAL_MODE=true` in that shell, or pass `local_mode=True` to the Python management Client.
-Use the checkout SDK; the published 0.3.0 package does not contain this option.
+Use the checkout SDK or verified `assay-sdk` 0.4.0+; published 0.3.0 lacks this option.
 
 ### HTTP 401 in local mode
 
@@ -82,8 +82,9 @@ Existing untagged traces remain in Traces and are not inferred into sessions.
 
 ### `assay.session` or `local_mode` is missing
 
-You are likely running the published SDK instead of the checkout. From your uv application project,
-install the editable checkout path. Confirm the interpreter/module location without printing secrets:
+Check `assay.__version__`: published 0.3.0 lacks these APIs. Upgrade to verified `assay-sdk`
+0.4.0+, or install the editable checkout path from your uv application project. Confirm the
+interpreter/module location without printing secrets:
 
 ```bash
 uv run python -c "import assay; print(assay.__file__)"

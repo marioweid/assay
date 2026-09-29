@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 from collections.abc import Callable, Iterator, Mapping
+from importlib import metadata
 from typing import cast
 
 import pytest
@@ -58,6 +59,7 @@ def test_init_uses_private_provider_and_application_resource(
     span = _span_named(exporter, f"{answer.__module__}.{answer.__qualname__}")
     assert span.resource.attributes["assay.application.slug"] == "support-bot"
     assert span.resource.attributes["service.name"] == "support-bot"
+    assert span.instrumentation_scope.version == metadata.version("assay-sdk")
 
 
 def test_init_uses_explicit_service_name(exporter: InMemorySpanExporter) -> None:

@@ -37,6 +37,7 @@ from assay._parsing import (
     parse_trace,
     parse_trace_summary,
 )
+from assay._version import __version__
 from assay.exceptions import (
     AssayAPIError,
     AssayConfigurationError,
@@ -75,7 +76,7 @@ from assay.models import (
 
 AuthMode = Literal["none", "admin", "project", "trace"]
 JsonObject = dict[str, object]
-USER_AGENT = "assay-sdk/0.3.0"
+USER_AGENT = f"assay-sdk/{__version__}"
 _INVALID_JSON = object()
 T = TypeVar("T")
 

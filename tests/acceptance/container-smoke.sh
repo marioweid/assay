@@ -101,11 +101,11 @@ compose exec --no-TTY postgres getent hosts host.docker.internal >/dev/null
 ENDPOINT="http://$(compose port assayd 8080)"
 INDEX=$(curl --fail --silent --show-error "$ENDPOINT/")
 printf '%s' "$INDEX" | grep -E 'src="/assets/index-[A-Za-z0-9_-]+\.js"' >/dev/null
-curl --fail --silent --show-error "$ENDPOINT/assay-icon.png" >/dev/null
+curl --fail --silent --show-error --output /dev/null "$ENDPOINT/assay-icon.png"
 STYLE_PATH=$(printf '%s' "$INDEX" | grep -oE '/assets/index-[A-Za-z0-9_-]+\.css' | head -1)
 STYLE=$(curl --fail --silent --show-error "$ENDPOINT$STYLE_PATH")
 FONT_PATH=$(printf '%s' "$STYLE" | grep -oE '/assets/[A-Za-z0-9_-]+\.woff2' | head -1)
-curl --fail --silent --show-error "$ENDPOINT$FONT_PATH" >/dev/null
+curl --fail --silent --show-error --output /dev/null "$ENDPOINT$FONT_PATH"
 curl --fail --silent --show-error "$ENDPOINT/readyz" >/dev/null
 DEEP_LINK=$(curl --fail --silent --show-error "$ENDPOINT/apps")
 printf '%s' "$DEEP_LINK" | grep -F 'id="root"' >/dev/null
@@ -113,7 +113,7 @@ if [[ $(curl --silent --output /dev/null --write-out '%{http_code}' "$ENDPOINT/v
   echo "container smoke: unauthenticated API request was not rejected" >&2
   exit 1
 fi
-compose exec --no-TTY assayd /assayd healthcheck
+MSYS2_ARG_CONV_EXCL=/assayd compose exec --no-TTY assayd /assayd healthcheck
 
 cd "$ROOT"
 printf 'container smoke: %s passed\n' "$IMAGE"

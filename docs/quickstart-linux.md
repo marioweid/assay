@@ -14,8 +14,9 @@ git clone https://github.com/marioweid/assay.git
 cd assay
 ```
 
-Use the checkout containing local-mode support. There is no published Assay container image yet;
-SDK local-mode/session features are in published `assay-sdk` 0.4.0 or this checkout (not 0.3.0).
+This guide builds the checkout containing local-mode support. For the public server image without a
+source build, follow the [published-image setup](deployment.md#start-and-verify). SDK local-mode/session
+features are in published `assay-sdk` 0.4.0 or this checkout (not 0.3.0).
 If you already have a database, read [upgrade and rollback](deployment.md#upgrade-and-rollback)
 before starting a newer checkout: server startup automatically applies migrations.
 
@@ -124,15 +125,18 @@ with `docker compose up -d`, then reload the UI and connect with that token. The
 
 Network deployments additionally need HTTPS/access controls; see [deployment](deployment.md).
 
-## Published images (future release path)
+## Published server image
 
-After a maintainer publishes and verifies an image, use
-[`compose.published.yaml`](../compose.published.yaml) with `ASSAY_IMAGE` set to that verified tag/digest:
+For a fresh deployment, use the [verified server v0.1.0 digest and private credential setup](deployment.md#start-and-verify).
+If working from this repository checkout, set `ASSAY_IMAGE` in `.env` to the digest in
+[`.env.example`](../.env.example), and start a **separate** Compose project to avoid reusing an
+existing source stack's volume:
 
 ```bash
-docker compose -f compose.published.yaml up -d
+docker compose -p assay-published -f compose.published.yaml up -d
 ```
 
-Do not combine it with source Compose or invent a container tag from the Python package version.
+Do not combine Compose files or infer a server-image tag from the Python package version. Read the
+[upgrade procedure](deployment.md#upgrade-and-rollback) before using an existing database.
 
 **Next:** [UI tour](concepts.md) · [SDK](python-sdk.md) · [CLI](cli.md) · [Troubleshooting](troubleshooting.md)

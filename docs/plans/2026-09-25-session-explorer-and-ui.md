@@ -1,8 +1,84 @@
-# Session explorer and conversation-first UI — proposed plan
+# Session explorer and conversation-first UI — implementation plan
 
-**Status:** Visual direction approved from a small standalone Sessions preview on 2026-09-25;
-preview removed at the user's request. Planning only; no implementation authorized by this
-document. Implement on a feature branch after preserving the uncommitted local-chat work.
+**Status:** Implemented on `feat/session-explorer-ui` (2026-09-27), pending manual
+browser/visual signoff and explicit rollout approval. The approved standalone preview files were removed at
+the user's request. Root-tagged session reads, generated clients, Sessions list/detail and
+source inspector, task-local Python SDK session context, signed-cookie demo chat and a protected
+offline-evaluation endpoint are in the branch. Trace detail leads with captured conversation.
+The frontend passed synthetic and **isolated database-backed** embedded-browser acceptance;
+the chat service passed signed-cookie, two-client, persisted-history, model-context and
+service-recreation checks against disposable Assay/PostgreSQL. Actual deployed-chat process
+restart and two-browser visual behavior and final human visual review are not yet verified. The user started Docker; the persisted Assay/Postgres containers auto-resumed and
+were stopped with permission. Their named volumes were retained, **no migration was run on persistent data**, and the
+isolated acceptance stack cleaned up. No SDK release was published.
+
+## Visual fidelity correction — pending human signoff
+
+The user-requested comparison recovered the original preview HTML and confirmed structural
+and styling drift. The follow-up now restores recent sessions, a continuous conversation,
+and the inspector together on desktop; clickable role-colored bubbles; summary chips;
+duration/token tiles; execution/context evidence; and timing beneath the conversation.
+The shell uses the approved midnight palette, system typography and spacing. Existing
+application/theme/disconnect controls remain real controls, with aligned responsive sizing;
+a global `font: inherit` rule had overridden button text sizes and now sets only font family.
+The obsolete Plex Sans dependency is removed. Mobile stacks the inspector below the thread
+and retains navigation through the drawer and All sessions link. No session activity,
+scores or semantic titles are invented; partial counts explicitly say loaded.
+
+97 focused component/unit tests and eight synthetic Playwright/axe checks pass, including
+red/green composition assertions, 320–1440px toolbar bounds, long names/system theme,
+320/390/1440px panel placement, both themes, keyboard timing zoom and navigation,
+empty/error/retry and long messages. Lint, formatting, typecheck and build pass. Added
+regressions cover scope-switch selection reset, partial counts, recent-list retry and rich
+message controls outside the selection button. A read-only independent review failed at
+its usage limit with no report; self-review is complete, not independent approval.
+
+Reference: `%TEMP%/assay-approved-mockup-review.html`; before/after synthetic screenshots:
+`%TEMP%/assay-ui-comparison/` and `%TEMP%/assay-ui-corrected/`. The deleted repository mockup
+folder remains deleted. No persistent service/data changed. Human visual signoff, deployed
+chat/browser checks and persistent-rollout approval remain separate gates.
+
+## Safe frontend preview without Docker
+
+From `web/`, run:
+
+```bash
+node_modules/.bin/playwright test --config playwright.sessions.config.ts
+```
+
+This launches a temporary Vite server on `127.0.0.1:5271`, intercepts **synthetic** Assay API
+responses, and stops the server afterward. It exercises Sessions list/detail, source scores,
+model/tool/context inspector, transcript isolation, zoomable timeline, keyboard scrolling,
+empty/error/retry states, long text and IDs, light/dark themes, mobile/desktop and axe. It uses
+no credentials or persistent stack and stores no preview screenshots or traces. To inspect the
+synthetic UI interactively, run the same Playwright command with `--debug` and
+`--grep "1440px in dark mode"`; use the Playwright Inspector to advance through the list,
+conversation, source inspector and timeline. For component checks run
+`node_modules/.bin/vitest run src/features/sessions` from `web/`. Neither command
+proves migration, PostgreSQL isolation, signed-cookie integration or actual chat persistence.
+Run those against **disposable** PostgreSQL only after the separate database gate; never use the
+persisted local chat/Assay Compose project for this branch without explicit approval.
+
+## Disposable database-backed acceptance
+
+With Docker running and the persisted containers stopped, run `./tests/acceptance/run.sh` from
+the repository root (`pnpm`, `uv` and Node must be on `PATH`). It creates a uniquely named
+PostgreSQL/Assay/fake-judge stack, tests the **embedded** production UI against real API reads,
+and removes its own containers, images, volumes and temporary credentials afterward. On this
+branch all 10 browser checks (including a real two-turn, opaque-ID Sessions flow), docs smoke,
+SDK product acceptance and a demo-chat TestClient acceptance check passed. The chat check
+uses a fake external model but real Assay, PostgreSQL and signed cookies; it covers context
+across turns, two independent cookie jars, service recreation and New Chat rotation. The
+synthetic browser checks remain separate; they do not count as database acceptance. Disposable PostgreSQL migration/backfill, project isolation,
+late-root and deletion checks passed with `CI=1 go test -p 1 ./... -count=1` in `assayd/`.
+A 100k-trace fixture measured session summaries at about 19 ms; recent, first-page and late
+cursor reads in a 10k-turn session used the start-time index, including a prepared generic
+plan (~0.03 ms for the measured late page). This is fixture evidence, **not** a latency promise
+for production-size histories. The migration holds an exclusive lock during backfill/index
+creation; size its runtime/WAL on representative disposable data and approve a maintenance
+window before touching persistent volumes. A deployed chat process/browser restart and
+human review of populated UI remain separate gates. Windows-local Go race checks require a
+CGO toolchain and were not run; ordinary Go tests, vet and build passed.
 
 ## Outcome and decisions
 
@@ -161,13 +237,13 @@ each turn remains its own trace, and one session correlates multiple traces.
 
 - OTLP mapping already merges resource/span attrs into each span and mirrors the root onto
   `traces.attributes`: `assayd/internal/otlp/map.go` and
-  `assayd/db/queries/traces.sql`. No session index or session endpoint exists today.
+  `assayd/db/queries/traces.sql`. This branch adds the session projection and endpoints.
 - The SDK has a private tracer provider and explicit `span`/`trace` helpers in
   `clients/python/assay/src/assay/tracing.py`. Context must be added there, not by a mutable
   global default. Server list APIs use cursor pagination; follow project-scoped auth patterns.
 - `web/src/features/traces/conversation-model.ts`, `trace-detail.tsx` and
-  `span-waterfall.tsx` already parse messages and show selectable timing. The app already has
-  light/dark tokens in `web/src/styles.css`; the demo chat is independent/light-only.
+  `span-waterfall.tsx` parse messages and show selectable timing. The app retains light/system
+  themes with dark as the new default; the separate demo chat now shares its visual language.
 - This explicitly **extends** earlier M7 plans that excluded cross-trace sessions and defers
   E4's screenshot lock until final visual acceptance. It does not imply a real login system or
   change existing trace retention, scoring, or dataset semantics.

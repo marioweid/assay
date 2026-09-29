@@ -114,8 +114,13 @@ func (a *App) Serve(ctx context.Context) error {
 		cancel()
 		workers.Wait()
 	}()
-	handler := httpserver.NewMux(a.database, a.logger)
-	a.registerRoutes(handler)
+	mux := httpserver.NewMux(a.database, a.logger)
+	a.registerRoutes(mux)
+	var handler http.Handler = mux
+	if a.config.LocalMode {
+		a.logger.Warn("Local mode enabled: no admin token required; restrict access to a trusted host/network")
+		handler = httpserver.LocalModeGuard(handler)
+	}
 	if err := httpserver.Serve(serveCtx, a.config.HTTPAddr, handler, a.logger); err != nil {
 		return fmt.Errorf("run application HTTP server: %w", err)
 	}
@@ -126,7 +131,9 @@ func (a *App) registerRoutes(handler *http.ServeMux) {
 	api.Register(handler, api.Dependencies{
 		Analytics: domain.NewAnalyticsService(a.database),
 		Service:   a.service, Traces: a.traces, Evaluations: a.evaluations,
+		Sessions:    domain.NewSessionService(a.database),
 		Comparisons: a.comparisons, AdminToken: a.config.AdminToken, Logger: a.logger,
+		LocalMode: a.config.LocalMode,
 	})
 	otlp.Register(handler, a.service, a.traces, a.config.AutoCreateApps, a.logger)
 	ui.Register(handler, a.config.UIEnabled)

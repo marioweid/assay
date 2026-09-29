@@ -30,7 +30,7 @@ WITH target AS MATERIALIZED (
 UPDATE traces
 SET reference_answer = $1, updated_at = now()
 WHERE id = (SELECT trace_id FROM updated_span)
-RETURNING id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at
+RETURNING id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at, session_id
 `
 
 type AttachTraceReferenceParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) AttachTraceReference(ctx context.Context, arg AttachTraceRefer
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SessionID,
 	)
 	return i, err
 }
@@ -90,7 +91,7 @@ const getProjectTrace = `-- name: GetProjectTrace :one
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
        traces.total_tokens, traces.total_cost, traces.reference_answer, traces.attributes,
-       traces.created_at, traces.updated_at
+       traces.created_at, traces.updated_at, traces.session_id
 FROM traces
 JOIN applications ON applications.id = traces.application_id
 WHERE traces.id = $1 AND applications.project_id = $2
@@ -119,6 +120,7 @@ func (q *Queries) GetProjectTrace(ctx context.Context, arg GetProjectTraceParams
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SessionID,
 	)
 	return i, err
 }
@@ -144,7 +146,7 @@ func (q *Queries) GetScoredSpanEvents(ctx context.Context, arg GetScoredSpanEven
 }
 
 const getTraceByID = `-- name: GetTraceByID :one
-SELECT id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at FROM traces WHERE id = $1
+SELECT id, application_id, otel_trace_id, root_name, start_time, end_time, status, span_count, total_tokens, total_cost, reference_answer, attributes, created_at, updated_at, session_id FROM traces WHERE id = $1
 `
 
 func (q *Queries) GetTraceByID(ctx context.Context, id uuid.UUID) (Trace, error) {
@@ -165,6 +167,7 @@ func (q *Queries) GetTraceByID(ctx context.Context, id uuid.UUID) (Trace, error)
 		&i.Attributes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SessionID,
 	)
 	return i, err
 }
@@ -367,7 +370,7 @@ const listProjectTraces = `-- name: ListProjectTraces :many
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
        traces.total_tokens, traces.total_cost, traces.reference_answer, traces.attributes,
-       traces.created_at, traces.updated_at
+       traces.created_at, traces.updated_at, traces.session_id
 FROM traces
 JOIN applications ON applications.id = traces.application_id
 WHERE applications.project_id = $1
@@ -473,6 +476,7 @@ func (q *Queries) ListProjectTraces(ctx context.Context, arg ListProjectTracesPa
 			&i.Attributes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SessionID,
 		); err != nil {
 			return nil, err
 		}
@@ -615,7 +619,7 @@ WITH summary AS (
     WHERE spans.trace_id = $1
     GROUP BY spans.trace_id
 ), root AS (
-    SELECT name, status_code, attributes
+    SELECT name, status_code, attributes, parent_span_id
     FROM spans
     WHERE spans.trace_id = $1
     ORDER BY (parent_span_id IS NULL) DESC, start_time, id
@@ -630,6 +634,12 @@ SET root_name = root.name,
     total_tokens = summary.total_tokens,
     reference_answer = summary.reference_answer,
     attributes = root.attributes,
+    session_id = CASE WHEN root.parent_span_id IS NULL
+        AND jsonb_typeof(root.attributes->'session.id') = 'string'
+        AND length(root.attributes->>'session.id') BETWEEN 1 AND 128
+        AND root.attributes->>'session.id' = btrim(root.attributes->>'session.id')
+        AND root.attributes->>'session.id' !~ '[[:cntrl:]]'
+        THEN root.attributes->>'session.id' END,
     updated_at = now()
 FROM summary, root
 WHERE traces.id = summary.trace_id
@@ -639,9 +649,26 @@ RETURNING traces.id, traces.application_id, traces.otel_trace_id, traces.root_na
           traces.created_at, traces.updated_at
 `
 
-func (q *Queries) RefreshTraceSummary(ctx context.Context, selectedTraceID uuid.UUID) (Trace, error) {
+type RefreshTraceSummaryRow struct {
+	ID              uuid.UUID
+	ApplicationID   uuid.UUID
+	OtelTraceID     []byte
+	RootName        string
+	StartTime       pgtype.Timestamptz
+	EndTime         pgtype.Timestamptz
+	Status          string
+	SpanCount       int32
+	TotalTokens     int64
+	TotalCost       pgtype.Numeric
+	ReferenceAnswer pgtype.Text
+	Attributes      json.RawMessage
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+func (q *Queries) RefreshTraceSummary(ctx context.Context, selectedTraceID uuid.UUID) (RefreshTraceSummaryRow, error) {
 	row := q.db.QueryRow(ctx, refreshTraceSummary, selectedTraceID)
-	var i Trace
+	var i RefreshTraceSummaryRow
 	err := row.Scan(
 		&i.ID,
 		&i.ApplicationID,
@@ -855,7 +882,24 @@ type UpsertTraceParams struct {
 	ProjectID       uuid.UUID
 }
 
-func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace, error) {
+type UpsertTraceRow struct {
+	ID              uuid.UUID
+	ApplicationID   uuid.UUID
+	OtelTraceID     []byte
+	RootName        string
+	StartTime       pgtype.Timestamptz
+	EndTime         pgtype.Timestamptz
+	Status          string
+	SpanCount       int32
+	TotalTokens     int64
+	TotalCost       pgtype.Numeric
+	ReferenceAnswer pgtype.Text
+	Attributes      json.RawMessage
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (UpsertTraceRow, error) {
 	row := q.db.QueryRow(ctx, upsertTrace,
 		arg.ID,
 		arg.OtelTraceID,
@@ -870,7 +914,7 @@ func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace
 		arg.ApplicationID,
 		arg.ProjectID,
 	)
-	var i Trace
+	var i UpsertTraceRow
 	err := row.Scan(
 		&i.ID,
 		&i.ApplicationID,

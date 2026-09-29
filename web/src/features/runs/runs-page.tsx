@@ -96,7 +96,7 @@ export function RunsPage() {
           </h1>
         </div>
         <button
-          className="bg-blue-700 px-4 py-2 text-sm font-medium text-white"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent"
           onClick={() => setDialogOpen(true)}
         >
           New evaluation run

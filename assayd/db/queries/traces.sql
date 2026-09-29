@@ -75,7 +75,7 @@ WITH summary AS (
     WHERE spans.trace_id = sqlc.arg(selected_trace_id)
     GROUP BY spans.trace_id
 ), root AS (
-    SELECT name, status_code, attributes
+    SELECT name, status_code, attributes, parent_span_id
     FROM spans
     WHERE spans.trace_id = sqlc.arg(selected_trace_id)
     ORDER BY (parent_span_id IS NULL) DESC, start_time, id
@@ -90,6 +90,12 @@ SET root_name = root.name,
     total_tokens = summary.total_tokens,
     reference_answer = summary.reference_answer,
     attributes = root.attributes,
+    session_id = CASE WHEN root.parent_span_id IS NULL
+        AND jsonb_typeof(root.attributes->'session.id') = 'string'
+        AND length(root.attributes->>'session.id') BETWEEN 1 AND 128
+        AND root.attributes->>'session.id' = btrim(root.attributes->>'session.id')
+        AND root.attributes->>'session.id' !~ '[[:cntrl:]]'
+        THEN root.attributes->>'session.id' END,
     updated_at = now()
 FROM summary, root
 WHERE traces.id = summary.trace_id
@@ -102,7 +108,7 @@ RETURNING traces.id, traces.application_id, traces.otel_trace_id, traces.root_na
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
        traces.total_tokens, traces.total_cost, traces.reference_answer, traces.attributes,
-       traces.created_at, traces.updated_at
+       traces.created_at, traces.updated_at, traces.session_id
 FROM traces
 JOIN applications ON applications.id = traces.application_id
 WHERE applications.project_id = sqlc.arg(project_id)
@@ -152,7 +158,7 @@ ORDER BY scores.trace_id, scores.scorer, scores.created_at DESC, scores.id DESC;
 SELECT traces.id, traces.application_id, traces.otel_trace_id, traces.root_name,
        traces.start_time, traces.end_time, traces.status, traces.span_count,
        traces.total_tokens, traces.total_cost, traces.reference_answer, traces.attributes,
-       traces.created_at, traces.updated_at
+       traces.created_at, traces.updated_at, traces.session_id
 FROM traces
 JOIN applications ON applications.id = traces.application_id
 WHERE traces.id = $1 AND applications.project_id = $2;

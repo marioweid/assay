@@ -13,6 +13,9 @@ dependencies = [
 [tool.uv]
 package = false
 
+[tool.uv.sources]
+assay-sdk = { path = "../../clients/python/assay", editable = true }
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"

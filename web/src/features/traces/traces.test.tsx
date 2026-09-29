@@ -6,11 +6,13 @@ import { MemoryRouter } from "react-router";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 
 const appID = "019d11d2-cbd3-7a5e-ae83-9b791c9329de";
 const otherAppID = "019d11d2-cbd3-7a5e-ae83-9b791c9329df";
 const traceID = "019d11d2-cbd3-7a5e-ae83-9b791c9329aa";
 const server = setupServer(
+  tokenModeServerInfo,
   http.get(`*/v1/traces/${traceID}/scoring-eligibility`, () =>
     HttpResponse.json({
       items: [
@@ -169,7 +171,9 @@ test("links score summaries to their captured trace evidence", async () => {
     "true",
   );
   expect(screen.getByText("Captured evidence")).toBeInTheDocument();
-  expect(screen.getByText(/Where are traces stored/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Conversation" })).toHaveTextContent(
+    "Where are traces stored?",
+  );
 });
 
 test("aborts stale trace requests when the application changes", async () => {
@@ -300,6 +304,60 @@ test("inspects nested spans, scores, and JSON as text", async () => {
   expect(screen.getByText("Threshold 0.7")).toBeInTheDocument();
   expect(screen.getByText("openai / judge")).toBeInTheDocument();
   expect(screen.getByText(/"citations"/)).toBeInTheDocument();
+});
+
+test("captured conversation leads trace detail and stays visible while inspecting scores", async () => {
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/traces/${traceID}`, () => HttpResponse.json(traceDetailFixture())),
+  );
+  renderApp(`/apps/${appID}/traces/${traceID}`);
+  const conversation = await screen.findByRole("region", { name: "Conversation" });
+  const tree = screen.getByRole("tree");
+  expect(
+    conversation.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Scores" }));
+  expect(conversation).toHaveTextContent("In Postgres.");
+  expect(screen.getByText("Whole trace score")).toBeInTheDocument();
+});
+
+test("uncaptured model calls retain diagnostics without inventing messages", async () => {
+  const fixture = traceDetailFixture();
+  const root = fixture.spans[0];
+  const child = root?.children[0];
+  if (root === undefined || child === undefined) throw new Error("Missing fixture spans");
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/traces/${traceID}`, () =>
+      HttpResponse.json({
+        ...fixture,
+        spans: [
+          { ...root, children: [{ ...child, attributes: { "gen_ai.operation.name": "chat" } }] },
+        ],
+      }),
+    ),
+  );
+  renderApp(`/apps/${appID}/traces/${traceID}`);
+  expect(await screen.findByText(/No messages captured for this model call/)).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument();
+  expect(screen.getByRole("treeitem", { name: /child span/ })).toBeInTheDocument();
+});
+
+test("non-GenAI traces still lead to the span inspector", async () => {
+  const fixture = traceDetailFixture();
+  const root = fixture.spans[0];
+  if (root === undefined) throw new Error("Missing fixture root");
+  server.use(
+    applicationHandler(),
+    http.get(`*/v1/traces/${traceID}`, () =>
+      HttpResponse.json({ ...fixture, spans: [{ ...root, children: [] }] }),
+    ),
+  );
+  renderApp(`/apps/${appID}/traces/${traceID}`);
+  expect(await screen.findByRole("treeitem", { name: /root span/ })).toBeInTheDocument();
+  expect(screen.queryByText(/No messages captured for this model call/)).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
 });
 
 test("shows captured child-span content in the trace overview", async () => {

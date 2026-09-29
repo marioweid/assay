@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import suppress
@@ -31,6 +32,8 @@ from assay._parsing import (
     parse_scorer_config,
     parse_scoring_eligibility,
     parse_scoring_task,
+    parse_session,
+    parse_session_turn,
     parse_trace,
     parse_trace_summary,
 )
@@ -64,6 +67,8 @@ from assay.models import (
     ScorerConfig,
     ScoringEligibility,
     ScoringTask,
+    Session,
+    SessionTurn,
     TargetEndpoint,
     Trace,
 )
@@ -83,11 +88,13 @@ class _Transport:
         api_key: str | None,
         admin_token: str | None,
         timeout: float,
+        local_mode: bool = False,
         http_client: httpx.Client | None = None,
     ) -> None:
         self._endpoint = _validate_endpoint(endpoint)
         self._api_key = api_key
         self._admin_token = admin_token
+        self._local_mode = local_mode
         self._owns_client = http_client is None
         self._client = http_client or httpx.Client(timeout=timeout)
 
@@ -139,20 +146,33 @@ class _Transport:
         if auth == "none":
             return {}
         if auth == "admin":
-            if not self._admin_token:
-                raise AssayConfigurationError("admin credential is required")
-            return {"Authorization": f"Bearer {self._admin_token}"}
+            return self._admin_headers("admin")
         if self._api_key:
             return {"X-API-Key": self._api_key}
-        if auth == "trace" and self._admin_token:
-            return {"Authorization": f"Bearer {self._admin_token}"}
         if auth == "trace":
-            raise AssayConfigurationError("project or admin credential is required")
+            return self._admin_headers("project or admin")
         raise AssayConfigurationError("project credential is required")
+
+    def _admin_headers(self, label: str) -> dict[str, str]:
+        if self._admin_token:
+            return {"Authorization": f"Bearer {self._admin_token}"}
+        if self._local_mode:
+            return {}
+        raise AssayConfigurationError(f"{label} credential is required")
 
 
 class Client:
-    """Synchronous, context-managed client for Assay management APIs."""
+    """Synchronous, context-managed client for Assay management APIs.
+
+    Args:
+        endpoint: Assay server URL, not the model or application target URL.
+        api_key: Project key for scoped trace operations; never replaced by local mode.
+        admin_token: Management credential for token-protected servers.
+        local_mode: Allow credential-free management. Defaults to ASSAY_LOCAL_MODE
+            when omitted. The server must independently enable local mode.
+        timeout: HTTP request timeout in seconds.
+        _http_client: Injected transport for tests; the caller owns its lifecycle.
+    """
 
     def __init__(
         self,
@@ -160,6 +180,7 @@ class Client:
         *,
         api_key: str | None = None,
         admin_token: str | None = None,
+        local_mode: bool | None = None,
         timeout: float = 10.0,
         _http_client: httpx.Client | None = None,
     ) -> None:
@@ -168,6 +189,7 @@ class Client:
             endpoint,
             api_key=api_key,
             admin_token=admin_token,
+            local_mode=_local_mode(local_mode),
             timeout=timeout,
             http_client=_http_client,
         )
@@ -178,6 +200,7 @@ class Client:
         self.scorers = ScorersResource(self._transport)
         self.runs = RunsResource(self._transport)
         self.traces = TracesResource(self._transport)
+        self.sessions = SessionsResource(self._transport)
         self.scores = ScoresResource(self._transport)
         self.metrics = MetricsResource(self._transport)
 
@@ -199,6 +222,17 @@ class Client:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+
+def _local_mode(explicit: bool | None) -> bool:
+    if explicit is not None:
+        return explicit
+    value = os.getenv("ASSAY_LOCAL_MODE", "false").strip().lower()
+    if value in {"true", "1", "t"}:
+        return True
+    if value in {"false", "0", "f", ""}:
+        return False
+    raise AssayConfigurationError("ASSAY_LOCAL_MODE must be true or false")
 
 
 class MetricsResource:
@@ -1047,6 +1081,67 @@ class RunsResource:
         return parse_eval_run(operation, _payload(operation, payload))
 
 
+class SessionsResource:
+    """Project-authenticated reads of root-tagged application sessions."""
+
+    def __init__(self, transport: _Transport) -> None:
+        self._transport = transport
+
+    def list(
+        self, application_id: str, *, limit: int = 50, cursor: str | None = None
+    ) -> Page[Session]:
+        params = _with_param(
+            _page_params(limit, cursor, maximum=200),
+            "application_id",
+            application_id,
+            "application ID",
+        )
+        operation = "list sessions"
+        payload = self._transport.request(
+            operation, "GET", "/v1/sessions", auth="trace", params=params
+        )
+        return parse_page(operation, _payload(operation, payload), parse_session)
+
+    def recent(
+        self, application_id: str, session_id: str, *, limit: int = 19
+    ) -> tuple[SessionTurn, ...]:
+        if isinstance(limit, bool) or not 1 <= limit <= 19:
+            raise AssayConfigurationError("recent turn limit must be between 1 and 19")
+        params = httpx.QueryParams(
+            {
+                "application_id": _required_text(application_id, "application ID"),
+                "session_id": _session_id(session_id),
+                "limit": limit,
+            }
+        )
+        operation = "list recent session turns"
+        payload = self._transport.request(
+            operation, "GET", "/v1/session-turns/recent", auth="trace", params=params
+        )
+        return parse_collection(operation, _payload(operation, payload), parse_session_turn)
+
+    def turns(
+        self,
+        application_id: str,
+        session_id: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> Page[SessionTurn]:
+        params = _with_param(
+            _page_params(limit, cursor, maximum=200),
+            "application_id",
+            application_id,
+            "application ID",
+        )
+        params = params.set("session_id", _session_id(session_id))
+        operation = "list session turns"
+        payload = self._transport.request(
+            operation, "GET", "/v1/session-turns", auth="trace", params=params
+        )
+        return parse_page(operation, _payload(operation, payload), parse_session_turn)
+
+
 class TracesResource:
     """Project-authenticated trace inspection and scoring operations."""
 
@@ -1220,6 +1315,19 @@ def _required_text(value: str, name: str) -> str:
 
 def _segment(value: str, name: str) -> str:
     return quote(_required_text(value, name), safe="")
+
+
+def _session_id(value: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 128
+        or value != value.strip(" ")
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise AssayConfigurationError(
+            "session ID must be a nonblank opaque ID of at most 128 characters"
+        )
+    return value
 
 
 def _judge_body(config: JudgeConfig) -> dict[str, object]:

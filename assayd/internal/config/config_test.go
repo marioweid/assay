@@ -90,8 +90,8 @@ func TestParseRejectsMissingRequiredValues(t *testing.T) {
 			if err == nil {
 				t.Fatalf("parse without %s succeeded", test.key)
 			}
-			if !strings.Contains(err.Error(), "parse configuration") {
-				t.Errorf("error = %q, want parse configuration context", err)
+			if !strings.Contains(err.Error(), test.key) {
+				t.Errorf("error = %q, want missing setting %s", err, test.key)
 			}
 		})
 	}

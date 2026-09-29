@@ -28,11 +28,11 @@ if [[ -e "$TEMP_DIR/.env" ]]; then
   exit 1
 fi
 cp "$ROOT/.env.example" "$TEMP_DIR/.env"
-[[ $(openssl rand -hex 32 | wc -c) -eq 65 ]] || {
+[[ $(openssl rand -hex 32 | tr -d '\r\n' | wc -c) -eq 64 ]] || {
   echo "docs smoke: hex credential generation failed" >&2
   exit 1
 }
-[[ $(openssl rand -base64 32 | base64 --decode | wc -c) -eq 32 ]] || {
+[[ $(openssl rand -base64 32 | tr -d '\r\n' | base64 --decode | wc -c) -eq 32 ]] || {
   echo "docs smoke: encryption-key generation failed" >&2
   exit 1
 }
@@ -62,6 +62,13 @@ const files = [
   "docs/quickstart-linux.md",
   "docs/quickstart-powershell.md",
   "docs/deployment.md",
+  "docs/index.md",
+  "docs/concepts.md",
+  "docs/python-sdk.md",
+  "docs/evaluations.md",
+  "docs/cli.md",
+  "docs/configuration.md",
+  "docs/troubleshooting.md",
 ];
 const link = /\[[^\]]+\]\(([^)]+)\)/g;
 for (const relative of files) {
@@ -75,6 +82,37 @@ for (const relative of files) {
   }
 }
 NODE
+
+uv run --project "$ROOT/clients/python/assay" python - "$ROOT" <<'PYTHON'
+import ast
+import json
+import re
+import shlex
+import sys
+from pathlib import Path
+
+from assay.cli import _build_parser
+
+root = Path(sys.argv[1])
+files = [root / "README.md", root / "clients/python/assay/README.md"]
+files.extend((root / "docs").glob("*.md"))
+parser = _build_parser()
+checked = 0
+for file in files:
+    for language, source in re.findall(r"```(\w+)\n(.*?)\n```", file.read_text(), re.DOTALL):
+        if language == "python":
+            ast.parse(source, filename=str(file))
+            checked += 1
+        elif language == "json":
+            json.loads(source)
+            checked += 1
+        elif language == "text":
+            for line in source.splitlines():
+                if line.startswith("assay "):
+                    parser.parse_args(shlex.split(line)[1:])
+                    checked += 1
+print(f"docs smoke: {checked} Python/JSON/CLI examples validated without network writes")
+PYTHON
 
 if [[ -z "${ASSAY_ACCEPTANCE_ENDPOINT:-}" ]]; then
   echo "docs smoke: static checks passed (set E1 credentials for workflow smoke)"

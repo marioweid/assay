@@ -1,8 +1,9 @@
+import { Menu } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { ApplicationResponse } from "@/api/generated/types.gen";
-import { useAuth } from "@/auth/auth-context";
+import { ConnectionControl } from "@/auth/connection-control";
 import { useTheme } from "@/app/theme-provider";
 
 export type WorkspaceHeaderProps = {
@@ -10,6 +11,8 @@ export type WorkspaceHeaderProps = {
   applications: ApplicationResponse[];
   section: string;
   onSelectApplication: (applicationID: string) => void;
+  onOpenNavigation: () => void;
+  navigationOpen: boolean;
 };
 
 export function WorkspaceHeader({
@@ -17,34 +20,43 @@ export function WorkspaceHeader({
   applications,
   section,
   onSelectApplication,
+  onOpenNavigation,
+  navigationOpen,
 }: WorkspaceHeaderProps): ReactNode {
-  const { disconnect } = useAuth();
   const theme = useTheme();
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-line bg-surface px-4">
-      <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1 text-sm sm:flex">
+    <header className="workspace-header">
+      <button
+        aria-label="Open navigation"
+        aria-controls="mobile-navigation"
+        aria-expanded={navigationOpen}
+        className="workspace-menu session-icon-button md:hidden"
+        onClick={onOpenNavigation}
+        type="button"
+      >
+        <Menu aria-hidden="true" size={18} />
+      </button>
+      <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 text-xs lg:flex">
         <Link className="text-muted hover:text-ink" to="/apps">
           Applications
         </Link>
         <span aria-hidden="true" className="text-muted">
           /
         </span>
-        <Link
-          aria-current="page"
-          className="truncate font-medium text-ink"
-          to={`/apps/${application.id}`}
-        >
+        <Link className="truncate font-medium text-ink" to={`/apps/${application.id}`}>
           {application.name}
         </Link>
         <span aria-hidden="true" className="text-muted">
           /
         </span>
-        <span className="text-muted">{section}</span>
+        <span aria-current="page" className="font-semibold">
+          {section}
+        </span>
       </nav>
       <select
         aria-label="Application"
-        className="max-w-64 min-w-0 truncate rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+        className="workspace-application"
         onChange={(event) => onSelectApplication(event.target.value)}
         value={application.id}
       >
@@ -56,7 +68,7 @@ export function WorkspaceHeader({
       </select>
       <select
         aria-label="Theme"
-        className="rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+        className="workspace-theme"
         onChange={(event) => theme.setPreference(event.target.value as "system" | "light" | "dark")}
         value={theme.preference}
       >
@@ -64,13 +76,7 @@ export function WorkspaceHeader({
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-      <button
-        className="ml-auto text-sm text-muted hover:text-ink"
-        onClick={disconnect}
-        type="button"
-      >
-        Disconnect
-      </button>
+      <ConnectionControl />
     </header>
   );
 }

@@ -181,7 +181,10 @@ function DatasetView(props: DatasetViewProps) {
         </div>
       )}
       {props.error && (
-        <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
+        <p
+          className="mt-4 rounded-lg border border-warning bg-warning/10 p-3 text-sm text-ink"
+          role="alert"
+        >
           {props.error}
         </p>
       )}

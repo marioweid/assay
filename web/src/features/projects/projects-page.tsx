@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 
 import { listProjects } from "@/api/generated/sdk.gen";
 import type { ProjectResponse } from "@/api/generated/types.gen";
-import { useAuth } from "@/auth/auth-context";
+import { ConnectionControl } from "@/auth/connection-control";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { LoadingState } from "@/components/loading-state";
@@ -13,7 +13,6 @@ import { ProblemState } from "@/components/problem-state";
 import { ProjectForm } from "@/features/projects/project-form";
 
 export function ProjectsPage(): ReactNode {
-  const { disconnect } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,9 +53,7 @@ export function ProjectsPage(): ReactNode {
             Projects
           </span>
         </nav>
-        <button className="text-sm font-medium text-muted hover:text-ink" onClick={disconnect}>
-          Disconnect
-        </button>
+        <ConnectionControl />
       </header>
       <div className="mt-6 flex items-center justify-between gap-4">
         <PageHeading

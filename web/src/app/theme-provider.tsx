@@ -20,9 +20,9 @@ function storedPreference(): ThemePreference {
       return stored as ThemePreference;
     }
   } catch {
-    // Storage may be unavailable; fall back to the system theme.
+    // Storage may be unavailable; fall back to the dark theme.
   }
-  return "system";
+  return "dark";
 }
 
 function systemTheme(): "light" | "dark" {

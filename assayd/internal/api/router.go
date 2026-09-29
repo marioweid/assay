@@ -16,9 +16,11 @@ type handler struct {
 	api         huma.API
 	service     *domain.Service
 	traces      *domain.TraceService
+	sessions    *domain.SessionService
 	evaluations *domain.EvaluationService
 	comparisons *domain.RunComparisonService
 	adminToken  string
+	localMode   bool
 	logger      *slog.Logger
 }
 
@@ -27,9 +29,11 @@ type Dependencies struct {
 	Analytics   *domain.AnalyticsService
 	Service     *domain.Service
 	Traces      *domain.TraceService
+	Sessions    *domain.SessionService
 	Evaluations *domain.EvaluationService
 	Comparisons *domain.RunComparisonService
 	AdminToken  string
+	LocalMode   bool
 	Logger      *slog.Logger
 }
 
@@ -62,15 +66,19 @@ func Register(
 		analytics:   dependencies.Analytics,
 		service:     dependencies.Service,
 		traces:      dependencies.Traces,
+		sessions:    dependencies.Sessions,
 		evaluations: dependencies.Evaluations,
 		comparisons: dependencies.Comparisons,
 		adminToken:  dependencies.AdminToken,
+		localMode:   dependencies.LocalMode,
 		logger:      dependencies.Logger,
 	}
+	handlers.registerServerInfoRoute()
 	handlers.registerProjectRoutes()
 	handlers.registerAPIKeyRoutes()
 	handlers.registerApplicationRoutes()
 	handlers.registerTraceRoutes()
+	handlers.registerSessionRoutes()
 	handlers.registerDatasetRoutes()
 	handlers.registerScorerConfigRoutes()
 	handlers.registerRunComparisonRoute()
@@ -86,17 +94,15 @@ func (h *handler) projectOperation(
 	summary string,
 	errors ...int,
 ) huma.Operation {
-	return huma.Operation{
-		Method:      method,
-		Path:        path,
-		OperationID: operationID,
-		Summary:     summary,
-		Errors:      append([]int{http.StatusUnauthorized}, errors...),
-		Security: []map[string][]string{
-			{"projectBearer": {}},
-			{"projectAPIKey": {}},
-		},
+	operation := huma.Operation{
+		Method: method, Path: path, OperationID: operationID, Summary: summary,
+		Errors:   append([]int{http.StatusUnauthorized}, errors...),
+		Security: []map[string][]string{{"projectBearer": {}}, {"projectAPIKey": {}}},
 	}
+	if h.localMode {
+		operation.Security = append(operation.Security, map[string][]string{})
+	}
+	return operation
 }
 
 func traceReadOperation(operation huma.Operation) huma.Operation {
@@ -111,15 +117,14 @@ func (h *handler) operation(
 	summary string,
 	errors ...int,
 ) huma.Operation {
-	return huma.Operation{
-		Method:      method,
-		Path:        path,
-		OperationID: operationID,
-		Summary:     summary,
+	operation := huma.Operation{
+		Method: method, Path: path, OperationID: operationID, Summary: summary,
 		Errors:      append([]int{http.StatusUnauthorized}, errors...),
-		Security: []map[string][]string{
-			{"adminBearer": {}},
-		},
+		Security:    []map[string][]string{{"adminBearer": {}}},
 		Middlewares: huma.Middlewares{h.requireAdmin},
 	}
+	if h.localMode {
+		operation.Security = append(operation.Security, map[string][]string{})
+	}
+	return operation
 }

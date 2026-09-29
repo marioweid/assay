@@ -1,4 +1,11 @@
-import { Activity, Database, FlaskConical, LineChart, Settings } from "lucide-react";
+import {
+  Activity,
+  Database,
+  FlaskConical,
+  LineChart,
+  MessagesSquare,
+  Settings,
+} from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
@@ -11,6 +18,7 @@ import { WorkspaceHeader } from "@/components/workspace-header";
 import { useApplicationCatalog } from "@/features/applications/application-catalog";
 
 const sections = [
+  { key: "sessions", label: "Sessions", icon: MessagesSquare },
   { key: "traces", label: "Traces", icon: Activity },
   { key: "datasets", label: "Datasets", icon: Database },
   { key: "runs", label: "Evaluations", icon: FlaskConical },
@@ -19,8 +27,8 @@ const sections = [
 ] as const;
 
 function sectionLabel(pathname: string): string {
-  const last = pathname.split("/").filter(Boolean).at(-1) ?? "";
-  return sections.find((section) => section.key === last)?.label ?? "Workspace";
+  const sectionKey = pathname.split("/").filter(Boolean)[2] ?? "";
+  return sections.find((section) => section.key === sectionKey)?.label ?? "Workspace";
 }
 
 export function AppShell(): ReactNode {
@@ -62,43 +70,41 @@ export function AppShell(): ReactNode {
   };
 
   return (
-    <div className="min-h-screen bg-canvas text-ink md:grid md:grid-cols-[224px_minmax(0,1fr)]">
-      <aside className="hidden min-h-screen border-r border-line bg-surface px-3 py-4 md:block">
-        <Link
-          className="flex items-center gap-2 px-2 text-sm font-semibold tracking-wide text-ink"
-          to="/apps"
-        >
-          <img alt="" className="h-6 w-6" src="/assay-icon.png" />
-          Assay
+    <div className="min-h-screen bg-canvas text-ink md:grid md:grid-cols-[208px_minmax(0,1fr)]">
+      <a className="skip-link" href="#workspace-content">
+        Skip to content
+      </a>
+      <aside className="workspace-rail hidden min-h-screen border-r border-line bg-rail md:block">
+        <Link className="workspace-logo" to="/apps">
+          <span aria-hidden="true" className="workspace-mark">
+            a
+          </span>
+          <span>
+            assay<span className="text-accent">.</span>
+          </span>
         </Link>
-        <nav aria-label="Workspace" className="mt-6">
+        <nav aria-label="Workspace" className="mt-10">
           <GlobalLink label="Applications" to="/apps" />
           <GlobalLink label="Projects" to="/projects" />
         </nav>
-        <p className="mt-6 border-t border-line px-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted">
+        <p
+          title={application.name}
+          className="mt-10 truncate border-t border-line px-2 pt-5 text-xs font-medium uppercase tracking-wider text-muted"
+        >
           {application.name}
         </p>
         <SectionLinks application={application} onNavigate={null} />
       </aside>
       <div className="flex min-w-0 flex-col">
-        <div className="flex items-center gap-2 border-b border-line bg-surface md:hidden">
-          <button
-            aria-controls="mobile-navigation"
-            aria-expanded={drawerOpen}
-            className="px-3 py-3 text-sm text-ink"
-            onClick={() => setDrawerOpen(true)}
-            type="button"
-          >
-            Open navigation
-          </button>
-        </div>
         <WorkspaceHeader
+          navigationOpen={drawerOpen}
+          onOpenNavigation={() => setDrawerOpen(true)}
           application={application}
           applications={applications}
           onSelectApplication={selectApplication}
           section={sectionLabel(location.pathname)}
         />
-        <main className="min-w-0 px-5 py-6 sm:px-8">
+        <main className="workspace-content min-w-0" id="workspace-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -126,6 +132,7 @@ function GlobalLink({ label, to }: { label: string; to: string }): ReactNode {
           isActive ? "bg-accent/10 font-medium text-accent" : "text-muted hover:text-ink"
         }`
       }
+      end
       to={to}
     >
       {label}

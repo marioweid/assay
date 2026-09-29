@@ -37,6 +37,8 @@ from assay.models import (
     ScoringEligibility,
     ScoringEligibilityReason,
     ScoringTask,
+    Session,
+    SessionTurn,
     Span,
     SpanEvent,
     TargetEndpoint,
@@ -44,7 +46,7 @@ from assay.models import (
     Trace,
     TraceScoreSummary,
 )
-from assay.tracing import AssaySpan, flush, init, shutdown, span, trace
+from assay.tracing import AssaySpan, flush, init, session, shutdown, span, trace
 
 __version__ = "0.3.0"
 
@@ -84,6 +86,8 @@ __all__ = [
     "ScoringEligibility",
     "ScoringEligibilityReason",
     "ScoringTask",
+    "Session",
+    "SessionTurn",
     "Span",
     "SpanEvent",
     "TargetEndpoint",
@@ -96,6 +100,7 @@ __all__ = [
     "__version__",
     "flush",
     "init",
+    "session",
     "shutdown",
     "span",
     "trace",

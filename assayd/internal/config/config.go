@@ -24,6 +24,7 @@ type Config struct {
 	HTTPAddr           string
 	DatabaseURL        string
 	AdminToken         string
+	LocalMode          bool
 	EncryptionKey      EncryptionKey
 	JudgeBaseURL       string
 	JudgeAPIKey        string
@@ -39,7 +40,8 @@ type Config struct {
 type environmentConfig struct {
 	HTTPAddr           string `env:"ASSAY_HTTP_ADDR"             envDefault:":8080"`
 	DatabaseURL        string `env:"ASSAY_DATABASE_URL,required"`
-	AdminToken         string `env:"ASSAY_ADMIN_TOKEN,required"`
+	AdminToken         string `env:"ASSAY_ADMIN_TOKEN"`
+	LocalMode          bool   `env:"ASSAY_LOCAL_MODE" envDefault:"false"`
 	EncryptionKey      string `env:"ASSAY_ENCRYPTION_KEY,required"`
 	JudgeBaseURL       string `env:"ASSAY_JUDGE_BASE_URL"`
 	JudgeAPIKey        string `env:"ASSAY_JUDGE_API_KEY"`
@@ -94,6 +96,7 @@ func validate(raw environmentConfig) (Config, error) {
 		HTTPAddr:           raw.HTTPAddr,
 		DatabaseURL:        raw.DatabaseURL,
 		AdminToken:         raw.AdminToken,
+		LocalMode:          raw.LocalMode,
 		EncryptionKey:      key,
 		JudgeBaseURL:       raw.JudgeBaseURL,
 		JudgeAPIKey:        raw.JudgeAPIKey,
@@ -114,8 +117,8 @@ func validateValues(raw environmentConfig) error {
 	if strings.TrimSpace(raw.DatabaseURL) == "" {
 		return validationError("ASSAY_DATABASE_URL must not be empty")
 	}
-	if strings.TrimSpace(raw.AdminToken) == "" {
-		return validationError("ASSAY_ADMIN_TOKEN must not be empty")
+	if !raw.LocalMode && strings.TrimSpace(raw.AdminToken) == "" {
+		return validationError("ASSAY_ADMIN_TOKEN is required unless ASSAY_LOCAL_MODE=true")
 	}
 	if raw.WorkerConcurrency <= 0 {
 		return validationError("ASSAY_WORKER_CONCURRENCY must be greater than zero")

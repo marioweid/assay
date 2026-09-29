@@ -32,6 +32,8 @@ from assay.models import (
     ScoringEligibility,
     ScoringEligibilityReason,
     ScoringTask,
+    Session,
+    SessionTurn,
     Span,
     SpanEvent,
     TargetEndpointView,
@@ -49,6 +51,30 @@ def parse_metric(operation: str, payload: Mapping[str, object]) -> MetricPoint:
         mean=_number(operation, payload, "mean"),
         pass_rate=_number(operation, payload, "pass_rate"),
         n=_integer(operation, payload, "n"),
+    )
+
+
+def parse_session(operation: str, payload: Mapping[str, object]) -> Session:
+    return Session(
+        id=_string(operation, payload, "id"),
+        start_time=_timestamp(operation, payload, "start_time"),
+        end_time=_timestamp(operation, payload, "end_time"),
+        turn_count=_integer(operation, payload, "turn_count"),
+        first_operation=_string(operation, payload, "first_operation"),
+        last_trace_id=_string(operation, payload, "last_trace_id"),
+    )
+
+
+def parse_session_turn(operation: str, payload: Mapping[str, object]) -> SessionTurn:
+    return SessionTurn(
+        id=_string(operation, payload, "id"),
+        root_name=_string(operation, payload, "root_name"),
+        start_time=_timestamp(operation, payload, "start_time"),
+        end_time=_timestamp(operation, payload, "end_time"),
+        status=_string(operation, payload, "status"),
+        span_count=_integer(operation, payload, "span_count"),
+        total_tokens=_integer(operation, payload, "total_tokens"),
+        attributes=_json_object(operation, payload, "attributes"),
     )
 
 

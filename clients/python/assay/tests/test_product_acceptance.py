@@ -83,6 +83,7 @@ def test_sdk_trace_to_evaluation_lifecycle(
             _assert_execution_failure_and_cancellation(
                 admin, environment, workspace, dataset.id, item.id, monkeypatch
             )
+            _assert_sdk_session_continuation(admin, environment, workspace)
             _assert_revoked_key_cannot_ingest(environment, admin, workspace)
             complete = True
         finally:
@@ -330,6 +331,42 @@ def _configure_cli(
     monkeypatch.setenv("ASSAY_ENDPOINT", endpoint)
     monkeypatch.setenv("ASSAY_API_KEY", api_key)
     monkeypatch.setenv("ASSAY_ADMIN_TOKEN", admin_token)
+
+
+def _assert_sdk_session_continuation(
+    admin: Client, environment: AcceptanceEnvironment, workspace: Workspace
+) -> None:
+    session_id = f"session /?%# {uuid4().hex}"
+    assay.init(capture=True)
+    try:
+        with assay.session(session_id):
+            for index in range(2):
+                with assay.span("session-turn") as turn:
+                    turn.set_input(f"Question {index + 1}")
+                    turn.set_output(f"Answer {index + 1}")
+                    with assay.span("model-context") as child:
+                        child.set_input("Provider history must not become a turn")
+        assert assay.flush()
+    finally:
+        assay.shutdown()
+
+    with Client(environment.endpoint, api_key=workspace.api_key) as scoped:
+        sessions = scoped.sessions.list(workspace.application_id).items
+        assert len(sessions) == 1
+        assert sessions[0].id == session_id
+        assert sessions[0].turn_count == 2
+        recent = scoped.sessions.recent(workspace.application_id, session_id)
+        assert [turn.root_name for turn in recent] == ["session-turn", "session-turn"]
+        page = scoped.sessions.turns(workspace.application_id, session_id, limit=1)
+        assert len(page.items) == 1
+        assert page.next_cursor is not None
+        next_page = scoped.sessions.turns(
+            workspace.application_id, session_id, limit=1, cursor=page.next_cursor
+        )
+        assert len(next_page.items) == 1
+        assert next_page.next_cursor is None
+        assert {turn.id for turn in (*page.items, *next_page.items)} == {turn.id for turn in recent}
+    assert admin.sessions.list(workspace.application_id).items[0].id == session_id
 
 
 def _assert_revoked_key_cannot_ingest(

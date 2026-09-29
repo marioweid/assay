@@ -73,6 +73,9 @@ import type {
   GetProjectData,
   GetProjectErrors,
   GetProjectResponses,
+  GetServerInfoData,
+  GetServerInfoErrors,
+  GetServerInfoResponses,
   GetTraceData,
   GetTraceErrors,
   GetTraceResponses,
@@ -106,9 +109,18 @@ import type {
   ListProjectsData,
   ListProjectsErrors,
   ListProjectsResponses,
+  ListRecentSessionTurnsData,
+  ListRecentSessionTurnsErrors,
+  ListRecentSessionTurnsResponses,
   ListScorerConfigsData,
   ListScorerConfigsErrors,
   ListScorerConfigsResponses,
+  ListSessionsData,
+  ListSessionsErrors,
+  ListSessionsResponses,
+  ListSessionTurnsData,
+  ListSessionTurnsErrors,
+  ListSessionTurnsResponses,
   ListTracesData,
   ListTracesErrors,
   ListTracesResponses,
@@ -941,6 +953,93 @@ export const listApplicationScores = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/v1/scores",
+    ...options,
+  });
+
+/**
+ * Get public server authentication mode
+ */
+export const getServerInfo = <ThrowOnError extends boolean = false>(
+  options?: Options<GetServerInfoData, ThrowOnError>,
+): RequestResult<GetServerInfoResponses, GetServerInfoErrors, ThrowOnError> =>
+  (options?.client ?? client).get<GetServerInfoResponses, GetServerInfoErrors, ThrowOnError>({
+    url: "/v1/server-info",
+    ...options,
+  });
+
+/**
+ * List session turns
+ */
+export const listSessionTurns = <ThrowOnError extends boolean = false>(
+  options: Options<ListSessionTurnsData, ThrowOnError>,
+): RequestResult<ListSessionTurnsResponses, ListSessionTurnsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListSessionTurnsResponses, ListSessionTurnsErrors, ThrowOnError>({
+    security: [
+      {
+        key: "projectBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+      { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/session-turns",
+    ...options,
+  });
+
+/**
+ * List recent session turns
+ */
+export const listRecentSessionTurns = <ThrowOnError extends boolean = false>(
+  options: Options<ListRecentSessionTurnsData, ThrowOnError>,
+): RequestResult<ListRecentSessionTurnsResponses, ListRecentSessionTurnsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListRecentSessionTurnsResponses,
+    ListRecentSessionTurnsErrors,
+    ThrowOnError
+  >({
+    security: [
+      {
+        key: "projectBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+      { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/session-turns/recent",
+    ...options,
+  });
+
+/**
+ * List tagged sessions
+ */
+export const listSessions = <ThrowOnError extends boolean = false>(
+  options: Options<ListSessionsData, ThrowOnError>,
+): RequestResult<ListSessionsResponses, ListSessionsErrors, ThrowOnError> =>
+  (options.client ?? client).get<ListSessionsResponses, ListSessionsErrors, ThrowOnError>({
+    security: [
+      {
+        key: "projectBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+      { name: "x-api-key", type: "apiKey" },
+      {
+        key: "adminBearer",
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/v1/sessions",
     ...options,
   });
 

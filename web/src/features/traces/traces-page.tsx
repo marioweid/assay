@@ -214,7 +214,10 @@ function TraceTable(props: TraceTableProps) {
       </div>
       <TraceFilterControls {...props} />
       {props.error && (
-        <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
+        <p
+          className="mt-4 rounded-lg border border-warning bg-warning/10 p-3 text-sm text-ink"
+          role="alert"
+        >
           {props.error}
         </p>
       )}
@@ -393,8 +396,8 @@ function ScoreBadges({ trace }: { trace: TraceListResponse }) {
           aria-label={`View ${summary.scorer} score evidence`}
           className={
             summary.passed
-              ? "bg-emerald-100 px-2 py-1 text-emerald-900"
-              : "bg-rose-100 px-2 py-1 text-rose-900"
+              ? "rounded bg-success/15 px-2 py-1 text-success"
+              : "rounded bg-danger/15 px-2 py-1 text-danger"
           }
           key={summary.scorer}
           to={`/apps/${trace.application_id}/traces/${trace.id}?tab=scores&scorer=${summary.scorer}`}

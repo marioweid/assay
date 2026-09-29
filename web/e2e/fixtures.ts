@@ -131,7 +131,7 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-function tracePayload(applicationSlug: string, traceId: string): object {
+export function tracePayload(applicationSlug: string, traceId: string, sessionId?: string): object {
   const input = JSON.stringify([
     { role: "user", parts: [{ type: "text", content: "What is Assay?" }] },
   ]);
@@ -163,6 +163,9 @@ function tracePayload(applicationSlug: string, traceId: string): object {
                 endTimeUnixNano: "1787911201000000000",
                 status: { code: 1 },
                 attributes: [
+                  ...(sessionId === undefined
+                    ? []
+                    : [{ key: "session.id", value: { stringValue: sessionId } }]),
                   { key: "assay.scorable", value: { boolValue: true } },
                   { key: "gen_ai.operation.name", value: { stringValue: "chat" } },
                   { key: "gen_ai.input.messages", value: { stringValue: input } },

@@ -7,13 +7,14 @@ export function SDKSetup({
 }: {
   application: ApplicationResponse;
 }): React.ReactElement {
-  const endpoint = application.target_endpoint?.url ?? "http://localhost:8080";
+  const endpoint = window.location.origin;
   return (
     <section className="space-y-3 border-t border-line pt-6">
       <div>
         <h2 className="text-lg font-semibold">SDK setup</h2>
         <p className="mt-1 text-sm text-muted">
-          Capture is optional and may include sensitive content.
+          Capture is optional and may include sensitive content. Project ingest keys are required
+          even in local mode. Inside the Assay Compose network, use http://assayd:8080.
         </p>
       </div>
       <pre className="overflow-x-auto rounded-md border border-line bg-canvas p-4 text-sm">

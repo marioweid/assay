@@ -1,8 +1,8 @@
 # Traced Python Q&A example
 
-A small uv project using the published `assay-sdk==0.3.0` and an OpenAI-compatible model.
-Ask about Assay using three built-in context snippets, or ask general questions; every reply
-sends a trace to your local Assay instance.
+A small uv project using the checkout SDK (the published `assay-sdk==0.3.0` does not yet
+include session context) and an OpenAI-compatible model. Ask about Assay using three built-in
+context snippets, or ask general questions; every reply sends a trace to your local Assay instance.
 This optional example is separate from the current-checkout SDK workflow in the
 [Linux quickstart](../../docs/quickstart-linux.md), which needs no paid provider just to trace.
 
@@ -24,6 +24,13 @@ copy `.env.example` there and set:
   alternatively use the local-model overlay below without a provider account.
 - `ASSAY_JUDGE_MODEL`: a model available from your configured judge provider; for separate
   generator settings, set `OPENAI_MODEL` instead.
+- `ASSAY_CHAT_SIGNING_SECRET`: a **persistent** 64-character hex string from 32 random bytes.
+  Generate one privately with `python -c "import secrets; print(secrets.token_hex(32))"` and
+  store it only in `.env`. Changing it invalidates every browser's demo chat capability.
+  The default POST origin allowlist is localhost/127.0.0.1 on `ASSAY_CHAT_PORT` (8090 by
+  default), independent of the request's Host header. For another hostname or HTTPS, set
+  `ASSAY_CHAT_ORIGIN=https://your-chat-host` to its exact external origin (include a
+  nonstandard port, no trailing slash), and `ASSAY_CHAT_SECURE_COOKIE=true` for HTTPS.
 
 The example uses that same API key and model for its answer by default. Set `OPENAI_API_KEY` and/or
 `OPENAI_MODEL` to use separate generator settings; `OPENAI_BASE_URL` points the OpenAI-compatible
@@ -33,14 +40,17 @@ set; other projects keep their own settings. Local models have no live internet 
 
 ## Run everything with Docker Compose
 
-With Docker running and the root `.env` configured, run from this folder:
+**Do not run this branch against persistent data until the session migration is tested with a
+disposable PostgreSQL instance and rollout is approved.** With Docker running and the root
+`.env` configured, run from this folder after that gate:
 
 ```bash
 docker compose --env-file ../../.env up --build -d
 ```
 
 Open [the chat app](http://localhost:8090) and ask a sample question. Each reply includes a
-**View trace in Assay** link. The chat server uses the published SDK from PyPI.
+**View trace in Assay** link. The chat image builds the checkout SDK; pin a verified new
+published release before deploying this example outside the checkout.
 
 This includes the repository's Assay/Postgres stack and waits for Assay to be healthy. It uses the
 same `assay` Compose project and persistent Postgres volume as the root setup. All three services
@@ -53,8 +63,13 @@ docker compose --env-file ../../.env stop
 ```
 
 The chat port binds to localhost. Set `ASSAY_CHAT_PORT` in the root `.env` to change port 8090.
-Conversation history lives in browser memory; **New chat** clears it. Existing traces remain in
-Assay. Requests include up to 19 recent messages, with a 4,000-character limit per message.
+Conversation history is loaded from **root-tagged Assay traces** after refresh/reopen, in
+50-turn pages. Model context uses up to 19 recent persisted turns and a bounded prompt.
+**New chat** rotates the server-issued session, while the pseudonymous browser ID stays stable.
+The separate signed, HttpOnly, SameSite cookie is a bearer capability; knowing an Assay session
+ID alone cannot read a browser's transcript. If a copied capability is still within its 30-day
+lifetime, New chat cannot revoke that copy without server-side storage. Clearing cookies or
+expiry starts a new session; old traces remain in Assay. This demo is not user authentication.
 
 ## Local model without an API key
 
@@ -120,11 +135,12 @@ start it from the repository root with `docker compose up --build -d`.
 ## Inspect the result
 
 For offline evaluations, create a dataset and add questions with expected answers and context.
-Choose **Generate then score** when items have no recorded answer. Compose registers the chat API
-as the example application's target endpoint on first startup; an existing endpoint is preserved.
+Choose **Generate then score** when items have no recorded answer. Compose registers the protected `/api/evaluate` endpoint for offline generation. An older
+example target pointing to `/api/chat` is replaced at chat startup so evaluations continue to
+work; this is an admin write and must not run against persistent data before approval.
 **Score existing outputs** requires a recorded answer on every item. Correctness requires expected
 answers. When running with uv, set `ASSAY_TARGET_URL` to the chat API address reachable from Assay
-(for Docker Desktop, typically `http://host.docker.internal:8090/api/chat`).
+(for Docker Desktop, typically `http://host.docker.internal:8090/api/evaluate`).
 
 Click the reply's trace link, or open [local Assay](http://localhost:8080), and connect with the
 admin token from `.env`. Choose **Python Q&A example** and open its newest trace. Expand
@@ -133,8 +149,10 @@ explicitly mentioning Assay arrive asynchronously when the judge is configured; 
 do not receive a groundedness score for unrelated context. Refresh after a few seconds. The Score
 trends tab includes completed scores.
 
-The example deliberately captures synthetic Q&A content. When adapting it to real inputs, choose
-what to capture and redact sensitive content before calling the tracing setters. To turn a failed
+The example captures Q&A content and links turns via `session.id` and `enduser.pseudo.id`.
+Do not put PII, keys, or real user IDs in these fields; captured text and IDs persist in Assay.
+When adapting this demo to real inputs, choose what to capture and redact sensitive content
+before calling the tracing setters. To turn a failed
 trace into a regression, attach a reference, score it, import its retained evidence into a dataset,
 and create a new run; editing that dataset later does not rewrite earlier run snapshots.
 

@@ -53,7 +53,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "assay-sdk", specifier = "==0.3.0" },
+    { name = "assay-sdk", editable = "../../clients/python/assay" },
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "openai", specifier = "==3.8.0" },
     { name = "uvicorn", specifier = "==0.52.4" },
@@ -69,15 +69,26 @@ dev = [
 [[package]]
 name = "assay-sdk"
 version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../../clients/python/assay" }
 dependencies = [
     { name = "httpx" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/e9/3a587677dd074269b12551c6f867678762f5c52c1b51b9df598dd33b9124/assay_sdk-0.3.0.tar.gz", hash = "sha256:c363128dd34eeb818a5cddbca11f967fc4f408353174b4c86aabb5a0925b4e1a", size = 29390, upload-time = "2026-09-07T07:17:51.238Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/78/b1697e4e4e61eb800a79a7d9a10d9b73d5b9732035761a8053b4ecd67c22/assay_sdk-0.3.0-py3-none-any.whl", hash = "sha256:d68a7f9c7018d51a29802ac5ecdc39411375fd7f49f79bae2c0eb4bf202f4e7a", size = 34534, upload-time = "2026-09-07T07:17:50.074Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "opentelemetry-api", specifier = "==1.44.0" },
+    { name = "opentelemetry-sdk", specifier = "==1.44.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = "==6.167.1" },
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.16.5" },
+    { name = "ty", specifier = "==0.0.75" },
 ]
 
 [[package]]

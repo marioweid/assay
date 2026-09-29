@@ -83,6 +83,19 @@ test("renders a selected call in message order and selects its source", async ()
   expect(select).toHaveBeenCalledWith("1@2026-09-08T00:00:01Z");
 });
 
+test("opens the first captured turn before a later scorable model prompt", () => {
+  const root = call(0, input, output);
+  render(
+    <ConversationView
+      calls={[root, call(1, input, output)]}
+      onSelectSpan={vi.fn()}
+      selectedSpanKey={null}
+    />,
+  );
+  expect(screen.getByText("model-0").closest("details")).toHaveAttribute("open");
+  expect(screen.getByText("model-1").closest("details")).not.toHaveAttribute("open");
+});
+
 test("filters by the exact selected span rather than its descendants", () => {
   const second = call(2, input, output);
   render(

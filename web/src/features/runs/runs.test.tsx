@@ -7,11 +7,12 @@ import { vi } from "vitest";
 
 import { AppRoutes } from "@/app/router";
 import { AuthProvider } from "@/auth/auth-context";
+import { tokenModeServerInfo } from "@/test/server-info";
 
 const appID = "019d11d2-cbd3-7a5e-ae83-9b791c9329de";
 const datasetID = "019d11d2-cbd3-7a5e-ae83-9b791c932911";
 const runID = "019d11d2-cbd3-7a5e-ae83-9b791c932922";
-const server = setupServer();
+const server = setupServer(tokenModeServerInfo);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => localStorage.setItem("assay.admin-token.v1", "admin-secret"));

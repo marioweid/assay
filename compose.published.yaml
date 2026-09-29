@@ -11,7 +11,7 @@ services:
     volumes:
       - assay-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U assay -d assay"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U assay -d assay"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,7 +25,8 @@ services:
     environment:
       ASSAY_HTTP_ADDR: ":8080"
       ASSAY_DATABASE_URL: postgres://assay:${ASSAY_POSTGRES_PASSWORD:?Set a URL-safe database password}@postgres:5432/assay?sslmode=disable
-      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:?Set the admin token}
+      ASSAY_LOCAL_MODE: ${ASSAY_LOCAL_MODE:-false}
+      ASSAY_ADMIN_TOKEN: ${ASSAY_ADMIN_TOKEN:-}
       ASSAY_ENCRYPTION_KEY: ${ASSAY_ENCRYPTION_KEY:?Set a base64-encoded 32-byte key}
       ASSAY_JUDGE_BASE_URL: ${ASSAY_JUDGE_BASE_URL:-}
       ASSAY_JUDGE_MODEL: ${ASSAY_JUDGE_MODEL:-}
